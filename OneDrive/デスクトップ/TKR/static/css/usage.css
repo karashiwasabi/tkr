@@ -1,0 +1,94 @@
+/* C:\Users\wasab\OneDrive\デスクトップ\TKR\static\css\usage.css */
+
+#usage-view h2 {
+    margin-top: 15px;
+    margin-bottom: 5px;
+    font-size: 1.1em;
+    border-bottom: 1px solid #eee;
+    padding-bottom: 3px;
+}
+
+.usage-settings-container,
+.usage-import-container {
+    background-color: #f8f8f8;
+    border: 1px solid #ddd;
+    padding: 10px;
+    margin-bottom: 15px;
+    border-radius: 4px;
+}
+
+.usage-settings-container .form-group {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 5px;
+}
+
+.usage-settings-container label {
+    font-weight: bold;
+    min-width: 150px;
+}
+
+.usage-settings-container input[type="text"] {
+    flex-grow: 1;
+    padding: 3px;
+    border: 1px solid #ccc;
+    border-radius: 3px;
+    font-size: inherit;
+    font-family: inherit;
+}
+
+.description {
+    font-size: 0.9em;
+    color: #666;
+    margin-top: 5px;
+    margin-bottom: 0;
+}
+
+#usageImportResultContainer {
+    font-size: 0.9em;
+    margin-top: 10px;
+    padding: 8px;
+    border: 1px dashed #ccc;
+    background-color: #fff;
+    min-height: 20px;
+}
+
+#usageDataTableContainer .data-table th,
+#usageDataTableContainer .data-table td {
+    padding: 3px 5px; /* Adjust padding for usage table */
+    height: auto; /* Allow height to adjust */
+    white-space: normal; /* Allow wrapping */
+    text-overflow: clip; /* Clip instead of ellipsis */
+}
+
+#usageDataTableContainer .data-table th:nth-child(1), /* 取込日時 */
+#usageDataTableContainer .data-table td:nth-child(1) {
+    width: 15%;
+    text-align: center;
+}
+
+#usageDataTableContainer .data-table th:nth-child(2), /* ファイル名 */
+#usageDataTableContainer .data-table td:nth-child(2) {
+    width: 30%;
+    text-align: left;
+}
+
+#usageDataTableContainer .data-table th:nth-child(3), /* ステータス */
+#usageDataTableContainer .data-table td:nth-child(3) {
+    width: 10%;
+    text-align: center;
+}
+#usageDataTableContainer .data-table th:nth-child(4), /* 処理件数 */
+#usageDataTableContainer .data-table td:nth-child(4) {
+    width: 10%;
+    text-align: right;
+}
+
+#usageDataTableContainer .data-table th:nth-child(5), /* エラー詳細 */
+#usageDataTableContainer .data-table td:nth-child(5) {
+    width: 35%;
+    text-align: left;
+    font-size: 0.9em;
+    color: #e60000; /* Error details in red */
+}

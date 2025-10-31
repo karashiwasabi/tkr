@@ -1,0 +1,511 @@
+----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\css\masteredit.css -----
+/* C:\Users\wasab\OneDrive\デスクトップ\TKR\static\css\masteredit.css (全体) */
+/* TKR/static/css/masteredit.css */
+
+/* フィルターコンテナのスタイル */
+#master-edit-view .filter-container {
+    background-color: #eef;
+/* */ }
+
+
+
+/* マスター一覧テーブルの編集ボタン */
+#masterListTable .edit-master-btn {
+    padding: 1px 4px;
+/* */ font-size: 9px;
+}
+
+
+/* ▼▼▼【ここから修正】編集フォームのスタイル (モーダル用に変更) ▼▼▼ */
+
+/* モーダルオーバーレイ */
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.6);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 900;
+}
+
+/* モーダル本体 */
+.modal-content {
+    background-color: #fcfcfc;
+    border: 1px solid #ddd;
+    padding: 15px;
+    border-radius: 5px;
+    width: 90%;
+    max-width: 1000px;
+    max-height: 90vh;
+    overflow-y: auto;
+    z-index: 901;
+}
+
+/* フォームコンテナ (旧 #masterEditFormContainer) */
+.modal-content h2 {
+    margin-top: 0;
+    font-size: 1.2em;
+    border-bottom: 1px solid #ccc;
+    padding-bottom: 5px;
+/* */ }
+
+.modal-content .form-row {
+    display: flex;
+    flex-wrap: wrap;
+    margin-bottom: 8px;
+    gap: 10px;
+/* */ }
+
+.modal-content .form-group {
+    display: flex;
+    flex-direction: column;
+    flex-basis: 150px; 
+    flex-grow: 1;
+/* */ }
+
+.modal-content .form-group label {
+    font-weight: bold;
+    margin-bottom: 3px;
+    font-size: 10px;
+/* */ }
+
+.modal-content .form-group input[type="text"],
+.modal-content .form-group input[type="number"] {
+    width: 100%;
+/* */     padding: 3px;
+    border: 1px solid #ccc;
+    border-radius: 3px;
+    font-size: inherit; 
+/* */     font-family: inherit;
+    box-sizing: border-box; 
+/* */ }
+
+.modal-content .form-group input.readonly-field {
+    background-color: #eee;
+    color: #555;
+    border-color: #ddd;
+/* */ }
+
+.modal-content .readonly-group {
+    background-color: #f7f7f7;
+    border: 1px dashed #ddd;
+    padding: 5px;
+    gap: 5px;
+}
+.modal-content .readonly-group .form-group label {
+    font-weight: normal;
+}
+
+
+.modal-content .form-actions {
+    margin-top: 15px;
+    padding-top: 10px;
+    border-top: 1px dashed #ccc;
+    text-align: right;
+/* */ }
+
+.modal-content .form-actions .btn {
+    margin-left: 10px;
+}
+/* ▲▲▲【修正ここまで】▲▲▲ */
+
+----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\css\styles.css -----
+/* TKR/static/css/styles.css (Table styles removed) */
+
+/* ========================================================================== */
+/* 1. Page Layout & Print Settings */
+/* ========================================================================== */
+
+@page {
+  size: A4 landscape;
+  margin: 10mm;
+}
+
+html, body {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  background: #eee;
+}
+
+body {
+  font-family: "MS Gothic", "ＭＳ ゴシック", sans-serif; /* WASABI font */
+  font-size: 10.4px; /* WASABI base size */
+  overflow-y: auto;
+  overflow-x: hidden;
+  box-sizing: border-box;
+  width: 297mm; /* A4 width landscape */
+  min-height: 210mm; /* A4 height landscape */
+  height: auto;
+  padding: 10mm; /* Page padding */
+  margin: 10mm auto; /* Center page */
+  background: #fff; /* Paper color */
+  box-shadow: 0 0 5px rgba(0,0,0,0.1); /* Subtle shadow */
+  border: 1px solid #ccc; /* Page border */
+}
+
+/* ========================================================================== */
+/* 7. Common Components */
+/* ========================================================================== */
+
+.btn {
+  padding: 2px 2px; /* Reduced padding */
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: inherit; /* Inherit body font size */
+  line-height: 1.3;   /* Stabilize height */
+  background-color: #f8f9fa;
+  color: #333;
+  transition: background-color 0.2s ease;
+}
+.btn:hover {
+  background-color: #e2e6ea;
+}
+
+#loading-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.6);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+  color: white;
+  font-size: 1.2em;
+}
+
+#loading-overlay.hidden {
+  display: none;
+}
+
+.spinner {
+  border: 4px solid rgba(255, 255, 255, 0.3);
+  border-radius: 50%;
+  border-top: 4px solid #fff;
+  width: 40px;
+  height: 40px;
+  animation: spin 1s linear infinite;
+  margin-bottom: 15px;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.notification-box {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 15px 25px;
+  border-radius: 5px;
+  color: white;
+  font-size: 1em;
+  z-index: 1001;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.3s ease, visibility 0.3s ease;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+}
+
+.notification-box.show {
+  opacity: 1;
+  visibility: visible;
+}
+
+.notification-box.success { background-color: #28a745; }
+.notification-box.error   { background-color: #dc3545; }
+.notification-box.warning { background-color: #ffc107; color: #333; }
+.notification-box.info    { background-color: #17a2b8; }
+
+/* 各ビューの基本設定 */
+.view {
+  display: none; /* デフォルトでは非表示 */
+}
+.view.active {
+  display: block; /* .active クラスで表示 */
+}
+
+
+/* General Helper Classes */
+.hidden { display: none !important; }
+.center { text-align: center; }
+.left   { text-align: left; }
+.right  { text-align: right; }
+
+
+/* ========================================================================== */
+/* 8. Print Styles (Keep basic page settings) */
+/* ========================================================================== */
+
+@media print {
+  html { background: transparent !important; }
+  body {
+    width: auto !important;
+    min-height: auto !important;
+    margin: 0 !important;
+    border: none !important;
+    box-shadow: none !important;
+    background: transparent !important;
+    overflow: visible !important;
+    padding: 0 !important;
+  }
+  /* Add .no-print class styles here if needed later */
+  .btn, #loading-overlay, #notification-box, #datUploadBtn, #uploadResultContainer h3, #uploadResultContainer ul {
+      display: none !important; /* Hide buttons and messages when printing */
+  }
+  .data-table {
+      font-size: 9px !important; /* Slightly smaller font for printing */
+      margin-bottom: 5mm !important;
+  }
+   .data-table th, .data-table td {
+      padding: 1px 2px !important; /* Reduce padding for printing */
+  }
+
+}
+
+----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\css\table.css -----
+/* TKR/static/css/table.css */
+
+/* ========================================================================== */
+/* Data Table Styles */
+/* ========================================================================== */
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 0;
+  font-size: inherit;
+  table-layout: fixed;
+  box-sizing: border-box;
+}
+
+.data-table th,
+.data-table td {
+  border: 1px solid #ccc;
+  padding: 2px 2px;
+  /* text-align: left; */ /* ← デフォルト指定は削除 */
+  vertical-align: middle;
+  min-height: 20px;
+  height: 20px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  box-sizing: border-box;
+}
+
+/* ▼▼▼ ヘッダーは全て中央揃え ▼▼▼ */
+.data-table th {
+  background-color: #f2f2f2;
+  font-weight: bold;
+  text-align: center; /* ヘッダーは中央揃え */
+}
+/* ▲▲▲ 修正 ▲▲▲ */
+
+/* Zebra striping every two data rows */
+.data-table tbody tr:nth-child(4n-1),
+.data-table tbody tr:nth-child(4n) {
+  background-color: #f9f9f9;
+}
+
+
+/* ▼▼▼ 列ごとの幅指定 (ヘッダーに適用) ▼▼▼ */
+/* width指定は th にのみ適用し、td は追従させる */
+.data-table th.col-action     { width: 5%; }
+.data-table th.col-date       { width: 7%; }
+.data-table th.col-yj         { width: 10%; }
+/* 製品名は構成要素のクラスで幅を指定 */
+.data-table th.col-package    { width: 10%; }
+.data-table th.col-maker      { width: 10%; }
+.data-table th.col-count      { width: 4%; }
+.data-table th.col-yjqty      { width: 8%; }
+.data-table th.col-yjpackqty  { width: 8%; }
+.data-table th.col-yjunit     { width: 8%; }
+.data-table th.col-unitprice  { width: 6%; }
+.data-table th.col-expiry     { width: 8%; }
+.data-table th.col-wholesaler { width: 8%; }
+.data-table th.col-line       { width: 8%; }
+/* ヘッダー2行目のクラスにも幅を指定 */
+.data-table th.col-flag       { width: 7%; }
+.data-table th.col-jan        { width: 10%; }
+.data-table th.col-form       { width: 4%; }
+.data-table th.col-janqty     { width: 8%; }
+.data-table th.col-janpackqty { width: 8%; }
+.data-table th.col-janunit    { width: 8%; }
+.data-table th.col-amount     { width: 6%; }
+.data-table th.col-lot        { width: 8%; }
+.data-table th.col-receipt    { width: 8%; }
+.data-table th.col-ma         { width: 8%; }
+/* ▲▲▲ 幅指定ここまで ▲▲▲ */
+
+
+/* ▼▼▼ データセル (td) の文字揃え ▼▼▼ */
+/* デフォルトは左揃え (指定なし) */
+.data-table td.col-action     { text-align: center; }
+.data-table td.col-date       { text-align: center; }
+.data-table td.col-flag       { text-align: center; }
+/* .data-table td.col-yj         { text-align: left; } (デフォルト) */
+/* .data-table td.col-jan        { text-align: left; } (デフォルト) */
+/* .data-table td.col-package    { text-align: left; } (デフォルト) */
+/* .data-table td.col-maker      { text-align: left; } (デフォルト) */
+/* .data-table td.col-product   { text-align: left; } (デフォルト) */
+.data-table td.col-count      { text-align: right; }
+.data-table td.col-form       { text-align: center; }
+.data-table td.col-yjqty      { text-align: right; }
+.data-table td.col-janqty     { text-align: right; }
+.data-table td.col-yjpackqty  { text-align: right; }
+.data-table td.col-janpackqty { text-align: right; }
+/* .data-table td.col-yjunit     { text-align: left; } (デフォルト) */
+/* .data-table td.col-janunit    { text-align: left; } (デフォルト) */
+.data-table td.col-unitprice  { text-align: right; }
+.data-table td.col-amount     { text-align: right; }
+.data-table td.col-expiry     { text-align: center; }
+.data-table td.col-lot        { text-align: center; } 
+.data-table td.col-wholesaler { text-align: center; }
+.data-table td.col-receipt    { text-align: center; }
+.data-table td.col-line       { text-align: center; }
+.data-table td.col-ma         { text-align: center; }
+/* ▲▲▲ 文字揃えここまで ▲▲▲ */
+
+
+/* ステータス色 */
+.status-success { color: green; }
+.status-error   { color: red; }
+
+----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\css\usage.css -----
+/* C:\Users\wasab\OneDrive\デスクトップ\TKR\static\css\usage.css */
+
+#usage-view h2 {
+    margin-top: 15px;
+    margin-bottom: 5px;
+    font-size: 1.1em;
+    border-bottom: 1px solid #eee;
+    padding-bottom: 3px;
+}
+
+.usage-settings-container,
+.usage-import-container {
+    background-color: #f8f8f8;
+    border: 1px solid #ddd;
+    padding: 10px;
+    margin-bottom: 15px;
+    border-radius: 4px;
+}
+
+.usage-settings-container .form-group {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 5px;
+}
+
+.usage-settings-container label {
+    font-weight: bold;
+    min-width: 150px;
+}
+
+.usage-settings-container input[type="text"] {
+    flex-grow: 1;
+    padding: 3px;
+    border: 1px solid #ccc;
+    border-radius: 3px;
+    font-size: inherit;
+    font-family: inherit;
+}
+
+.description {
+    font-size: 0.9em;
+    color: #666;
+    margin-top: 5px;
+    margin-bottom: 0;
+}
+
+#usageImportResultContainer {
+    font-size: 0.9em;
+    margin-top: 10px;
+    padding: 8px;
+    border: 1px dashed #ccc;
+    background-color: #fff;
+    min-height: 20px;
+}
+
+#usageDataTableContainer .data-table th,
+#usageDataTableContainer .data-table td {
+    padding: 3px 5px; /* Adjust padding for usage table */
+    height: auto; /* Allow height to adjust */
+    white-space: normal; /* Allow wrapping */
+    text-overflow: clip; /* Clip instead of ellipsis */
+}
+
+#usageDataTableContainer .data-table th:nth-child(1), /* 取込日時 */
+#usageDataTableContainer .data-table td:nth-child(1) {
+    width: 15%;
+    text-align: center;
+}
+
+#usageDataTableContainer .data-table th:nth-child(2), /* ファイル名 */
+#usageDataTableContainer .data-table td:nth-child(2) {
+    width: 30%;
+    text-align: left;
+}
+
+#usageDataTableContainer .data-table th:nth-child(3), /* ステータス */
+#usageDataTableContainer .data-table td:nth-child(3) {
+    width: 10%;
+    text-align: center;
+}
+#usageDataTableContainer .data-table th:nth-child(4), /* 処理件数 */
+#usageDataTableContainer .data-table td:nth-child(4) {
+    width: 10%;
+    text-align: right;
+}
+
+#usageDataTableContainer .data-table th:nth-child(5), /* エラー詳細 */
+#usageDataTableContainer .data-table td:nth-child(5) {
+    width: 35%;
+    text-align: left;
+    font-size: 0.9em;
+    color: #e60000; /* Error details in red */
+}
+
+----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\index.html -----
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>TKR アプリケーション</title>
+    <link rel="stylesheet" href="/static/css/styles.css">
+    <link rel="stylesheet" href="/static/css/table.css">
+    <link rel="stylesheet" href="/static/css/masteredit.css">
+    </head>
+<body>
+    <header id="main-header">
+        <button id="datViewBtn" class="btn">DAT取込</button>
+        <button id="masterEditViewBtn" class="btn">マスタ編集</button>
+        </header>
+
+    <main>
+        <div id="dat-upload-view" class="view active"> <h1>ファイルアップロード</h1>
+    
+            <div style="margin-bottom: 20px;">
+</div>
+            </div>
+
+
+        </main>
+
+    <div id="loading-overlay" class="hidden">
+

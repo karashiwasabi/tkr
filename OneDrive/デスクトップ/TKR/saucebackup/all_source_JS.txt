@@ -1,0 +1,850 @@
+----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\js\app.js -----
+// C:\Users\wasab\OneDrive\デスクトップ\TKR\static\js\app.js
+import { initDatUpload } from './dat.js';
+import { initMasterEditView } from './masteredit.js';
+import { initUsageView } from './usage.js'; // ★ 追加
+
+let loadingOverlay, loadingMessage, notificationBox;
+let views, datViewBtn, masterEditViewBtn, usageViewBtn; // ★ usageViewBtn を追加
+
+window.showLoading = (message = '処理中...') => {
+    if (!loadingOverlay) loadingOverlay = document.getElementById('loading-overlay');
+    if (!loadingMessage) loadingMessage = document.getElementById('loading-message');
+    if (loadingMessage) loadingMessage.textContent = message;
+    if (loadingOverlay) loadingOverlay.classList.remove('hidden');
+};
+window.hideLoading = () => {
+    if (!loadingOverlay) loadingOverlay = document.getElementById('loading-overlay');
+    if (loadingOverlay) loadingOverlay.classList.add('hidden');
+};
+window.showNotification = (message, type = 'success') => {
+    if (!notificationBox) notificationBox = document.getElementById('notification-box');
+    if (notificationBox) {
+        notificationBox.textContent = message;
+        notificationBox.className = 'notification-box';
+        notificationBox.classList.add(type);
+        notificationBox.classList.add('show');
+        setTimeout(() => {
+            notificationBox.classList.remove('show');
+        }, 3000);
+    }
+};
+
+function setActiveView(targetId) {
+    if (!views) views = document.querySelectorAll('.view');
+    views.forEach(view => {
+        if (view.id === targetId) {
+            view.classList.add('active');
+        } else {
+            view.classList.remove('active');
+        }
+    });
+
+    if (targetId === 'master-edit-view') {
+        const masterListBody = document.querySelector('#masterListTable tbody');
+        if(masterListBody && masterListBody.children.length <= 1) {
+             document.dispatchEvent(new CustomEvent('showMasterEditView'));
+        }
+    }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    console.log('TKR App Initialized.');
+
+    loadingOverlay = document.getElementById('loading-overlay');
+    loadingMessage = document.getElementById('loading-message');
+    notificationBox = document.getElementById('notification-box');
+    views = document.querySelectorAll('.view');
+    datViewBtn = document.getElementById('datViewBtn');
+    masterEditViewBtn = document.getElementById('masterEditViewBtn');
+    usageViewBtn = document.getElementById('usageViewBtn'); // ★ 追加
+
+    initDatUpload();
+    initMasterEditView();
+    initUsageView(); // ★ 追加
+
+    if (datViewBtn) {
+        datViewBtn.addEventListener('click', () => setActiveView('dat-upload-view'));
+    }
+    if (masterEditViewBtn) {
+        masterEditViewBtn.addEventListener('click', () => setActiveView('master-edit-view'));
+    }
+    if (usageViewBtn) { // ★ 追加
+        usageViewBtn.addEventListener('click', () => setActiveView('usage-view')); // ★ 追加
+    } // ★ 追加
+
+    setActiveView('dat-upload-view');
+});
+
+document.addEventListener('showMasterEditView', () => {
+    console.log("Event: showMasterEditView received");
+});
+
+----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\js\dat.js -----
+// TKR/static/js/dat.js
+
+// --- テーブル描画関数 ---
+function renderTransactionTable(transactions, dataTableBody, dataTableHead) {
+    if (!dataTableBody || !dataTableHead) {
+        console.error("Table body or head not found for rendering.");
+        return;
+    }
+
+    // テーブルヘッダーを2行に変更 (クラス名付き)
+    dataTableHead.innerHTML = `
+        <tr>
+            <th rowspan="2" class="col-action">－</th>
+            <th class="col-date">日付</th>
+            <th class="col-yj">YJ</th>
+            <th colspan="2" class="col-product">製品名</th>
+            <th class="col-count">個数</th>
+            <th class="col-yjqty">YJ数量</th>
+            <th class="col-yjpackqty">YJ包装数</th>
+            <th class="col-yjunit">YJ単位</th>
+            <th class="col-unitprice">単価</th>
+            <th class="col-expiry">期限</th>
+            <th class="col-wholesaler">卸</th>
+            <th class="col-line">行</th>
+        </tr>
+        <tr>
+            <th class="col-flag">種別</th>
+            <th class="col-jan">JAN</th>
+            <th class="col-package">包装</th>
+            <th class="col-maker">メーカー</th>
+            <th class="col-form">剤型</th>
+            <th class="col-janqty">JAN数量</th>
+            <th class="col-janpackqty">JAN包装数</th>
+            <th class="col-janunit">JAN単位</th>
+            <th class="col-amount">金額</th>
+            <th class="col-lot">ロット</th>
+            <th class="col-receipt">伝票番号</th>
+            <th class="col-ma">MA</th>
+        </tr>
+    `;
+
+    const columnCount = 13; // ヘッダー列数
+
+    if (!transactions || transactions.length === 0) {
+        dataTableBody.innerHTML = `<tr><td colspan="${columnCount}">登録されたデータはありません。</td></tr>`;
+        return;
+    }
+
+    // テーブルボディを生成 (クラス名付き)
+    let tableBodyHtml = '';
+    transactions.forEach(tx => {
+        const formattedDate = tx.transactionDate || '';
+        const formattedExpiry = tx.expiryDate || '';
+        const formattedYjQty = typeof tx.yjQuantity === 'number' ? tx.yjQuantity.toFixed(2) : '-';
+        const formattedUnitPrice = typeof tx.unitPrice === 'number' ? tx.unitPrice.toFixed(2) : '-';
+        const formattedSubtotal = typeof tx.subtotal === 'number' ? tx.subtotal.toFixed(2) : '-';
+        const flagText = tx.flag === 1 ? '納品' : (tx.flag === 2 ? '返品' : tx.flag);
+
+        tableBodyHtml += `
+            <tr>
+                <td class="center col-action">－</td>
+                <td class="center col-date">${formattedDate}</td>
+                <td class="col-yj">${tx.yjCode || ''}</td>
+                <td colspan="2" class="col-product">${tx.productName || ''}</td>
+                <td class="right col-count">${tx.datQuantity || 0}</td>
+                <td class="right col-yjqty">${formattedYjQty}</td>
+                <td class="right col-yjpackqty">${tx.yjPackUnitQty || ''}</td>
+                <td class="center col-yjunit">${tx.yjUnitName || ''}</td>
+                <td class="right col-unitprice">${formattedUnitPrice}</td>
+                <td class="center col-expiry">${formattedExpiry}</td>
+                <td class="center col-wholesaler">${tx.clientCode || ''}</td>
+                <td class="center col-line">${tx.lineNumber || ''}</td>
+            </tr>
+            <tr>
+                <td></td>
+                <td class="center col-flag">${flagText}</td>
+                <td class="col-jan">${tx.janCode || ''}</td>
+                <td class="col-package">${tx.packageForm || ''}</td>
+                <td class="col-maker">${tx.makerName || ''}</td>
+                <td class="col-form"></td>
+                <td class="right col-janqty"></td>
+                <td class="right col-janpackqty">${tx.janPackUnitQty || ''}</td>
+                <td class="center col-janunit">${tx.janUnitName || ''}</td>
+                <td class="right col-amount">${formattedSubtotal}</td>
+                <td class="col-lot">${tx.lotNumber || ''}</td>
+                <td class="col-receipt">${tx.receiptNumber || ''}</td>
+                <td class="center col-ma">${tx.processFlagMA || ''}</td>
+            </tr>
+        `;
+    });
+    dataTableBody.innerHTML = tableBodyHtml;
+}
+
+// --- DATファイルアップロード処理 ---
+async function handleDatUpload(files, datFileInput, uploadResultContainer, dataTableBody, dataTableHead) {
+    if (!files || files.length === 0) {
+        return;
+    }
+
+    if (uploadResultContainer) uploadResultContainer.innerHTML = '<p>ファイルをアップロード中...</p>';
+    if (dataTableBody) dataTableBody.innerHTML = `<tr><td colspan="13">処理中...</td></tr>`;
+    window.showLoading('DATファイルを処理中...');
+
+    const formData = new FormData();
+    for (const file of files) {
+        formData.append('file', file);
+    }
+
+    try {
+        const response = await fetch('/api/dat/upload', {
+            method: 'POST',
+            body: formData,
+        });
+        const result = await response.json();
+
+        if (!response.ok) {
+            throw new Error(result.message || `サーバーエラー (HTTP ${response.status})`);
+        }
+
+        // --- アップロード結果サマリー表示 ---
+        let summaryHtml = `<h3>${result.message || '処理が完了しました。'}</h3>`;
+        if (result.results && Array.isArray(result.results)) {
+            summaryHtml += '<ul>';
+            result.results.forEach(fileResult => {
+                const statusClass = fileResult.success ? 'status-success' : 'status-error';
+                const statusText = fileResult.success ? '成功' : 'エラー';
+                const errorDetail = fileResult.error ? `: ${fileResult.error}` : '';
+                const parsed = fileResult.records_parsed || 0;
+                const inserted = fileResult.records_inserted || 0;
+
+                summaryHtml += `<li><strong>${fileResult.filename}:</strong> `;
+                summaryHtml += `<span class="${statusClass}">${statusText}</span> (パース: ${parsed}件, 登録: ${inserted}件)${errorDetail}`;
+                summaryHtml += '</li>';
+            });
+            summaryHtml += '</ul>';
+        }
+        if (uploadResultContainer) uploadResultContainer.innerHTML = summaryHtml;
+        // --- サマリー表示ここまで ---
+
+        // テーブルに詳細データを描画
+        renderTransactionTable(result.transactions, dataTableBody, dataTableHead);
+
+        window.showNotification(result.message || 'DATファイルの処理が完了しました。', 'success');
+
+    } catch (error) {
+        console.error('Upload failed:', error);
+        if (uploadResultContainer) uploadResultContainer.innerHTML = `<p style="color: red;">エラーが発生しました: ${error.message}</p>`;
+        window.showNotification(`エラー: ${error.message}`, 'error');
+        if (dataTableBody) {
+            dataTableBody.innerHTML = `<tr><td colspan="13" class="status-error">エラーが発生しました: ${error.message}</td></tr>`;
+        }
+    } finally {
+        window.hideLoading();
+        if (datFileInput) datFileInput.value = '';
+    }
+}
+
+// --- 初期化関数 ---
+export function initDatUpload() {
+    // Declare variables inside the function with const
+    const datUploadBtn = document.getElementById('datUploadBtn');
+    const datFileInput = document.getElementById('datFileInput');
+    const uploadResultContainer = document.getElementById('uploadResultContainer');
+    const dataTable = document.getElementById('mainDataTable');
+    const dataTableBody = dataTable ? dataTable.querySelector('tbody') : null;
+    const dataTableHead = dataTable ? dataTable.querySelector('thead') : null;
+
+    // イベントリスナーを設定
+    if (datUploadBtn && datFileInput) {
+        datUploadBtn.addEventListener('click', () => {
+            datFileInput.click();
+        });
+        datFileInput.addEventListener('change', (event) => {
+            // Pass elements to handler function
+            handleDatUpload(event.target.files, datFileInput, uploadResultContainer, dataTableBody, dataTableHead);
+        });
+    } else {
+        console.error('DAT Upload button or file input not found.');
+    }
+
+     // テーブルの初期表示
+     renderTransactionTable([], dataTableBody, dataTableHead);
+
+     if (uploadResultContainer) {
+        uploadResultContainer.innerHTML = '<p>「DATファイル選択」ボタンを押してファイルを選んでください。</p>';
+    }
+}
+
+----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\js\masteredit.js -----
+// C:\Users\wasab\OneDrive\デスクトップ\TKR\static\js\masteredit.js
+import { hiraganaToKatakana } from './utils.js';
+
+let viewElement, masterListTable, masterListBody, masterListHead;
+let searchProdNameInput, searchKanaNameInput, searchGenericNameInput, searchShelfNumberInput, searchBtn;
+let usageClassRadios;
+let editFormContainer;
+
+let saveMasterBtn, cancelEditMasterBtn;
+let editFormFields = {};
+let currentMasters = [];
+
+function renderMasterTable(masters) {
+    if (!masterListBody || !masterListHead) return;
+
+    masterListHead.innerHTML = `
+        <tr>
+            <th class="col-action"></th>
+            <th class="col-yj">YJコード</th>
+            <th class="col-gs1">GS1コード</th> <th class="col-jan">JANコード</th>
+            <th class="col-product">製品名</th>
+            <th class="col-kana">カナ名</th>
+            <th class="col-maker">メーカー</th>
+            <th class="col-generic">一般名</th> <th class="col-shelf">棚番</th>
+        </tr>
+    `;
+
+    if (!masters || masters.length === 0) {
+        masterListBody.innerHTML = '<tr><td colspan="9">データがありません。</td></tr>';
+        return;
+    }
+
+    let tableBodyHtml = '';
+    masters.forEach(master => {
+        tableBodyHtml += `
+            <tr data-product-code="${master.productCode}">
+                <td class="center col-action"><button class="edit-master-btn btn" data-code="${master.productCode}">編集</button></td>
+                <td class="col-yj">${master.yjCode || ''}</td>
+                <td class="col-gs1">${master.gs1Code || ''}</td> <td class="col-jan">${master.productCode || ''}</td>
+                <td class="left col-product">${master.productName || ''}</td>
+                <td class="left col-kana">${master.kanaName || ''}</td>
+                <td class="left col-maker">${master.makerName || ''}</td>
+                <td class="left col-generic">${master.genericName || ''}</td> <td class="col-shelf">${master.shelfNumber || ''}</td>
+           </tr>
+        `;
+    });
+    masterListBody.innerHTML = tableBodyHtml;
+}
+
+async function fetchAndRenderMasters() {
+    console.log("[DEBUG] fetchAndRenderMasters called!");
+    const selectedUsageRadio = document.querySelector('input[name="usage_class"]:checked');
+    const usageClass = selectedUsageRadio ? selectedUsageRadio.value : '';
+
+    const productName = searchProdNameInput ? searchProdNameInput.value.trim() : '';
+    const kanaName = hiraganaToKatakana(searchKanaNameInput ? searchKanaNameInput.value.trim() : '');
+    const genericName = searchGenericNameInput ? searchGenericNameInput.value.trim() : '';
+    const shelfNumber = searchShelfNumberInput ? searchShelfNumberInput.value.trim() : '';
+
+    if (!usageClass) {
+        window.showNotification('内外注区分を選択してください。', 'warning');
+        return;
+    }
+
+    hideEditModal();
+
+    window.showLoading('マスターデータを検索中...');
+
+    const params = new URLSearchParams();
+    params.append('usage_class', usageClass);
+    if (productName.length > 0) params.append('product_name', productName);
+    if (kanaName.length > 0) params.append('kana_name', kanaName);
+    if (genericName.length > 0) params.append('generic_name', genericName);
+    if (shelfNumber.length > 0) params.append('shelf_number', shelfNumber);
+    const apiUrl = `/api/masters?${params.toString()}`;
+
+    try {
+        const response = await fetch(apiUrl);
+        if (!response.ok) {
+            let errorText = `Failed to fetch masters: ${response.statusText}`;
+            try {
+                const errorJson = await response.json();
+                errorText = errorJson.message || errorText;
+            } catch (e) {
+            }
+            throw new Error(errorText);
+        }
+        const masters = await response.json();
+        if (Array.isArray(masters)) {
+            currentMasters = masters;
+            renderMasterTable(masters);
+            window.showNotification(`${masters.length} 件見つかりました。`, 'info');
+        } else {
+            console.error("Received unexpected data format from API:", masters);
+            renderMasterTable([]);
+            window.showNotification('サーバーから予期しない形式のデータが返されました。', 'error');
+            currentMasters = [];
+        }
+    } catch (error) {
+        console.error("Error fetching or rendering masters:", error);
+        window.showNotification(`マスターの検索に失敗しました: ${error.message}`, 'error');
+        if (masterListBody) masterListBody.innerHTML = `<tr><td colspan="9" class="status-error">データの検索に失敗しました。</td></tr>`;
+        currentMasters = [];
+    } finally {
+        window.hideLoading();
+    }
+}
+
+function handleEditClick(event) {
+     console.log("Table click detected.");
+     const target = event.target;
+    if (target.classList.contains('edit-master-btn')) {
+        const productCode = target.dataset.code;
+        if (!productCode) return;
+        console.log("Edit button clicked for:", productCode);
+
+        const masterToEdit = currentMasters.find(m => m.productCode === productCode);
+        if (!masterToEdit) {
+            console.error("Master data not found in cache for code:", productCode);
+            window.showNotification('該当するマスターデータが見つかりません。', 'error');
+            return;
+        }
+
+        populateEditForm(masterToEdit);
+        showEditModal();
+    }
+}
+
+// ▼▼▼【ここから修正】populateEditForm で readonly を動的に設定 ▼▼▼
+function populateEditForm(master) {
+     console.log("Populating form for:", master);
+    const viewProductCode = document.getElementById('view-product-code');
+    if (viewProductCode) {
+        viewProductCode.value = master.productCode || '';
+    }
+
+    const isJcshmsOrigin = master.origin === 'JCSHMS';
+
+    // JCSHMS由来の場合に readonly にするフィールドのキー (camelCase)
+    const jcshmsReadonlyKeys = [
+        'gs1Code', 'productName', 'kanaName', 'kanaNameShort', 'genericName',
+        'makerName', 'specification', 'usageClassification', 'packageForm',
+        'yjUnitName', 'yjPackUnitQty', 'janPackInnerQty', 'janUnitCode',
+        'janPackUnitQty', 'nhiPrice', 'flagPoison', 'flagDeleterious',
+        'flagNarcotic', 'flagPsychotropic', 'flagStimulant', 'flagStimulantRaw',
+        'isOrderStopped'
+    ];
+
+    for (const key in editFormFields) {
+        const element = editFormFields[key];
+        const masterValue = master[key];
+
+        if (element) {
+            // 値を設定
+            if (typeof masterValue === 'number') {
+                element.value = masterValue;
+            } else {
+                element.value = masterValue || '';
+            }
+
+            // readonly 属性を設定/解除
+            // productCode (view-product-code) は常に readonly
+            if (key !== 'productCode' && element.id !== 'view-product-code') {
+                if (isJcshmsOrigin && jcshmsReadonlyKeys.includes(key)) {
+                    element.readOnly = true;
+                    element.classList.add('readonly-field'); // スタイル用クラスも念のため
+                } else {
+                    element.readOnly = false;
+                    element.classList.remove('readonly-field');
+                }
+            }
+        }
+    }
+}
+// ▲▲▲【修正ここまで】▲▲▲
+
+function showEditModal() {
+    if (editFormContainer) {
+        editFormContainer.classList.remove('hidden');
+    }
+}
+
+function hideEditModal() {
+    if (editFormContainer) {
+        editFormContainer.classList.add('hidden');
+    }
+}
+
+async function handleSaveMaster() {
+    const inputData = {};
+    const floatKeys = [
+        'yjPackUnitQty', 'janPackInnerQty', 'janPackUnitQty', 'nhiPrice', 'purchasePrice'
+    ];
+    const intKeys = [
+        'janUnitCode', 'flagPoison', 'flagDeleterious', 'flagNarcotic',
+        'flagPsychotropic', 'flagStimulant', 'flagStimulantRaw', 'isOrderStopped'
+    ];
+
+    for (const key in editFormFields) {
+        const element = editFormFields[key];
+        if (element) {
+            const value = element.value;
+            if (floatKeys.includes(key)) {
+                inputData[key] = parseFloat(value) || 0;
+            } else if (intKeys.includes(key)) {
+                inputData[key] = parseInt(value, 10) || 0;
+            } else {
+                inputData[key] = value;
+            }
+        }
+    }
+
+    if (!inputData.productCode) {
+        window.showNotification('JANコードが不明なため保存できません。', 'error');
+        return;
+    }
+
+    console.log("Saving master:", inputData);
+    window.showLoading('マスターデータを保存中...');
+
+    try {
+        const response = await fetch('/api/masters/update', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(inputData),
+        });
+
+        if (!response.ok) {
+            let errorText = `サーバーエラー (HTTP ${response.status})`;
+            try {
+                const text = await response.text();
+                errorText = text || errorText;
+            } catch (e) {
+            }
+            throw new Error(errorText);
+        }
+
+        const result = await response.json();
+        window.showNotification(result.message || '保存しました。', 'success');
+
+    } catch (error) {
+        console.error('Save failed:', error);
+        window.showNotification(`保存エラー: ${error.message}`, 'error');
+    } finally {
+        window.hideLoading();
+    }
+}
+
+export function initMasterEditView() {
+    viewElement = document.getElementById('master-edit-view');
+    masterListTable = document.getElementById('masterListTable');
+    masterListBody = masterListTable ? masterListTable.querySelector('tbody') : null;
+    masterListHead = masterListTable ? masterListTable.querySelector('thead') : null;
+
+    searchProdNameInput = document.getElementById('master-search-prod-name');
+    searchKanaNameInput = document.getElementById('master-search-kana-name');
+    searchGenericNameInput = document.getElementById('master-search-generic-name');
+    searchShelfNumberInput = document.getElementById('master-search-shelf-number');
+
+    if (searchProdNameInput) searchProdNameInput.disabled = false;
+    if (searchGenericNameInput) searchGenericNameInput.disabled = false;
+
+    searchBtn = document.getElementById('masterSearchBtn');
+    editFormContainer = document.getElementById('masterEditModalOverlay');
+    usageClassRadios = document.querySelectorAll('input[name="usage_class"]');
+
+    if (!viewElement || !masterListTable || !searchBtn || !editFormContainer) {
+        console.error("Master edit view elements not found.");
+        return;
+    }
+
+    saveMasterBtn = document.getElementById('saveMasterBtn');
+    cancelEditMasterBtn = document.getElementById('cancelEditMasterBtn');
+
+    const fieldIds = [
+        'productCode', 'yjCode', 'gs1Code', 'productName', 'kanaName',
+        'kanaNameShort', 'genericName', 'makerName', 'specification',
+        'usageClassification', 'packageForm', 'yjUnitName', 'yjPackUnitQty',
+        'janPackInnerQty', 'janUnitCode', 'janPackUnitQty', 'origin',
+        'nhiPrice', 'purchasePrice', 'flagPoison', 'flagDeleterious',
+        'flagNarcotic', 'flagPsychotropic', 'flagStimulant', 'flagStimulantRaw',
+        'isOrderStopped', 'supplierWholesale', 'groupCode', 'shelfNumber',
+        'category', 'userNotes'
+    ];
+
+    fieldIds.forEach(id => {
+        const elementId = `edit-${id.replace(/([A-Z])/g, '-$1').toLowerCase()}`;
+        const element = document.getElementById(elementId);
+        if (element) {
+            editFormFields[id] = element;
+        }
+    });
+
+    if (saveMasterBtn) {
+        saveMasterBtn.addEventListener('click', handleSaveMaster);
+    }
+    if (cancelEditMasterBtn) {
+        cancelEditMasterBtn.addEventListener('click', () => {
+            console.log("[DEBUG] Cancel button clicked!");
+            hideEditModal();
+            console.log("[DEBUG] Calling fetchAndRenderMasters after cancel...");
+            fetchAndRenderMasters();
+        });
+        console.log("[DEBUG] Cancel button listener attached.");
+    } else {
+        console.error("Cancel button not found!");
+    }
+
+    searchBtn.addEventListener('click', fetchAndRenderMasters);
+    const handleKeyPress = (event) => {
+        if (event.key === 'Enter') {
+            fetchAndRenderMasters();
+        }
+    };
+    if (searchProdNameInput) searchProdNameInput.addEventListener('keypress', handleKeyPress);
+    if (searchKanaNameInput) searchKanaNameInput.addEventListener('keypress', handleKeyPress);
+    if (searchGenericNameInput) searchGenericNameInput.addEventListener('keypress', handleKeyPress);
+    if (searchShelfNumberInput) searchShelfNumberInput.addEventListener('keypress', handleKeyPress);
+
+    if (masterListBody) masterListBody.addEventListener('click', handleEditClick);
+
+    if (masterListBody && masterListHead) {
+        masterListHead.innerHTML = `
+            <tr>
+                <th class="col-action"></th>
+                <th class="col-yj">YJコード</th>
+                <th class="col-gs1">GS1コード</th> <th class="col-jan">JANコード</th>
+                <th class="col-product">製品名</th>
+                <th class="col-kana">カナ名</th>
+                <th class="col-maker">メーカー</th>
+                <th class="col-generic">一般名</th> <th class="col-shelf">棚番</th>
+            </tr>
+        `;
+        masterListBody.innerHTML = '<tr><td colspan="9">検索条件を指定して「検索」ボタンを押してください。</td></tr>';
+    }
+
+    console.log("Master Edit View Initialized.");
+}
+
+----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\js\usage.js -----
+// C:\Users\wasab\OneDrive\デスクトップ\TKR\static\js\usage.js
+
+let usageFolderPathInput;
+let saveUsageConfigBtn;
+let manualImportUsageBtn;
+let usageImportResultContainer;
+let usageDataTableBody;
+
+async function loadUsageConfig() {
+    console.log("Loading usage config...");
+    try {
+        const response = await fetch('/api/usage/config');
+        if (!response.ok) {
+            throw new Error(`Failed to load config: ${response.statusText}`);
+        }
+        const config = await response.json();
+        if (usageFolderPathInput && config.usageFolderPath) {
+            usageFolderPathInput.value = config.usageFolderPath;
+        }
+        console.log("Usage config loaded:", config);
+    } catch (error) {
+        console.error("Error loading usage config:", error);
+        window.showNotification(`設定の読み込みに失敗しました: ${error.message}`, 'error');
+    }
+}
+
+async function saveUsageConfig() {
+    const folderPath = usageFolderPathInput ? usageFolderPathInput.value : '';
+    console.log("Saving usage config:", folderPath);
+    window.showLoading('設定を保存中...');
+    try {
+        const response = await fetch('/api/usage/config', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ usageFolderPath: folderPath }),
+        });
+        if (!response.ok) {
+             let errorText = `サーバーエラー (HTTP ${response.status})`;
+             try {
+                 const text = await response.text();
+                 errorText = text || errorText;
+             } catch (e) {}
+             throw new Error(errorText);
+        }
+        const result = await response.json();
+        window.showNotification(result.message || '設定を保存しました。', 'success');
+        console.log("Usage config saved.");
+    } catch (error) {
+        console.error("Error saving usage config:", error);
+        window.showNotification(`設定の保存に失敗しました: ${error.message}`, 'error');
+    } finally {
+        window.hideLoading();
+    }
+}
+
+async function triggerManualImport() {
+    console.log("Triggering manual usage import...");
+    if (usageImportResultContainer) usageImportResultContainer.textContent = '取り込み処理を実行中...';
+    window.showLoading('処方ファイルを取り込み中...');
+    try {
+        const response = await fetch('/api/usage/import', {
+            method: 'POST', // Trigger import via POST
+        });
+         if (!response.ok) {
+             let errorText = `サーバーエラー (HTTP ${response.status})`;
+             try {
+                 const text = await response.text();
+                 errorText = text || errorText;
+             } catch (e) {}
+             throw new Error(errorText);
+         }
+        const result = await response.json();
+
+        // Display summary message
+        if (usageImportResultContainer) {
+            usageImportResultContainer.textContent = result.message || '取り込み処理が完了しました。';
+        }
+        window.showNotification(result.message || '処方ファイルの取り込みが完了しました。', result.success ? 'success' : 'warning');
+
+        // Render results table (assuming result.history is an array of import attempts)
+        renderUsageImportHistory(result.history); // Implement this function if needed
+
+        console.log("Manual import finished:", result);
+
+    } catch (error) {
+        console.error("Error during manual import:", error);
+         if (usageImportResultContainer) {
+             usageImportResultContainer.textContent = `エラー: ${error.message}`;
+         }
+        window.showNotification(`取り込みエラー: ${error.message}`, 'error');
+    } finally {
+        window.hideLoading();
+    }
+}
+
+// Function to render import history (Placeholder - adapt based on actual API response)
+function renderUsageImportHistory(history) {
+    if (!usageDataTableBody) return;
+
+    if (!history || history.length === 0) {
+        usageDataTableBody.innerHTML = '<tr><td colspan="5">取り込み履歴はありません。</td></tr>';
+        return;
+    }
+
+    let tableHtml = '';
+    // Sort history newest first if needed: history.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+    history.forEach(entry => {
+        const statusClass = entry.success ? 'status-success' : 'status-error';
+        const statusText = entry.success ? '成功' : 'エラー';
+        const timestamp = entry.timestamp ? new Date(entry.timestamp).toLocaleString() : '-';
+        tableHtml += `
+            <tr>
+                <td class="center">${timestamp}</td>
+                <td class="left">${entry.fileName || '-'}</td>
+                <td class="center ${statusClass}">${statusText}</td>
+                <td class="right">${entry.processedCount || 0}</td>
+                <td class="left">${entry.error || ''}</td>
+            </tr>
+        `;
+    });
+    usageDataTableBody.innerHTML = tableHtml;
+}
+
+
+export function initUsageView() {
+    usageFolderPathInput = document.getElementById('usageFolderPath');
+    saveUsageConfigBtn = document.getElementById('saveUsageConfigBtn');
+    manualImportUsageBtn = document.getElementById('manualImportUsageBtn');
+    usageImportResultContainer = document.getElementById('usageImportResultContainer');
+    const usageDataTable = document.getElementById('usageDataTable');
+    usageDataTableBody = usageDataTable ? usageDataTable.querySelector('tbody') : null;
+
+    if (saveUsageConfigBtn) {
+        saveUsageConfigBtn.addEventListener('click', saveUsageConfig);
+    }
+    if (manualImportUsageBtn) {
+        manualImportUsageBtn.addEventListener('click', triggerManualImport);
+    }
+
+    // Load initial config when the view is initialized (or becomes active)
+    loadUsageConfig();
+    // Initialize or load existing import history if available
+    renderUsageImportHistory([]); // Start with an empty table
+
+    console.log("Usage View Initialized.");
+}
+
+----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\js\utils.js -----
+// C:\Users\wasab\OneDrive\デスクトップ\WASABI\static\js\utils.js
+
+/**
+ * 文字列内のひらがなをカタカナに変換します。
+ * @param {string} str 変換する文字列
+ * @returns {string} カタカナに変換された文字列
+ */
+export function hiraganaToKatakana(str) {
+    if (!str) return ''; 
+    return str.replace(/[\u3041-\u3096]/g, function(match) {
+        const charCode = match.charCodeAt(0) + 0x60;
+        return String.fromCharCode(charCode);
+    }); 
+}
+
+/**
+ * 現在のPCのローカル日付を 'YYYY-MM-DD' 形式の文字列で返します。
+ * @returns {string} 'YYYY-MM-DD' 形式の文字列
+ */
+export function getLocalDateString() {
+    const today = new Date(); 
+    const yyyy = today.getFullYear();
+    const mm = String(today.getMonth() + 1).padStart(2, '0');
+    const dd = String(today.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`; 
+}
+
+// ▼▼▼【ここから修正】ひらがな・全角カナ・全角英数を半角カナに変換する関数を追加 ▼▼▼
+
+const kanaMap = {
+    'ガ': 'ｶﾞ', 'ギ': 'ｷﾞ', 'グ': 'ｸﾞ', 'ゲ': 'ｹﾞ', 'ゴ': 'ｺﾞ',
+    'ザ': 'ｻﾞ', 'ジ': 'ｼﾞ', 'ズ': 'ｽﾞ', 'ゼ': 'ｾﾞ', 'ゾ': 'ｿﾞ',
+    'ダ': 'ﾀﾞ', 'ヂ': 'ﾁﾞ', 'ヅ': 'ﾂﾞ', 'デ': 'ﾃﾞ', 'ド': 'ﾄﾞ',
+    'バ': 'ﾊﾞ', 'ビ': 'ﾋﾞ', 'ブ': 'ﾌﾞ', 'ベ': 'ﾍﾞ', 'ボ': 'ﾎﾞ',
+    'パ': 'ﾊﾟ', 'ピ': 'ﾋﾟ', 'プ': 'ﾌﾟ', 'ペ': 'ﾍﾟ', 'ポ': 'ﾎﾟ',
+    'ア': 'ｱ', 'イ': 'ｲ', 'ウ': 'ｳ', 'エ': 'ｴ', 'オ': 'ｵ',
+    'カ': 'ｶ', 'キ': 'ｷ', 'ク': 'ｸ', 'ケ': 'ｹ', 'コ': 'ｺ',
+    
+    'サ': 'ｻ', 'シ': 'ｼ', 'ス': 'ｽ', 'セ': 'ｾ', 'ソ': 'ｿ', 
+    'タ': 'ﾀ', 'チ': 'ﾁ', 'ツ': 'ﾂ', 'テ': 'ﾃ', 'ト': 'ﾄ',
+    'ナ': 'ﾅ', 'ニ': 'ﾆ', 'ヌ': 'ﾇ', 'ネ': 'ﾈ', 'ノ': 'ﾉ',
+    'ハ': 'ﾊ', 'ヒ': 'ﾋ', 'フ': 'ﾌ', 'ヘ': 'ﾍ', 'ホ': 'ﾎ',
+    'マ': 'ﾏ', 'ミ': 'ﾐ', 'ム': 'ﾑ', 'メ': 'ﾒ', 'モ': 'ﾓ',
+    'ヤ': 'ﾔ', 'ユ': 'ﾕ', 'ヨ': 'ﾖ',
+    'ラ': 'ﾗ', 'リ': 'ﾘ', 'ル': 'ﾙ', 'レ': 'ﾚ', 'ロ': 'ﾛ',
+    'ワ': 'ﾜ', 'ヲ': 'ｦ', 'ン': 'ﾝ',
+    'ァ': 'ｧ', 'ィ': 'ｨ', 
+    'ゥ': 'ｩ', 'ェ': 'ｪ', 'ォ': 'ｫ', 
+    'ッ': 'ｯ', 'ャ': 'ｬ', 'ュ': 'ｭ', 'ョ': 'ｮ',
+    '。': '｡', '「': '｢', '」': '｣', '、': '､', '・': '･', 'ー': 'ｰ', 'ヴ': 'ｳﾞ',
+    'A': 'ｱ', 'B': 'ｲ', 'C': 'ｳ', 'D': 'ｴ', 'E': 'ｵ', // 例：英字もカナに変換（JCSHMSの慣習）
+    '0': '0', '1': '1', '2': '2', '3': '3', '4': '4', '5': '5', '6': '6', '7': '7', '8': '8', '9': '9',
+}; 
+/**
+ * 文字列に含まれるひらがな、全角カタカナ、全角英数を半角カタカナに変換します。
+ * @param {string} str 変換する文字列
+ * @returns {string} 半角カタカナに変換された文字列
+ */
+export function toHalfWidthKatakana(str) {
+    if (!str) return ''; 
+    let result = str.toUpperCase(); // 全て大文字に
+
+    // 1. ひらがなをカタカナに変換
+    result = hiraganaToKatakana(result); 
+// 2. 全角カタカナ・英字・記号を半角カタカナに変換
+    let halfWidth = ''; 
+    for (const char of result) {
+        if (kanaMap[char]) {
+            halfWidth += kanaMap[char]; 
+        } else {
+            // 全角英数字を半角に（toHalfWidth の代わり）
+            const code = char.charCodeAt(0); 
+            if (code >= 0xFF01 && code <= 0xFF5E) { // 全角英数記号
+                halfWidth += String.fromCharCode(code - 0xFEE0); 
+            } else if (char === '　') { // 全角スペース
+                halfWidth += ' '; 
+            } else {
+                halfWidth += char; 
+            }
+        }
+    }
+    return halfWidth.replace(/ /g, ''); 
+// スペースを全て削除
+}
+// ▲▲▲【修正ここまで】▲▲▲
+
+// export function toHalfWidth(str) { ... } は使用しないため削除
+

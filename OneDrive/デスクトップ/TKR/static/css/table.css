@@ -1,0 +1,106 @@
+/* TKR/static/css/table.css */
+
+/* ========================================================================== */
+/* Data Table Styles */
+/* ========================================================================== */
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 0;
+  font-size: inherit;
+  table-layout: fixed;
+  box-sizing: border-box;
+}
+
+.data-table th,
+.data-table td {
+  border: 1px solid #ccc;
+  padding: 2px 2px;
+  /* text-align: left; */ /* ← デフォルト指定は削除 */
+  vertical-align: middle;
+  min-height: 20px;
+  height: 20px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  box-sizing: border-box;
+}
+
+/* ▼▼▼ ヘッダーは全て中央揃え ▼▼▼ */
+.data-table th {
+  background-color: #f2f2f2;
+  font-weight: bold;
+  text-align: center; /* ヘッダーは中央揃え */
+}
+/* ▲▲▲ 修正 ▲▲▲ */
+
+/* Zebra striping every two data rows */
+.data-table tbody tr:nth-child(4n-1),
+.data-table tbody tr:nth-child(4n) {
+  background-color: #f9f9f9;
+}
+
+
+/* ▼▼▼ 列ごとの幅指定 (ヘッダーに適用) ▼▼▼ */
+/* width指定は th にのみ適用し、td は追従させる */
+.data-table th.col-action     { width: 5%; }
+.data-table th.col-date       { width: 7%; }
+.data-table th.col-yj         { width: 10%; }
+/* 製品名は構成要素のクラスで幅を指定 */
+.data-table th.col-package    { width: 10%; }
+.data-table th.col-maker      { width: 10%; }
+.data-table th.col-count      { width: 4%; }
+.data-table th.col-yjqty      { width: 8%; }
+.data-table th.col-yjpackqty  { width: 8%; }
+.data-table th.col-yjunit     { width: 8%; }
+.data-table th.col-unitprice  { width: 6%; }
+.data-table th.col-expiry     { width: 8%; }
+.data-table th.col-wholesaler { width: 8%; }
+.data-table th.col-line       { width: 8%; }
+/* ヘッダー2行目のクラスにも幅を指定 */
+.data-table th.col-flag       { width: 7%; }
+.data-table th.col-jan        { width: 10%; }
+.data-table th.col-form       { width: 4%; }
+.data-table th.col-janqty     { width: 8%; }
+.data-table th.col-janpackqty { width: 8%; }
+.data-table th.col-janunit    { width: 8%; }
+.data-table th.col-amount     { width: 6%; }
+.data-table th.col-lot        { width: 8%; }
+.data-table th.col-receipt    { width: 8%; }
+.data-table th.col-ma         { width: 8%; }
+/* ▲▲▲ 幅指定ここまで ▲▲▲ */
+
+
+/* ▼▼▼ データセル (td) の文字揃え ▼▼▼ */
+/* デフォルトは左揃え (指定なし) */
+.data-table td.col-action     { text-align: center; }
+.data-table td.col-date       { text-align: center; }
+.data-table td.col-flag       { text-align: center; }
+/* .data-table td.col-yj         { text-align: left; } (デフォルト) */
+/* .data-table td.col-jan        { text-align: left; } (デフォルト) */
+/* .data-table td.col-package    { text-align: left; } (デフォルト) */
+/* .data-table td.col-maker      { text-align: left; } (デフォルト) */
+/* .data-table td.col-product   { text-align: left; } (デフォルト) */
+.data-table td.col-count      { text-align: right; }
+.data-table td.col-form       { text-align: center; }
+.data-table td.col-yjqty      { text-align: right; }
+.data-table td.col-janqty     { text-align: right; }
+.data-table td.col-yjpackqty  { text-align: right; }
+.data-table td.col-janpackqty { text-align: right; }
+/* .data-table td.col-yjunit     { text-align: left; } (デフォルト) */
+/* .data-table td.col-janunit    { text-align: left; } (デフォルト) */
+.data-table td.col-unitprice  { text-align: right; }
+.data-table td.col-amount     { text-align: right; }
+.data-table td.col-expiry     { text-align: center; }
+.data-table td.col-lot        { text-align: center; } 
+.data-table td.col-wholesaler { text-align: center; }
+.data-table td.col-receipt    { text-align: center; }
+.data-table td.col-line       { text-align: center; }
+.data-table td.col-ma         { text-align: center; }
+/* ▲▲▲ 文字揃えここまで ▲▲▲ */
+
+
+/* ステータス色 */
+.status-success { color: green; }
+.status-error   { color: red; }
