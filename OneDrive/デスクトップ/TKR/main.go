@@ -17,6 +17,7 @@ import (
 	"tkr/database"
 	"tkr/loader"
 	"tkr/masteredit"
+	"tkr/units" // ★ units パッケージをインポート
 )
 
 func main() {
@@ -36,6 +37,15 @@ func main() {
 		log.Fatalf("Database initialization failed: %v", err)
 	}
 	log.Println("Database initialization complete.")
+
+	// ▼▼▼【ここから追加】単位(TANI.CSV)マスタのロード ▼▼▼
+	if _, err := units.LoadTANIFile("SOU/TANI.CSV"); err != nil {
+		// TANI.CSVは必須ではないため、警告のみで終了しない
+		log.Printf("WARN: Failed to load TANI.CSV: %v. Unit names may not display correctly.", err)
+	} else {
+		log.Println("Unit (TANI.CSV) master loaded successfully.")
+	}
+	// ▲▲▲【追加ここまで】▲▲▲
 
 	mux := http.NewServeMux()
 
@@ -97,6 +107,11 @@ func main() {
 			http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
 		}
 	})
+
+	// ▼▼▼【ここに追加】単位マップ取得API ▼▼▼
+	mux.HandleFunc("/api/units/map", units.GetTaniMapHandler())
+	// ▲▲▲【追加ここまで】▲▲▲
+
 	// ▲▲▲【修正ここまで】▲▲▲
 
 	port := ":8080"

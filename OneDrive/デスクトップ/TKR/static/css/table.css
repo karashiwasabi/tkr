@@ -31,7 +31,8 @@
 .data-table th {
   background-color: #f2f2f2;
   font-weight: bold;
-  text-align: center; /* ヘッダーは中央揃え */
+  text-align: center;
+  /* ヘッダーは中央揃え */
 }
 /* ▲▲▲ 修正 ▲▲▲ */
 
@@ -88,8 +89,12 @@
 .data-table td.col-janqty     { text-align: right; }
 .data-table td.col-yjpackqty  { text-align: right; }
 .data-table td.col-janpackqty { text-align: right; }
-/* .data-table td.col-yjunit     { text-align: left; } (デフォルト) */
-/* .data-table td.col-janunit    { text-align: left; } (デフォルト) */
+
+/* ▼▼▼【ここを修正】YJ単位とJAN単位を左寄せに変更 ▼▼▼ */
+.data-table td.col-yjunit     { text-align: left; }
+.data-table td.col-janunit    { text-align: left; }
+/* ▲▲▲ 修正ここまで ▲▲▲ */
+
 .data-table td.col-unitprice  { text-align: right; }
 .data-table td.col-amount     { text-align: right; }
 .data-table td.col-expiry     { text-align: center; }

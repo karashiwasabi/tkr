@@ -15,6 +15,7 @@ import (
 	"tkr/mastermanager"
 	"tkr/model"
 	"tkr/parsers"
+	"tkr/units"
 
 	"github.com/jmoiron/sqlx"
 )
@@ -33,7 +34,7 @@ func respondJSONError(w http.ResponseWriter, message string, statusCode int) {
 
 // ▲▲▲【修正ここまで】▲▲▲
 
-// ▼▼▼【修正】卸名マップを作成し、HTMLレンダリングに渡す ▼▼▼
+// ▼▼▼【修正】UploadDatHandler (変更なし) ▼▼▼
 func UploadDatHandler(db *sqlx.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		log.Println("Received DAT upload request...")
@@ -151,7 +152,7 @@ func UploadDatHandler(db *sqlx.DB) http.HandlerFunc {
 
 // ▲▲▲【修正ここまで】▲▲▲
 
-// ▼▼▼【修正】卸名マップを作成し、HTMLレンダリングに渡す ▼▼▼
+// ▼▼▼【修正】SearchDatHandler (変更なし) ▼▼▼
 func SearchDatHandler(db *sqlx.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
@@ -234,7 +235,54 @@ func SearchDatHandler(db *sqlx.DB) http.HandlerFunc {
 // ▲▲▲【修正ここまで】▲▲▲
 
 func MapDatToTransaction(dat model.DatRecord, master *model.ProductMaster) model.TransactionRecord {
-	packageSpec := fmt.Sprintf("%s %v%s", master.PackageForm, master.YjPackUnitQty, master.YjUnitName)
+	// ▼▼▼【ここから修正】製品名と包装仕様の生成ロジックをWASABIに合わせる (units.ResolveName と 数量計算を追加) ▼▼▼
+
+	// 1. 製品名と規格を連結
+	productNameWithSpec := master.ProductName
+	if master.Specification != "" {
+		productNameWithSpec = master.ProductName + " " + master.Specification
+	}
+
+	// 2. 数量の計算 (DATの個数から計算)
+	var yjQuantity, janQuantity float64
+	if master.YjPackUnitQty > 0 {
+		yjQuantity = dat.DatQuantity * master.YjPackUnitQty
+	}
+	if master.JanPackUnitQty > 0 {
+		janQuantity = dat.DatQuantity * master.JanPackUnitQty
+	}
+
+	// 3. 詳細な包装仕様を生成 (units.ResolveName を使用)
+	yjUnitName := units.ResolveName(master.YjUnitName)
+	packageSpec := fmt.Sprintf("%s %g%s", master.PackageForm, master.YjPackUnitQty, yjUnitName)
+
+	janUnitCodeStr := fmt.Sprintf("%d", master.JanUnitCode)
+	var janUnitName string
+
+	if master.JanUnitCode == 0 {
+		janUnitName = yjUnitName
+	} else {
+		janUnitName = units.ResolveName(janUnitCodeStr)
+	}
+
+	if master.JanPackInnerQty > 0 && master.JanPackUnitQty > 0 {
+		packageSpec += fmt.Sprintf(" (%g%s×%g%s)",
+			master.JanPackInnerQty,
+			yjUnitName,
+			master.JanPackUnitQty,
+			janUnitName,
+		)
+	}
+
+	// 4. MAフラグの設定
+	var processFlagMA string
+	if master.Origin == "JCSHMS" {
+		processFlagMA = "COMPLETE"
+	} else {
+		processFlagMA = "PROVISIONAL"
+	}
+
+	// ▲▲▲【修正ここまで】▲▲▲
 
 	return model.TransactionRecord{
 		TransactionDate:     dat.Date,
@@ -244,21 +292,21 @@ func MapDatToTransaction(dat model.DatRecord, master *model.ProductMaster) model
 		Flag:                dat.Flag,
 		JanCode:             master.ProductCode,
 		YjCode:              master.YjCode,
-		ProductName:         master.ProductName,
+		ProductName:         productNameWithSpec, // ★ 修正した製品名を使用
 		KanaName:            master.KanaName,
 		UsageClassification: master.UsageClassification,
 		PackageForm:         master.PackageForm,
-		PackageSpec:         packageSpec,
+		PackageSpec:         packageSpec, // ★ 修正した包装仕様を使用
 		MakerName:           master.MakerName,
-		DatQuantity:         dat.DatQuantity,
+		DatQuantity:         dat.DatQuantity, // DATファイルからの生データ
 		JanPackInnerQty:     master.JanPackInnerQty,
-		JanQuantity:         0,
+		JanQuantity:         janQuantity, // ★ 数量計算を反映
 		JanPackUnitQty:      master.JanPackUnitQty,
-		JanUnitName:         "",
-		JanUnitCode:         fmt.Sprintf("%d", master.JanUnitCode),
-		YjQuantity:          0,
+		JanUnitName:         janUnitName, // ★ 修正したJAN単位名を使用
+		JanUnitCode:         janUnitCodeStr,
+		YjQuantity:          yjQuantity, // ★ 数量計算を反映
 		YjPackUnitQty:       master.YjPackUnitQty,
-		YjUnitName:          master.YjUnitName,
+		YjUnitName:          yjUnitName, // ★ 解決済みのYJ単位名を使用
 		UnitPrice:           dat.UnitPrice,
 		PurchasePrice:       master.PurchasePrice,
 		SupplierWholesale:   master.SupplierWholesale,
@@ -273,7 +321,7 @@ func MapDatToTransaction(dat model.DatRecord, master *model.ProductMaster) model
 		FlagPsychotropic:    master.FlagPsychotropic,
 		FlagStimulant:       master.FlagStimulant,
 		FlagStimulantRaw:    master.FlagStimulantRaw,
-		ProcessFlagMA:       "",
+		ProcessFlagMA:       processFlagMA, // ★ MAフラグを設定
 	}
 }
 
@@ -281,7 +329,7 @@ func OpenFileHeader(fh *multipart.FileHeader) (multipart.File, error) {
 	return fh.Open()
 }
 
-// ▼▼▼【修正】卸名マップ(map[string]string)を引数に追加 ▼▼▼
+// ▼▼▼【修正】renderTransactionTableHTML (変更なし) ▼▼▼
 func renderTransactionTableHTML(transactions []model.TransactionRecord, wholesalerMap map[string]string) string {
 	var sb strings.Builder
 
@@ -354,7 +402,7 @@ func renderTransactionTableHTML(transactions []model.TransactionRecord, wholesal
 			sb.WriteString(fmt.Sprintf(`<td class="right col-count">%.0f</td>`, tx.DatQuantity))
 			sb.WriteString(fmt.Sprintf(`<td class="right col-yjqty">%s</td>`, formattedYjQty))
 			sb.WriteString(fmt.Sprintf(`<td class="right col-yjpackqty">%.0f</td>`, tx.YjPackUnitQty))
-			sb.WriteString(fmt.Sprintf(`<td class="center col-yjunit">%s</td>`, tx.YjUnitName))
+			sb.WriteString(fmt.Sprintf(`<td classC="center col-yjunit">%s</td>`, tx.YjUnitName))
 			sb.WriteString(fmt.Sprintf(`<td class="right col-unitprice">%s</td>`, formattedUnitPrice))
 			sb.WriteString(fmt.Sprintf(`<td class="center col-expiry">%s</td>`, formattedExpiry))
 			// ★ 卸コードではなく卸名を表示
@@ -366,10 +414,12 @@ func renderTransactionTableHTML(transactions []model.TransactionRecord, wholesal
 			sb.WriteString(`<td></td>`)
 			sb.WriteString(fmt.Sprintf(`<td class="center col-flag">%s</td>`, flagText))
 			sb.WriteString(fmt.Sprintf(`<td class="col-jan">%s</td>`, tx.JanCode))
-			sb.WriteString(fmt.Sprintf(`<td class="col-package">%s</td>`, tx.PackageForm))
+			// ▼▼▼【ここが修正箇所です】▼▼▼
+			sb.WriteString(fmt.Sprintf(`<td class="col-package">%s</td>`, tx.PackageSpec))
+			// ▲▲▲【修正ここまで】▲▲▲
 			sb.WriteString(fmt.Sprintf(`<td class="col-maker">%s</td>`, tx.MakerName))
 			sb.WriteString(`<td class="col-form"></td>`)
-			sb.WriteString(`<td class="right col-janqty"></td>`)
+			sb.WriteString(fmt.Sprintf(`<td class="right col-janqty">%.2f</td>`, tx.JanQuantity)) // ★ JAN数量
 			sb.WriteString(fmt.Sprintf(`<td class="right col-janpackqty">%.0f</td>`, tx.JanPackUnitQty))
 			sb.WriteString(fmt.Sprintf(`<td class="center col-janunit">%s</td>`, tx.JanUnitName))
 			sb.WriteString(fmt.Sprintf(`<td class="right col-amount">%s</td>`, formattedSubtotal))
@@ -383,5 +433,3 @@ func renderTransactionTableHTML(transactions []model.TransactionRecord, wholesal
 
 	return sb.String()
 }
-
-// ▲▲▲【修正ここまで】▲▲▲

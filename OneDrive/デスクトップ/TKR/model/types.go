@@ -8,6 +8,10 @@ type JcshmsInfo struct {
 	YjCode      string `db:"JC009" json:"yjCode"`
 	ProductName string `db:"JC018" json:"productName"`
 
+	// ▼▼▼【ここに追加】▼▼▼
+	Specification string `db:"JC020" json:"specification"` // 規格容量
+	// ▲▲▲【追加ここまで】▲▲▲
+
 	KanaNameShort string `db:"JC019" json:"kanaNameShort"`
 
 	KanaName string `db:"JC022" json:"kanaName"`

@@ -1,4 +1,4 @@
-// C:\Users\wasab\OneDrive\デスクトップ\TKR\mastermanager/manager.go
+// C:\Users\wasab\OneDrive\デスクトップ\TKR\mastermanager\manager.go
 package mastermanager
 
 import (
@@ -15,10 +15,8 @@ import (
 )
 
 // YJコードの判定 (WASABIのロジックでは主にYJコードをキーとして使用)
-// ▼▼▼【ここから修正】YJコードは11桁または12桁の英数字を含む形式に修正 ▼▼▼
 var yjCodeRegex = regexp.MustCompile(`^[0-9A-Z]{11,12}$`)
 
-// ▲▲▲【修正ここまで】▲▲▲
 // JANコードの判定は13桁の数字
 var janCodeRegex = regexp.MustCompile(`^[0-9]{13}$`)
 
@@ -131,7 +129,7 @@ func FindOrCreateMaster(tx *sqlx.Tx, productCodeOrKey string, productName string
 	return newMaster, nil
 }
 
-// JcshmsToProductMasterInput (変更なし)
+// JcshmsToProductMasterInput (規格マッピングの修正は前回実施済み)
 func JcshmsToProductMasterInput(jcshms *model.JcshmsInfo) model.ProductMasterInput {
 	var unitNhiPrice float64
 	if jcshms.NhiPriceFactor > 0 {
@@ -154,7 +152,7 @@ func JcshmsToProductMasterInput(jcshms *model.JcshmsInfo) model.ProductMasterInp
 		GenericName:   strings.TrimSpace(jcshms.GenericName),
 
 		MakerName:           strings.TrimSpace(jcshms.MakerName),
-		Specification:       "",
+		Specification:       strings.TrimSpace(jcshms.Specification),
 		UsageClassification: strings.TrimSpace(jcshms.UsageClassification),
 		PackageForm:         strings.TrimSpace(jcshms.PackageForm),
 		YjUnitName:          strings.TrimSpace(jcshms.YjUnitName),
@@ -180,7 +178,7 @@ func JcshmsToProductMasterInput(jcshms *model.JcshmsInfo) model.ProductMasterInp
 	}
 }
 
-// UpsertProductMasterSqlx (変更なし)
+// UpsertProductMasterSqlx (修正箇所)
 func UpsertProductMasterSqlx(tx *sqlx.Tx, input model.ProductMasterInput) (*model.ProductMaster, error) {
 	query := `
 		INSERT INTO product_master (
@@ -219,7 +217,6 @@ func UpsertProductMasterSqlx(tx *sqlx.Tx, input model.ProductMasterInput) (*mode
 	}
 
 	var insertedMaster model.ProductMaster
-
 	err = tx.Get(&insertedMaster, "SELECT * FROM product_master WHERE product_code = ?", input.ProductCode)
 
 	if err != nil {

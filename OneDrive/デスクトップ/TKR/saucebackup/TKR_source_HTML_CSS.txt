@@ -1,3 +1,77 @@
+----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\css\config.css -----
+/* C:\Users\wasab\OneDrive\デスクトップ\TKR\static\css\config.css */
+
+#config-view h2 {
+    margin-top: 15px;
+    margin-bottom: 5px;
+    font-size: 1.1em;
+    border-bottom: 1px solid #eee;
+    padding-bottom: 3px;
+}
+
+/* 設定セクションの共通スタイル */
+.config-section {
+    background-color: #fdfdfd;
+    border: 1px solid #ddd;
+    padding: 10px 15px;
+    margin-bottom: 15px;
+    border-radius: 4px;
+}
+
+/* フォームコンテナ (パス設定や卸追加) */
+.config-form-container {
+    padding: 5px;
+}
+
+.config-form-container .form-row {
+    display: flex;
+    flex-wrap: wrap;
+    margin-bottom: 8px;
+    gap: 10px;
+    align-items: flex-end; /* ラベルとボタンの高さを揃える */
+}
+
+.config-form-container .form-group {
+    display: flex;
+    flex-direction: column;
+    flex-basis: 150px; 
+    flex-grow: 1;
+}
+
+.config-form-container .form-group label {
+    font-weight: bold;
+    margin-bottom: 3px;
+    font-size: 10px;
+}
+
+.config-form-container .form-group input[type="text"] {
+    width: 100%;
+    padding: 3px;
+    border: 1px solid #ccc;
+    border-radius: 3px;
+    font-size: inherit;
+    font-family: inherit;
+    box-sizing: border-box;
+}
+
+.config-form-container .form-actions {
+    margin-top: 15px;
+    margin-left: 10px; /* 入力欄との隙間 */
+}
+
+/* 卸一覧テーブルの削除ボタン */
+#wholesalerListTable .delete-wholesaler-btn {
+    padding: 1px 4px;
+    font-size: 9px;
+    background-color: #fbeeee;
+    border-color: #dc3545;
+    color: #dc3545;
+}
+#wholesalerListTable .delete-wholesaler-btn:hover {
+    background-color: #dc3545;
+    color: #fff;
+}
+
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\css\masteredit.css -----
 /* C:\Users\wasab\OneDrive\デスクトップ\TKR\static\css\masteredit.css (全体) */
 /* TKR/static/css/masteredit.css */
@@ -490,11 +564,13 @@ body {
     <link rel="stylesheet" href="/static/css/styles.css">
     <link rel="stylesheet" href="/static/css/table.css">
     <link rel="stylesheet" href="/static/css/masteredit.css">
+    <link rel="stylesheet" href="/static/css/config.css">
 </head>
 <body>
     <header id="main-header">
         <button id="datViewBtn" class="btn">DAT取込</button>
         <button id="masterEditViewBtn" class="btn">マスタ編集</button>
+        <button id="configViewBtn" class="btn">設定</button>
     </header>
 
     <main>
@@ -512,7 +588,7 @@ body {
                         <div class="form-group" style="flex-basis: 300px; flex-grow: 1;">
                             <label for="dat-search-barcode">バーコード入力 (JAN+期限+ロット):</label>
                             <input type="text" id="dat-search-barcode" style="padding: 3px; font-size: inherit; width: 100%; box-sizing: border-box;" placeholder="0114987..." autofocus autocomplete="off">
-                            </div>
+                        </div>
                         <button id="datSearchBtn" class="btn" style="padding: 5px 10px; margin-left: auto; align-self: flex-end;">検索</button>
                     </div>
                 </fieldset>
@@ -571,9 +647,68 @@ body {
                     </tbody>
                 </table>
             </div>
-
         </div>
 
+        <div id="config-view" class="view">
+            <h1>設定</h1>
+
+            <section class="config-section">
+                <h2>パス設定</h2>
+                <div class="config-form-container">
+                    
+                    <div class="form-group">
+                        <label for="config-dat-folder-path">伝票取込フォルダパス (DAT):</label>
+                        <input type="text" id="config-dat-folder-path" autocomplete="off">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="config-usage-folder-path">処方取込フォルダパス (CSV):</label>
+                        <input type="text" id="config-usage-folder-path" autocomplete="off">
+                    </div>
+                    
+                    <div class="form-actions">
+                        <button id="configSavePathBtn" class="btn">パス保存</button>
+                    </div>
+                </div>
+            </section>
+
+            <section class="config-section">
+                <h2>卸コード管理</h2>
+                
+                <div class="config-form-container">
+                    <fieldset>
+                        <legend>新規卸コード追加</legend>
+                        <div class="form-row">
+                            <div class="form-group" style="flex-basis: 150px;">
+                                <label for="config-wholesaler-code">卸コード:</label>
+                                <input type="text" id="config-wholesaler-code" autocomplete="off" maxlength="10">
+                            </div>
+                            <div class="form-group" style="flex-basis: 300px;">
+                                <label for="config-wholesaler-name">卸名:</label>
+                                <input type="text" id="config-wholesaler-name" autocomplete="off">
+                            </div>
+                            <div class="form-actions">
+                                <button id="configAddWholesalerBtn" class="btn">追加</button>
+                            </div>
+                        </div>
+                    </fieldset>
+                </div>
+                
+                <div id="wholesalerListContainer" class="table-container" style="max-height: 300px; margin-top: 10px;">
+                    <table id="wholesalerListTable" class="data-table">
+                        <thead>
+                            <tr>
+                                <th style="width: 25%;">卸コード</th>
+                                <th style="width: 60%;">卸名</th>
+                                <th style="width: 15%;">操作</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+        </div>
     </main>
 
     <div id="loading-overlay" class="hidden">
