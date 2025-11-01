@@ -1,8 +1,9 @@
-// C:\Users\wasab\OneDrive\デスクトップ\TKR\database\transaction_records_query.go (全体)
+// C:\Users\wasab\OneDrive\デスクトップ\TKR\database\transaction_records_query.go
 package database
 
 import (
 	"fmt"
+	"strings" // ★ strings をインポート
 	"tkr/model"
 
 	"github.com/jmoiron/sqlx"
@@ -82,3 +83,50 @@ func GetTransactionsByProductCodes(db *sqlx.DB, productCodes []string) (map[stri
 	}
 	return transactionsMap, nil
 }
+
+// ▼▼▼【ここから追加】動的AND検索（期限はOR）の関数 ▼▼▼
+func SearchTransactions(db *sqlx.DB, janCode string, expiryYYMMDD string, expiryYYMM string, lotNumber string) ([]model.TransactionRecord, error) {
+	var transactions []model.TransactionRecord
+
+	conditions := []string{}
+	args := []interface{}{}
+
+	if janCode != "" {
+		conditions = append(conditions, "jan_code = ?")
+		args = append(args, janCode)
+	}
+
+	if expiryYYMMDD != "" && expiryYYMM != "" {
+		conditions = append(conditions, "(expiry_date = ? OR expiry_date = ?)")
+		args = append(args, expiryYYMM)   // 4桁
+		args = append(args, expiryYYMMDD) // 6桁
+	} else if expiryYYMMDD != "" {
+		conditions = append(conditions, "expiry_date = ?")
+		args = append(args, expiryYYMMDD)
+	} else if expiryYYMM != "" {
+		conditions = append(conditions, "expiry_date = ?")
+		args = append(args, expiryYYMM)
+	}
+
+	if lotNumber != "" {
+		conditions = append(conditions, "lot_number = ?")
+		args = append(args, lotNumber)
+	}
+
+	if len(conditions) == 0 {
+		return transactions, nil
+	}
+
+	query := `SELECT * FROM transaction_records WHERE `
+	query += strings.Join(conditions, " AND ")
+	query += ` ORDER BY transaction_date, id`
+
+	err := db.Select(&transactions, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to select transactions by dynamic criteria: %w", err)
+	}
+
+	return transactions, nil
+}
+
+// ▲▲▲【追加ここまで】▲▲▲

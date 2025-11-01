@@ -490,22 +490,240 @@ body {
     <link rel="stylesheet" href="/static/css/styles.css">
     <link rel="stylesheet" href="/static/css/table.css">
     <link rel="stylesheet" href="/static/css/masteredit.css">
-    </head>
+</head>
 <body>
     <header id="main-header">
         <button id="datViewBtn" class="btn">DAT取込</button>
         <button id="masterEditViewBtn" class="btn">マスタ編集</button>
-        </header>
+    </header>
 
     <main>
         <div id="dat-upload-view" class="view active"> <h1>ファイルアップロード</h1>
     
             <div style="margin-bottom: 20px;">
-</div>
+                <button id="datUploadBtn" class="btn">DATファイル選択</button>
+                <input type="file" id="datFileInput" multiple accept=".dat,.DAT" class="hidden">
             </div>
 
+            <div class="filter-container" style="padding: 10px; margin-bottom: 10px; background-color: #f7f7f7; border: 1px solid #ddd;">
+                <fieldset style="border: 1px solid #ccc; padding: 5px;">
+                    <legend>GS1-128 バーコード検索</legend>
+                    <div style="display: flex; flex-wrap: wrap; gap: 10px; align-items: center;">
+                        <div class="form-group" style="flex-basis: 300px; flex-grow: 1;">
+                            <label for="dat-search-barcode">バーコード入力 (JAN+期限+ロット):</label>
+                            <input type="text" id="dat-search-barcode" style="padding: 3px; font-size: inherit; width: 100%; box-sizing: border-box;" placeholder="0114987..." autofocus autocomplete="off">
+                            </div>
+                        <button id="datSearchBtn" class="btn" style="padding: 5px 10px; margin-left: auto; align-self: flex-end;">検索</button>
+                    </div>
+                </fieldset>
+            </div>
+            
+            <div id="uploadResultContainer">
+                <p>「DATファイル選択」ボタンを押してファイルを選んでください。</p>
+            </div>
+            
+            <div id="datTableContainer" class="table-container">
+                <table id="mainDataTable" class="data-table">
+                </table>
+            </div>
+        </div>
 
-        </main>
+        <div id="master-edit-view" class="view">
+            <h1>マスタ編集</h1>
+
+            <div class="filter-container" style="padding: 10px; margin-bottom: 10px;">
+                <fieldset style="border: 1px solid #ccc; padding: 5px;">
+                    <legend>検索条件</legend>
+                    <div style="display: flex; flex-wrap: wrap; gap: 10px; align-items: center;">
+                        <div class="form-group">
+                            <label style="font-weight: bold;">内外注区分:</label>
+                            <label><input type="radio" name="usage_class" value="内" checked> 内</label>
+                            <label><input type="radio" name="usage_class" value="外"> 外</label>
+                            <label><input type="radio" name="usage_class" value="注"> 注</label>
+                            <label><input type="radio" name="usage_class" value="他"> 他</label>
+                        </div>
+                        <div class="form-group" style="flex-basis: 200px;">
+                            <label for="master-search-prod-name">製品名 (部分一致):</label>
+                            <input type="text" id="master-search-prod-name" style="padding: 3px; font-size: inherit;" autocomplete="off">
+                        </div>
+                        <div class="form-group" style="flex-basis: 200px;">
+                            <label for="master-search-kana-name">カナ名 (前方一致):</label>
+                            <input type="text" id="master-search-kana-name" style="padding: 3px; font-size: inherit;" autocomplete="off">
+                        </div>
+                        <div class="form-group" style="flex-basis: 200px;">
+                            <label for="master-search-generic-name">一般名 (部分一致):</label>
+                            <input type="text" id="master-search-generic-name" style="padding: 3px; font-size: inherit;" autocomplete="off">
+                        </div>
+                        <div class="form-group" style="flex-basis: 100px;">
+                            <label for="master-search-shelf-number">棚番 (完全一致):</label>
+                            <input type="text" id="master-search-shelf-number" style="padding: 3px; font-size: inherit;" autocomplete="off">
+                        </div>
+                        <button id="masterSearchBtn" class="btn" style="padding: 5px 10px; margin-left: auto;">検索</button>
+                    </div>
+                </fieldset>
+            </div>
+
+            <div id="masterListContainer" class="table-container">
+                <table id="masterListTable" class="data-table">
+                    <thead>
+                    </thead>
+                    <tbody>
+                    </tbody>
+                </table>
+            </div>
+
+        </div>
+
+    </main>
 
     <div id="loading-overlay" class="hidden">
+        <div class="spinner"></div>
+        <span id="loading-message">処理中...</span>
+    </div>
+    <div id="notification-box"></div>
+
+    <div id="masterEditModalOverlay" class="modal-overlay hidden">
+        <div class="modal-content">
+            <h2>製品マスター編集</h2>
+            <form id="masterEditForm" autocomplete="off">
+                <div class="form-row readonly-group">
+                    <div class="form-group" style="flex-basis: 120px;">
+                        <label for="edit-yj-code">YJコード (編集不可: JCSHMS)</label>
+                        <input type="text" id="edit-yj-code" class="readonly-field" readonly>
+                    </div>
+                    <div class="form-group" style="flex-basis: 120px;">
+                        <label for="view-product-code">JANコード (キー)</label>
+                        <input type="text" id="view-product-code" class="readonly-field" readonly>
+                        <input type="hidden" id="edit-product-code">
+                    </div>
+                    <div class="form-group" style="flex-basis: 120px;">
+                        <label for="edit-gs1-code">GS1コード (編集不可: JCSHMS)</label>
+                        <input type="text" id="edit-gs1-code" class="readonly-field" readonly>
+                    </div>
+                    <div class="form-group" style="flex-basis: 100px;">
+                        <label for="edit-origin">由来 (編集不可)</label>
+                        <input type="text" id="edit-origin" class="readonly-field" readonly>
+                    </div>
+                </div>
+                <div class="form-row readonly-group">
+                    <div class="form-group" style="flex-basis: 300px;">
+                        <label for="edit-product-name">製品名 (編集不可: JCSHMS)</label>
+                        <input type="text" id="edit-product-name" class="readonly-field" readonly>
+                    </div>
+                    <div class="form-group" style="flex-basis: 300px;">
+                        <label for="edit-kana-name">カナ名 (編集不可: JCSHMS)</label>
+                        <input type="text" id="edit-kana-name" class="readonly-field" readonly>
+                    </div>
+                     <div class="form-group" style="flex-basis: 200px;">
+                        <label for="edit-kana-name-short">カナ名短 (編集不可: JCSHMS)</label>
+                        <input type="text" id="edit-kana-name-short" class="readonly-field" readonly>
+                    </div>
+                </div>
+                <div class="form-row readonly-group">
+                    <div class="form-group" style="flex-basis: 300px;">
+                        <label for="edit-generic-name">一般名 (編集不可: JCSHMS)</label>
+                        <input type="text" id="edit-generic-name" class="readonly-field" readonly>
+                    </div>
+                    <div class="form-group" style="flex-basis: 300px;">
+                        <label for="edit-maker-name">メーカー名 (編集不可: JCSHMS)</label>
+                        <input type="text" id="edit-maker-name" class="readonly-field" readonly>
+                    </div>
+                </div>
+
+                <div class="form-row readonly-group">
+                    <div class="form-group" style="flex-basis: 80px;">
+                        <label for="edit-usage-classification">内外注</label>
+                        <input type="text" id="edit-usage-classification" class="readonly-field" readonly>
+                    </div>
+                    <div class="form-group" style="flex-basis: 150px;">
+                        <label for="edit-package-form">包装形態</label>
+                        <input type="text" id="edit-package-form" class="readonly-field" readonly>
+                    </div>
+                    <div class="form-group" style="flex-basis: 100px;">
+                        <label for="edit-yj-unit-name">YJ単位</label>
+                        <input type="text" id="edit-yj-unit-name" class="readonly-field" readonly>
+                    </div>
+                     <div class="form-group" style="flex-basis: 100px;">
+                        <label for="edit-yj-pack-unit-qty">YJ包装数</label>
+                        <input type="number" id="edit-yj-pack-unit-qty" class="readonly-field" readonly>
+                    </div>
+                    <div class="form-group" style="flex-basis: 100px;">
+                        <label for="edit-jan-pack-inner-qty">JAN入数</label>
+                        <input type="number" id="edit-jan-pack-inner-qty" class="readonly-field" readonly>
+                    </div>
+                     <div class="form-group" style="flex-basis: 100px;">
+                        <label for="edit-jan-unit-code">JAN単位CD</label>
+                        <input type="number" id="edit-jan-unit-code" class="readonly-field" readonly>
+                    </div>
+                     <div class="form-group" style="flex-basis: 100px;">
+                        <label for="edit-jan-pack-unit-qty">JAN包装数</label>
+                        <input type="number" id="edit-jan-pack-unit-qty" class="readonly-field" readonly>
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group" style="flex-basis: 100px;">
+                        <label for="edit-nhi-price">薬価 (編集不可: JCSHMS)</label>
+                        <input type="number" id="edit-nhi-price" class="readonly-field" readonly>
+                    </div>
+                    <div class="form-group" style="flex-basis: 100px;">
+                        <label for="edit-purchase-price">仕入単価 (編集可)</label>
+                        <input type="number" id="edit-purchase-price">
+                    </div>
+                     <div class="form-group" style="flex-basis: 200px;">
+                        <label for="edit-supplier-wholesale">仕入卸 (編集可)</label>
+                        <input type="text" id="edit-supplier-wholesale">
+                    </div>
+                </div>
+                
+                <div class="form-row">
+                    <div class="form-group" style="flex-basis: 100px;">
+                        <label for="edit-group-code">薬品分類CD (編集可)</label>
+                        <input type="text" id="edit-group-code">
+                    </div>
+                    <div class="form-group" style="flex-basis: 100px;">
+                        <label for="edit-shelf-number">棚番 (編集可)</label>
+                        <input type="text" id="edit-shelf-number">
+                    </div>
+                    <div class="form-group" style="flex-basis: 100px;">
+                        <label for="edit-category">カテゴリー (編集可)</label>
+                        <input type="text" id="edit-category">
+                    </div>
+                     <div class="form-group" style="flex-basis: 300px;">
+                        <label for="edit-user-notes">備考 (編集可)</label>
+                        <input type="text" id="edit-user-notes">
+                    </div>
+                </div>
+
+                <div class="form-row readonly-group">
+                    <div class="form-group" style="flex-basis: 50px;"><label for="edit-flag-poison">毒</label><input type="number" id="edit-flag-poison" class="readonly-field" readonly></div>
+                    <div class="form-group" style="flex-basis: 50px;"><label for="edit-flag-deleterious">劇</label><input type="number" id="edit-flag-deleterious" class="readonly-field" readonly></div>
+                    <div class="form-group" style="flex-basis: 50px;"><label for="edit-flag-narcotic">麻</label><input type="number" id="edit-flag-narcotic" class="readonly-field" readonly></div>
+                    <div class="form-group" style="flex-basis: 50px;"><label for="edit-flag-psychotropic">向</label><input type="number" id="edit-flag-psychotropic" class="readonly-field" readonly></div>
+                    <div class="form-group" style="flex-basis: 50px;"><label for="edit-flag-stimulant">覚</label><input type="number" id="edit-flag-stimulant" class="readonly-field" readonly></div>
+                    <div class="form-group" style="flex-basis: 50px;"><label for="edit-flag-stimulant-raw">覚原</label><input type="number" id="edit-flag-stimulant-raw" class="readonly-field" readonly></div>
+                </div>
+                
+                 <div class="form-row readonly-group">
+                    <div class="form-group" style="flex-basis: 100px;">
+                        <label for="edit-is-order-stopped">発注停止</label>
+                        <input type="number" id="edit-is-order-stopped" class="readonly-field" readonly>
+                    </div>
+                     <div class="form-group" style="flex-basis: 300px;">
+                        <label for="edit-specification">仕様</label>
+                        <input type="text" id="edit-specification" class="readonly-field" readonly>
+                    </div>
+                </div>
+
+                <div class="form-actions">
+                    <button type="button" id="saveMasterBtn" class="btn">保存</button>
+                    <button type="button" id="cancelEditMasterBtn" class="btn">閉じる</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script type="module" src="/static/js/app.js"></script>
+</body>
+</html>
 

@@ -2,6 +2,7 @@
 package dat
 
 import (
+	"database/sql" // ★ sql.ErrNoRows のために追加
 	"encoding/json"
 	"fmt"
 	"log"
@@ -17,7 +18,6 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
-// ▼▼▼ エラーレスポンスをJSONで返すヘルパー ▼▼▼
 func respondJSONError(w http.ResponseWriter, message string, statusCode int) {
 	log.Println("Error response:", message)
 	w.Header().Set("Content-Type", "application/json")
@@ -25,39 +25,30 @@ func respondJSONError(w http.ResponseWriter, message string, statusCode int) {
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"message":   message,
 		"results":   []interface{}{},
-		"tableHTML": renderTransactionTableHTML(nil), // 空のテーブルを返す
+		"tableHTML": renderTransactionTableHTML(nil),
 	})
 }
 
-// ▲▲▲ 追加 ▲▲▲
-
-// UploadDatHandler handles DAT file uploads, checks/creates masters, and inserts transaction records.
 func UploadDatHandler(db *sqlx.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		log.Println("Received DAT upload request...")
 
-		err := r.ParseMultipartForm(32 << 20) // 32MB limit
+		err := r.ParseMultipartForm(32 << 20)
 		if err != nil {
-			// ▼▼▼ JSONエラーレスポンスに変更 ▼▼▼
 			respondJSONError(w, "File upload error: "+err.Error(), http.StatusBadRequest)
-			// ▲▲▲ 変更 ▲▲▲
 			return
 		}
 		defer r.MultipartForm.RemoveAll()
 
 		var processedFiles []string
-		// ▼▼▼ 全ファイルを通して成功した TransactionRecord を格納するスライス ▼▼▼
 		var successfullyInsertedTransactions []model.TransactionRecord
-		// ▲▲▲ 追加 ▲▲▲
-		var allResults []map[string]interface{} // Results for each processed file
+		var allResults []map[string]interface{}
 
 		for _, fileHeader := range r.MultipartForm.File["file"] {
 			log.Printf("Processing file: %s", fileHeader.Filename)
 			processedFiles = append(processedFiles, fileHeader.Filename)
 			fileResult := map[string]interface{}{"filename": fileHeader.Filename}
-			// ▼▼▼ このファイルで成功した TransactionRecord を一時的に格納 ▼▼▼
 			var currentFileTransactions []model.TransactionRecord
-			// ▲▲▲ 追加 ▲▲▲
 
 			file, openErr := fileHeader.Open()
 			if openErr != nil {
@@ -87,7 +78,6 @@ func UploadDatHandler(db *sqlx.DB) http.HandlerFunc {
 			}
 
 			var insertedCount int = 0
-			// ... (中略: for _, rec := range parsedRecords ループ ... 変更なし) ...
 			for _, rec := range parsedRecords {
 				key := rec.JanCode
 				if key == "" || key == "0000000000000" {
@@ -99,7 +89,7 @@ func UploadDatHandler(db *sqlx.DB) http.HandlerFunc {
 					log.Printf("Failed to find or create master for key %s (Product: %s) in file %s: %v", key, rec.ProductName, fileHeader.Filename, err)
 					fileResult["error"] = fmt.Sprintf("Master creation failed for key %s: %v", key, err)
 					allResults = append(allResults, fileResult)
-					tx.Rollback() // Rollback transaction for this file
+					tx.Rollback()
 					goto nextFileLoop
 				}
 
@@ -108,26 +98,22 @@ func UploadDatHandler(db *sqlx.DB) http.HandlerFunc {
 					log.Printf("Failed to insert transaction record for key %s (Product: %s) in file %s: %v", key, rec.ProductName, fileHeader.Filename, err)
 					fileResult["error"] = fmt.Sprintf("Transaction insert failed for key %s: %v", key, err)
 					allResults = append(allResults, fileResult)
-					tx.Rollback() // Rollback transaction for this file
+					tx.Rollback()
 					goto nextFileLoop
 				}
 
-				// ... (中略: 成功した TransactionRecord を currentFileTransactions に追加する部分 ... 変更なし) ...
 				currentFileTransactions = append(currentFileTransactions, transaction)
-				// ▲▲▲ 追加 ▲▲▲
 				insertedCount++
-			} // End record loop
+			}
 
 			if commitErr := tx.Commit(); commitErr != nil {
 				log.Printf("Failed to commit transaction for %s: %v", fileHeader.Filename, commitErr)
 				fileResult["error"] = fmt.Sprintf("Failed to commit transaction: %v", commitErr)
 				allResults = append(allResults, fileResult)
-				goto nextFileLoop // Rollback is handled by defer
+				goto nextFileLoop
 			}
 
-			// ▼▼▼【ここから追加】コミット成功時、このファイルのトランザクションを全体リストに追加 ▼▼▼
 			successfullyInsertedTransactions = append(successfullyInsertedTransactions, currentFileTransactions...)
-			// ▲▲▲【追加ここまで】▲▲▲
 
 			log.Printf("Successfully inserted %d records from %s", insertedCount, fileHeader.Filename)
 			fileResult["success"] = true
@@ -136,27 +122,97 @@ func UploadDatHandler(db *sqlx.DB) http.HandlerFunc {
 
 		nextFileLoop:
 			continue
-		} // End file loop
+		}
 
-		// --- Final response ---
 		w.Header().Set("Content-Type", "application/json")
-		// ▼▼▼ レスポンスにサマリーと「HTML文字列」を含める ▼▼▼
 		htmlString := renderTransactionTableHTML(successfullyInsertedTransactions)
 
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"message":   fmt.Sprintf("Processed %d DAT file(s). See results for details.", len(processedFiles)),
-			"results":   allResults, // 各ファイルごとの処理結果サマリー
-			"tableHTML": htmlString, // ★ サーバーで生成したHTML文字列
+			"results":   allResults,
+			"tableHTML": htmlString,
 		})
-		// ▲▲▲ 変更 ▲▲▲
 		log.Println("Finished DAT upload request.")
 	}
 }
 
-// MapDatToTransaction (変更なし)
+// ▼▼▼【ここから追加】GS1-128検索ハンドラ (2段階検索ロジック) ▼▼▼
+func SearchDatHandler(db *sqlx.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			respondJSONError(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		barcode := r.URL.Query().Get("barcode")
+		log.Printf("Received DAT search request... Barcode: [%s]", barcode)
+
+		if barcode == "" {
+			respondJSONError(w, "バーコードを入力してください。", http.StatusBadRequest)
+			return
+		}
+
+		gs1Result, parseErr := parsers.ParseGS1_128(barcode)
+		if parseErr != nil {
+			log.Printf("Error parsing GS1-128 barcode [%s]: %v", barcode, parseErr)
+			respondJSONError(w, fmt.Sprintf("バーコード解析エラー: %v", parseErr), http.StatusBadRequest)
+			return
+		}
+
+		gtin14 := gs1Result.JanCode
+		if gtin14 == "" {
+			respondJSONError(w, "バーコードから(01)GTINが抽出できませんでした。", http.StatusBadRequest)
+			return
+		}
+
+		// 1. GS1コード(14桁)で product_master を検索
+		master, err := database.GetProductMasterByGs1Code(db, gtin14)
+		if err != nil {
+			if err == sql.ErrNoRows {
+				log.Printf("Product master not found for GS1_CODE: %s", gtin14)
+				respondJSONError(w, "GS1コードに対応するマスターが見つかりません。", http.StatusNotFound)
+			} else {
+				log.Printf("Error searching product master by GS1_CODE %s: %v", gtin14, err)
+				respondJSONError(w, "マスター検索中にエラーが発生しました。", http.StatusInternalServerError)
+			}
+			return
+		}
+
+		productCode := master.ProductCode // product_master.product_code (JAN)
+
+		expiryYYMMDD := gs1Result.ExpiryDate
+		expiryYYMM := ""
+		if len(expiryYYMMDD) == 6 {
+			expiryYYMM = expiryYYMMDD[:4]
+		}
+
+		log.Printf("Parsed GS1: GTIN(14)='%s' -> ProductCode(JAN)='%s', Expiry(6)='%s', Expiry(4)='%s', Lot='%s'",
+			gtin14, productCode, expiryYYMMDD, expiryYYMM, gs1Result.LotNumber)
+
+		// 2. ProductCode(JAN), 期限(4/6), ロットで transaction_records を検索
+		transactions, err := database.SearchTransactions(db, productCode, expiryYYMMDD, expiryYYMM, gs1Result.LotNumber)
+
+		if err != nil {
+			log.Printf("Error searching transactions: %v", err)
+			respondJSONError(w, "トランザクション検索中にエラーが発生しました。", http.StatusInternalServerError)
+			return
+		}
+
+		log.Printf("Found %d transactions matching criteria.", len(transactions))
+
+		htmlString := renderTransactionTableHTML(transactions)
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"message":   fmt.Sprintf("%d 件のデータが見つかりました。", len(transactions)),
+			"tableHTML": htmlString,
+		})
+	}
+}
+
+// ▲▲▲【追加ここまで】▲▲▲
+
 func MapDatToTransaction(dat model.DatRecord, master *model.ProductMaster) model.TransactionRecord {
-	// ... (中略: 関数全体 ... 変更なし) ...
-	// PackageSpec の計算 (例)
 	packageSpec := fmt.Sprintf("%s %v%s", master.PackageForm, master.YjPackUnitQty, master.YjUnitName)
 
 	return model.TransactionRecord{
@@ -165,28 +221,28 @@ func MapDatToTransaction(dat model.DatRecord, master *model.ProductMaster) model
 		ReceiptNumber:       dat.ReceiptNumber,
 		LineNumber:          dat.LineNumber,
 		Flag:                dat.Flag,
-		JanCode:             master.ProductCode, // Use code from master
+		JanCode:             master.ProductCode,
 		YjCode:              master.YjCode,
 		ProductName:         master.ProductName,
 		KanaName:            master.KanaName,
 		UsageClassification: master.UsageClassification,
 		PackageForm:         master.PackageForm,
-		PackageSpec:         packageSpec, // Calculated spec
+		PackageSpec:         packageSpec,
 		MakerName:           master.MakerName,
 		DatQuantity:         dat.DatQuantity,
 		JanPackInnerQty:     master.JanPackInnerQty,
-		JanQuantity:         0, // Requires calculation
+		JanQuantity:         0,
 		JanPackUnitQty:      master.JanPackUnitQty,
-		JanUnitName:         "", // Requires mapping from JanUnitCode if needed
+		JanUnitName:         "",
 		JanUnitCode:         fmt.Sprintf("%d", master.JanUnitCode),
-		YjQuantity:          0, // Requires calculation
+		YjQuantity:          0,
 		YjPackUnitQty:       master.YjPackUnitQty,
 		YjUnitName:          master.YjUnitName,
 		UnitPrice:           dat.UnitPrice,
-		PurchasePrice:       master.PurchasePrice, // From master
+		PurchasePrice:       master.PurchasePrice,
 		SupplierWholesale:   master.SupplierWholesale,
 		Subtotal:            dat.Subtotal,
-		TaxAmount:           0, // DAT file doesn't seem to have tax
+		TaxAmount:           0,
 		TaxRate:             0,
 		ExpiryDate:          dat.ExpiryDate,
 		LotNumber:           dat.LotNumber,
@@ -200,18 +256,13 @@ func MapDatToTransaction(dat model.DatRecord, master *model.ProductMaster) model
 	}
 }
 
-// OpenFileHeader (変更なし)
 func OpenFileHeader(fh *multipart.FileHeader) (multipart.File, error) {
-	// ... (以下略) ...
 	return fh.Open()
 }
-
-// ▼▼▼【ここから追加】トランザクションリストからHTMLテーブル文字列を生成する関数 ▼▼▼
 
 func renderTransactionTableHTML(transactions []model.TransactionRecord) string {
 	var sb strings.Builder
 
-	// 1. テーブルヘッダー (thead)
 	sb.WriteString(`
     <thead>
         <tr>
@@ -236,7 +287,7 @@ func renderTransactionTableHTML(transactions []model.TransactionRecord) string {
             <th class="col-form">剤型</th>
             <th class="col-janqty">JAN数量</th>
             <th class="col-janpackqty">JAN包装数</th>
-            <th class="col-janunit">JAN単位</th>
+            <th classs="col-janunit">JAN単位</th>
             <th class="col-amount">金額</th>
             <th class="col-lot">ロット</th>
             <th class="col-receipt">伝票番号</th>
@@ -244,7 +295,6 @@ func renderTransactionTableHTML(transactions []model.TransactionRecord) string {
         </tr>
     </thead>`)
 
-	// 2. テーブルボディ (tbody)
 	sb.WriteString(`<tbody>`)
 	if len(transactions) == 0 {
 		sb.WriteString(`<tr><td colspan="13">登録されたデータはありません。</td></tr>`)
@@ -266,15 +316,14 @@ func renderTransactionTableHTML(transactions []model.TransactionRecord) string {
 				flagText = strconv.Itoa(tx.Flag)
 			}
 
-			// 1行目
 			sb.WriteString(`<tr>`)
 			sb.WriteString(`<td class="center col-action">－</td>`)
 			sb.WriteString(fmt.Sprintf(`<td class="center col-date">%s</td>`, formattedDate))
 			sb.WriteString(fmt.Sprintf(`<td class="col-yj">%s</td>`, tx.YjCode))
 			sb.WriteString(fmt.Sprintf(`<td colspan="2" class="col-product">%s</td>`, tx.ProductName))
-			sb.WriteString(fmt.Sprintf(`<td class="right col-count">%.0f</td>`, tx.DatQuantity)) // DatQuantityは整数で表示
+			sb.WriteString(fmt.Sprintf(`<td class="right col-count">%.0f</td>`, tx.DatQuantity))
 			sb.WriteString(fmt.Sprintf(`<td class="right col-yjqty">%s</td>`, formattedYjQty))
-			sb.WriteString(fmt.Sprintf(`<td class="right col-yjpackqty">%.0f</td>`, tx.YjPackUnitQty)) // YjPackUnitQtyは整数で表示
+			sb.WriteString(fmt.Sprintf(`<td class="right col-yjpackqty">%.0f</td>`, tx.YjPackUnitQty))
 			sb.WriteString(fmt.Sprintf(`<td class="center col-yjunit">%s</td>`, tx.YjUnitName))
 			sb.WriteString(fmt.Sprintf(`<td class="right col-unitprice">%s</td>`, formattedUnitPrice))
 			sb.WriteString(fmt.Sprintf(`<td class="center col-expiry">%s</td>`, formattedExpiry))
@@ -282,19 +331,20 @@ func renderTransactionTableHTML(transactions []model.TransactionRecord) string {
 			sb.WriteString(fmt.Sprintf(`<td class="center col-line">%s</td>`, tx.LineNumber))
 			sb.WriteString(`</tr>`)
 
-			// 2行目
 			sb.WriteString(`<tr>`)
 			sb.WriteString(`<td></td>`)
 			sb.WriteString(fmt.Sprintf(`<td class="center col-flag">%s</td>`, flagText))
 			sb.WriteString(fmt.Sprintf(`<td class="col-jan">%s</td>`, tx.JanCode))
 			sb.WriteString(fmt.Sprintf(`<td class="col-package">%s</td>`, tx.PackageForm))
 			sb.WriteString(fmt.Sprintf(`<td class="col-maker">%s</td>`, tx.MakerName))
-			sb.WriteString(`<td class="col-form"></td>`)                                                 // 剤型 (空)
-			sb.WriteString(`<td class="right col-janqty"></td>`)                                         // JAN数量 (空)
-			sb.WriteString(fmt.Sprintf(`<td class="right col-janpackqty">%.0f</td>`, tx.JanPackUnitQty)) // JanPackUnitQtyは整数で表示
+			sb.WriteString(`<td class="col-form"></td>`)
+			sb.WriteString(`<td class="right col-janqty"></td>`)
+			sb.WriteString(fmt.Sprintf(`<td class="right col-janpackqty">%.0f</td>`, tx.JanPackUnitQty))
 			sb.WriteString(fmt.Sprintf(`<td class="center col-janunit">%s</td>`, tx.JanUnitName))
 			sb.WriteString(fmt.Sprintf(`<td class="right col-amount">%s</td>`, formattedSubtotal))
-			sb.WriteString(fmt.Sprintf(`<td classcol-lot">%s</td>`, tx.LotNumber))
+			// ▼▼▼【修正】class 属性のタイプミスを修正 (classcol-lot -> class="col-lot") ▼▼▼
+			sb.WriteString(fmt.Sprintf(`<td class="col-lot">%s</td>`, tx.LotNumber))
+			// ▲▲▲【修正ここまで】▲▲▲
 			sb.WriteString(fmt.Sprintf(`<td class="col-receipt">%s</td>`, tx.ReceiptNumber))
 			sb.WriteString(fmt.Sprintf(`<td class="center col-ma">%s</td>`, tx.ProcessFlagMA))
 			sb.WriteString(`</tr>`)
@@ -304,5 +354,3 @@ func renderTransactionTableHTML(transactions []model.TransactionRecord) string {
 
 	return sb.String()
 }
-
-// ▲▲▲【追加ここまで】▲▲▲

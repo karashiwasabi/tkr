@@ -12,12 +12,11 @@ import (
 	"github.com/jmoiron/sqlx"
 	_ "github.com/mattn/go-sqlite3"
 
-	"tkr/config" // ★ Import config
+	"tkr/config"
 	"tkr/dat"
 	"tkr/database"
 	"tkr/loader"
 	"tkr/masteredit"
-	// "tkr/usage" // ★ USAGE削除
 )
 
 func main() {
@@ -29,7 +28,6 @@ func main() {
 	defer dbConn.Close()
 	log.Println("Database connection successful.")
 
-	// ★ Load config on startup
 	if _, err := config.LoadConfig(); err != nil {
 		log.Printf("WARN: Failed to load config file: %v. Using defaults.", err)
 	}
@@ -78,29 +76,17 @@ func main() {
 
 	mux.HandleFunc("/api/dat/upload", dat.UploadDatHandler(dbConn))
 
+	// ▼▼▼【ここから追加】GS1-128検索APIエンドポイント ▼▼▼
+	mux.HandleFunc("/api/dat/search", dat.SearchDatHandler(dbConn))
+	// ▲▲▲【追加ここまで】▲▲▲
+
 	mux.HandleFunc("/api/masters", masteredit.ListMastersHandler(dbConn))
 	mux.HandleFunc("/api/masters/update", masteredit.UpdateMasterHandler(dbConn))
-
-	// ★ USAGE削除 (関連ハンドラを削除)
-	/*
-		mux.HandleFunc("/api/usage/config", func(w http.ResponseWriter, r *http.Request) {
-			if r.Method == http.MethodGet {
-				usage.GetUsageConfigHandler(dbConn)(w, r)
-			} else if r.Method == http.MethodPost {
-				usage.SaveUsageConfigHandler(dbConn)(w, r)
-			} else {
-				http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
-			}
-		})
-		mux.HandleFunc("/api/usage/import", usage.ImportUsageHandler(dbConn)) // Assumes POST method
-	*/
 
 	port := ":8080"
 	log.Printf("Starting server on http://localhost%s", port)
 
-	// ▼▼▼【ここから修正】openBrowser 関数を呼び出す ▼▼▼
 	openBrowser("http://localhost:8080")
-	// ▲▲▲【修正ここまで】▲▲▲
 
 	if err := http.ListenAndServe(port, mux); err != nil {
 		log.Fatalf("server start error: %v", err)

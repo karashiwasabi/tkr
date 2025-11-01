@@ -1,3 +1,4 @@
+// C:\Users\wasab\OneDrive\デスクトップ\TKR\database\product_master_query.go
 package database
 
 import (
@@ -51,25 +52,16 @@ func GetFilteredProductMasters(dbtx DBTX, usageClass, productName, kanaName, gen
 
 	// 棚番は 0文字より大きい場合、条件に追加 (完全一致)
 	if len(shelfNumber) > 0 {
+		// ▼▼▼【修正】undefined: conditions のバグ修正 ▼▼▼
 		mustConditions = append(mustConditions, "shelf_number = ?") // 完全一致
+		// ▲▲▲【修正ここまで】▲▲▲
 		args = append(args, shelfNumber)
 	}
-
-	// WHERE 句の組み立てロジック
-	// ▼▼▼【修正】条件の数をチェック（usageClassのみは除く）するロジックを削除 ▼▼▼
-	/*
-		if len(mustConditions) <= 1 {
-			// usageClass 以外の検索条件が指定されなかった場合
-			return []model.ProductMaster{}, nil
-		}
-	*/
-	// ▲▲▲【修正ここまで】▲▲▲
 
 	// 最終 WHERE 句の結合
 	if len(mustConditions) > 0 {
 		query += " WHERE " + strings.Join(mustConditions, " AND ")
 	} else {
-		// (ここには到達しないはずだが念のため)
 		return []model.ProductMaster{}, fmt.Errorf("usage class filter is required")
 	}
 
@@ -101,3 +93,17 @@ func GetProductMasterByCode(dbtx DBTX, code string) (*model.ProductMaster, error
 	}
 	return &master, nil
 }
+
+// ▼▼▼【ここから追加】GS1コードで product_master を検索する関数 ▼▼▼
+func GetProductMasterByGs1Code(dbtx DBTX, gs1Code string) (*model.ProductMaster, error) {
+	var master model.ProductMaster
+	query := `SELECT * FROM product_master WHERE gs1_code = ?`
+	err := dbtx.Get(&master, query, gs1Code)
+	if err != nil {
+		// sql.ErrNoRows も含め、エラーとして返す
+		return nil, fmt.Errorf("failed to get product master by gs1_code %s: %w", gs1Code, err)
+	}
+	return &master, nil
+}
+
+// ▲▲▲【追加ここまで】▲▲▲

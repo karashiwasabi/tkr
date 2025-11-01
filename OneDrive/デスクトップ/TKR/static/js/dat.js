@@ -1,6 +1,5 @@
 // TKR/static/js/dat.js
 
-// ▼▼▼【ここから追加】空のテーブルを描画する関数 ▼▼▼
 function renderEmptyTable(dataTable) {
     if (!dataTable) return;
     const columnCount = 13;
@@ -40,10 +39,7 @@ function renderEmptyTable(dataTable) {
     </tbody>
     `;
 }
-// ▲▲▲【追加ここまで】▲▲▲
 
-
-// --- DATファイルアップロード処理 ---
 async function handleDatUpload(files, datFileInput, uploadResultContainer, dataTable) {
     if (!files || files.length === 0) {
         return;
@@ -62,14 +58,12 @@ async function handleDatUpload(files, datFileInput, uploadResultContainer, dataT
             method: 'POST',
             body: formData,
         });
-        const result = await response.json(); // ★ JSONレスポンスを受け取る
+        const result = await response.json(); 
 
         if (!response.ok) {
-            // ★ サーバーからのJSONエラーメッセージを利用
             throw new Error(result.message || `サーバーエラー (HTTP ${response.status})`);
         }
 
-        // --- アップロード結果サマリー表示 ---
         let summaryHtml = `<h3>${result.message || '処理が完了しました。'}</h3>`;
         if (result.results && Array.isArray(result.results)) {
             summaryHtml += '<ul>';
@@ -87,17 +81,12 @@ async function handleDatUpload(files, datFileInput, uploadResultContainer, dataT
             summaryHtml += '</ul>';
         }
         if (uploadResultContainer) uploadResultContainer.innerHTML = summaryHtml;
-        // --- サマリー表示ここまで ---
 
-        // ▼▼▼ テーブルに「HTML文字列」を設定 ▼▼▼
-        if (dataTable && result.tableHTML != null) { // null や undefined でないことを確認
+        if (dataTable && result.tableHTML != null) { 
             dataTable.innerHTML = result.tableHTML;
         } else if (dataTable) {
-            // tableHTML が万が一なかった場合
             renderEmptyTable(dataTable);
-            log.warn("Server response did not include tableHTML.");
         }
-        // ▲▲▲ 変更 ▲▲▲
         
         window.showNotification(result.message || 'DATファイルの処理が完了しました。', 'success');
 
@@ -114,15 +103,73 @@ async function handleDatUpload(files, datFileInput, uploadResultContainer, dataT
     }
 }
 
-// --- 初期化関数 ---
+// ▼▼▼【ここから追加】バーコード検索処理 ▼▼▼
+async function handleDatSearch(barcodeInput, uploadResultContainer, dataTable) {
+    const barcode = barcodeInput ? barcodeInput.value.trim() : '';
+
+    if (!barcode) {
+        window.showNotification('バーコードを入力してください。', 'warning');
+        return;
+    }
+
+    if (uploadResultContainer) uploadResultContainer.innerHTML = '<p>検索中...</p>';
+    if (dataTable) dataTable.innerHTML = '<thead></thead><tbody><tr><td colspan="13">検索中...</td></tr></tbody>';
+    window.showLoading('データを検索中...');
+
+    try {
+        const params = new URLSearchParams();
+        params.append('barcode', barcode);
+        
+        const response = await fetch(`/api/dat/search?${params.toString()}`, {
+            method: 'GET',
+        });
+        
+        const result = await response.json();
+
+        if (!response.ok) {
+            throw new Error(result.message || `サーバーエラー (HTTP ${response.status})`);
+        }
+
+        if (uploadResultContainer) {
+            uploadResultContainer.innerHTML = `<p>${result.message || '検索が完了しました。'}</p>`;
+        }
+
+        if (dataTable && result.tableHTML != null) {
+            dataTable.innerHTML = result.tableHTML;
+        } else if (dataTable) {
+            renderEmptyTable(dataTable);
+        }
+        
+        window.showNotification(result.message || '検索が完了しました。', 'success');
+
+    } catch (error) {
+        console.error('Search failed:', error);
+        if (uploadResultContainer) uploadResultContainer.innerHTML = `<p style="color: red;">エラーが発生しました: ${error.message}</p>`;
+        window.showNotification(`エラー: ${error.message}`, 'error');
+        if (dataTable) {
+            dataTable.innerHTML = `<thead></thead><tbody><tr><td colspan="13" class="status-error">エラーが発生しました: ${error.message}</td></tr></tbody>`;
+        }
+    } finally {
+        window.hideLoading();
+        if (barcodeInput) {
+            barcodeInput.value = '';
+            barcodeInput.focus();
+        }
+    }
+}
+// ▲▲▲【追加ここまで】▲▲▲
+
 export function initDatUpload() {
-    // Declare variables inside the function with const
     const datUploadBtn = document.getElementById('datUploadBtn');
     const datFileInput = document.getElementById('datFileInput');
     const uploadResultContainer = document.getElementById('uploadResultContainer');
     const dataTable = document.getElementById('mainDataTable');
 
-    // イベントリスナーを設定
+    // ▼▼▼【ここから追加】検索フォームの要素を取得 ▼▼▼
+    const datSearchBtn = document.getElementById('datSearchBtn');
+    const barcodeInput = document.getElementById('dat-search-barcode');
+    // ▲▲▲【追加ここまで】▲▲▲
+
     if (datUploadBtn && datFileInput) {
         datUploadBtn.addEventListener('click', () => {
             datFileInput.click();
@@ -134,7 +181,24 @@ export function initDatUpload() {
         console.error('DAT Upload button or file input not found.');
     }
 
-     // テーブルの初期表示
+    // ▼▼▼【ここから追加】検索ボタンのイベントリスナー ▼▼▼
+    if (datSearchBtn && barcodeInput) {
+        datSearchBtn.addEventListener('click', () => {
+            handleDatSearch(barcodeInput, uploadResultContainer, dataTable);
+        });
+        
+        const handleKeyPress = (event) => {
+            if (event.key === 'Enter') {
+                handleDatSearch(barcodeInput, uploadResultContainer, dataTable);
+            }
+        };
+        barcodeInput.addEventListener('keypress', handleKeyPress);
+
+    } else {
+        console.error('DAT Search button or barcode input field not found.');
+    }
+    // ▲▲▲【追加ここまで】▲▲▲
+
      renderEmptyTable(dataTable);
      if (uploadResultContainer) {
         uploadResultContainer.innerHTML = '<p>「DATファイル選択」ボタンを押してファイルを選んでください。</p>';

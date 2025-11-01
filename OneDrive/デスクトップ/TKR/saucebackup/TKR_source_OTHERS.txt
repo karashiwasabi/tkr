@@ -82,7 +82,6 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
-// ▼▼▼ エラーレスポンスをJSONで返すヘルパー ▼▼▼
 func respondJSONError(w http.ResponseWriter, message string, statusCode int) {
 	log.Println("Error response:", message)
 	w.Header().Set("Content-Type", "application/json")
@@ -90,39 +89,30 @@ func respondJSONError(w http.ResponseWriter, message string, statusCode int) {
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"message":   message,
 		"results":   []interface{}{},
-		"tableHTML": renderTransactionTableHTML(nil), // 空のテーブルを返す
+		"tableHTML": renderTransactionTableHTML(nil),
 	})
 }
 
-// ▲▲▲ 追加 ▲▲▲
-
-// UploadDatHandler handles DAT file uploads, checks/creates masters, and inserts transaction records.
 func UploadDatHandler(db *sqlx.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		log.Println("Received DAT upload request...")
 
-		err := r.ParseMultipartForm(32 << 20) // 32MB limit
+		err := r.ParseMultipartForm(32 << 20)
 		if err != nil {
-			// ▼▼▼ JSONエラーレスポンスに変更 ▼▼▼
 			respondJSONError(w, "File upload error: "+err.Error(), http.StatusBadRequest)
-			// ▲▲▲ 変更 ▲▲▲
 			return
 		}
 		defer r.MultipartForm.RemoveAll()
 
 		var processedFiles []string
-		// ▼▼▼ 全ファイルを通して成功した TransactionRecord を格納するスライス ▼▼▼
 		var successfullyInsertedTransactions []model.TransactionRecord
-		// ▲▲▲ 追加 ▲▲▲
-		var allResults []map[string]interface{} // Results for each processed file
+		var allResults []map[string]interface{}
 
 		for _, fileHeader := range r.MultipartForm.File["file"] {
 			log.Printf("Processing file: %s", fileHeader.Filename)
 			processedFiles = append(processedFiles, fileHeader.Filename)
 			fileResult := map[string]interface{}{"filename": fileHeader.Filename}
-			// ▼▼▼ このファイルで成功した TransactionRecord を一時的に格納 ▼▼▼
 			var currentFileTransactions []model.TransactionRecord
-			// ▲▲▲ 追加 ▲▲▲
 
 			file, openErr := fileHeader.Open()
 			if openErr != nil {
@@ -152,7 +142,6 @@ func UploadDatHandler(db *sqlx.DB) http.HandlerFunc {
 			}
 
 			var insertedCount int = 0
-			// ... (中略: for _, rec := range parsedRecords ループ ... 変更なし) ...
 			for _, rec := range parsedRecords {
 				key := rec.JanCode
 				if key == "" || key == "0000000000000" {
@@ -164,7 +153,7 @@ func UploadDatHandler(db *sqlx.DB) http.HandlerFunc {
 					log.Printf("Failed to find or create master for key %s (Product: %s) in file %s: %v", key, rec.ProductName, fileHeader.Filename, err)
 					fileResult["error"] = fmt.Sprintf("Master creation failed for key %s: %v", key, err)
 					allResults = append(allResults, fileResult)
-					tx.Rollback() // Rollback transaction for this file
+					tx.Rollback()
 					goto nextFileLoop
 				}
 
@@ -173,26 +162,22 @@ func UploadDatHandler(db *sqlx.DB) http.HandlerFunc {
 					log.Printf("Failed to insert transaction record for key %s (Product: %s) in file %s: %v", key, rec.ProductName, fileHeader.Filename, err)
 					fileResult["error"] = fmt.Sprintf("Transaction insert failed for key %s: %v", key, err)
 					allResults = append(allResults, fileResult)
-					tx.Rollback() // Rollback transaction for this file
+					tx.Rollback()
 					goto nextFileLoop
 				}
 
-				// ... (中略: 成功した TransactionRecord を currentFileTransactions に追加する部分 ... 変更なし) ...
 				currentFileTransactions = append(currentFileTransactions, transaction)
-				// ▲▲▲ 追加 ▲▲▲
 				insertedCount++
-			} // End record loop
+			}
 
 			if commitErr := tx.Commit(); commitErr != nil {
 				log.Printf("Failed to commit transaction for %s: %v", fileHeader.Filename, commitErr)
 				fileResult["error"] = fmt.Sprintf("Failed to commit transaction: %v", commitErr)
 				allResults = append(allResults, fileResult)
-				goto nextFileLoop // Rollback is handled by defer
+				goto nextFileLoop
 			}
 
-			// ▼▼▼【ここから追加】コミット成功時、このファイルのトランザクションを全体リストに追加 ▼▼▼
 			successfullyInsertedTransactions = append(successfullyInsertedTransactions, currentFileTransactions...)
-			// ▲▲▲【追加ここまで】▲▲▲
 
 			log.Printf("Successfully inserted %d records from %s", insertedCount, fileHeader.Filename)
 			fileResult["success"] = true
@@ -201,27 +186,82 @@ func UploadDatHandler(db *sqlx.DB) http.HandlerFunc {
 
 		nextFileLoop:
 			continue
-		} // End file loop
+		}
 
-		// --- Final response ---
 		w.Header().Set("Content-Type", "application/json")
-		// ▼▼▼ レスポンスにサマリーと「HTML文字列」を含める ▼▼▼
 		htmlString := renderTransactionTableHTML(successfullyInsertedTransactions)
 
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"message":   fmt.Sprintf("Processed %d DAT file(s). See results for details.", len(processedFiles)),
-			"results":   allResults, // 各ファイルごとの処理結果サマリー
-			"tableHTML": htmlString, // ★ サーバーで生成したHTML文字列
+			"results":   allResults,
+			"tableHTML": htmlString,
 		})
-		// ▲▲▲ 変更 ▲▲▲
 		log.Println("Finished DAT upload request.")
 	}
 }
 
-// MapDatToTransaction (変更なし)
+func SearchDatHandler(db *sqlx.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			respondJSONError(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		barcode := r.URL.Query().Get("barcode")
+		log.Printf("Received DAT search request... Barcode: [%s]", barcode)
+
+		if barcode == "" {
+			respondJSONError(w, "バーコードを入力してください。", http.StatusBadRequest)
+			return
+		}
+
+		gs1Result, parseErr := parsers.ParseGS1_128(barcode)
+		if parseErr != nil {
+			log.Printf("Error parsing GS1-128 barcode [%s]: %v", barcode, parseErr)
+			respondJSONError(w, fmt.Sprintf("バーコード解析エラー: %v", parseErr), http.StatusBadRequest)
+			return
+		}
+
+		// ▼▼▼【ここから修正】JAN13桁化と期限4桁/6桁の準備 ▼▼▼
+		janCode13 := ""
+		if len(gs1Result.JanCode) == 14 {
+			janCode13 = gs1Result.JanCode[1:] // 先頭1桁を除去して13桁に
+		} else {
+			janCode13 = gs1Result.JanCode // 14桁でなければそのまま使用
+		}
+
+		expiryYYMMDD := gs1Result.ExpiryDate // 6桁 (例: 280100)
+		expiryYYMM := ""
+		if len(expiryYYMMDD) == 6 {
+			expiryYYMM = expiryYYMMDD[:4] // 4桁 (例: 2801)
+		}
+
+		log.Printf("Parsed GS1-128: JAN(13)='%s', Expiry(6)='%s', Expiry(4)='%s', Lot='%s'",
+			janCode13, expiryYYMMDD, expiryYYMM, gs1Result.LotNumber)
+
+		// DBを検索 (5つの引数を渡す)
+		transactions, err := database.SearchTransactions(db, janCode13, expiryYYMMDD, expiryYYMM, gs1Result.LotNumber)
+		// ▲▲▲【修正ここまで】▲▲▲
+
+		if err != nil {
+			log.Printf("Error searching transactions: %v", err)
+			respondJSONError(w, "検索中にエラーが発生しました。", http.StatusInternalServerError)
+			return
+		}
+
+		log.Printf("Found %d transactions matching criteria.", len(transactions))
+
+		htmlString := renderTransactionTableHTML(transactions)
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"message":   fmt.Sprintf("%d 件のデータが見つかりました。", len(transactions)),
+			"tableHTML": htmlString,
+		})
+	}
+}
+
 func MapDatToTransaction(dat model.DatRecord, master *model.ProductMaster) model.TransactionRecord {
-	// ... (中略: 関数全体 ... 変更なし) ...
-	// PackageSpec の計算 (例)
 	packageSpec := fmt.Sprintf("%s %v%s", master.PackageForm, master.YjPackUnitQty, master.YjUnitName)
 
 	return model.TransactionRecord{
@@ -230,28 +270,28 @@ func MapDatToTransaction(dat model.DatRecord, master *model.ProductMaster) model
 		ReceiptNumber:       dat.ReceiptNumber,
 		LineNumber:          dat.LineNumber,
 		Flag:                dat.Flag,
-		JanCode:             master.ProductCode, // Use code from master
+		JanCode:             master.ProductCode,
 		YjCode:              master.YjCode,
 		ProductName:         master.ProductName,
 		KanaName:            master.KanaName,
 		UsageClassification: master.UsageClassification,
 		PackageForm:         master.PackageForm,
-		PackageSpec:         packageSpec, // Calculated spec
+		PackageSpec:         packageSpec,
 		MakerName:           master.MakerName,
 		DatQuantity:         dat.DatQuantity,
 		JanPackInnerQty:     master.JanPackInnerQty,
-		JanQuantity:         0, // Requires calculation
+		JanQuantity:         0,
 		JanPackUnitQty:      master.JanPackUnitQty,
-		JanUnitName:         "", // Requires mapping from JanUnitCode if needed
+		JanUnitName:         "",
 		JanUnitCode:         fmt.Sprintf("%d", master.JanUnitCode),
-		YjQuantity:          0, // Requires calculation
+		YjQuantity:          0,
 		YjPackUnitQty:       master.YjPackUnitQty,
 		YjUnitName:          master.YjUnitName,
 		UnitPrice:           dat.UnitPrice,
-		PurchasePrice:       master.PurchasePrice, // From master
+		PurchasePrice:       master.PurchasePrice,
 		SupplierWholesale:   master.SupplierWholesale,
 		Subtotal:            dat.Subtotal,
-		TaxAmount:           0, // DAT file doesn't seem to have tax
+		TaxAmount:           0,
 		TaxRate:             0,
 		ExpiryDate:          dat.ExpiryDate,
 		LotNumber:           dat.LotNumber,
@@ -265,18 +305,13 @@ func MapDatToTransaction(dat model.DatRecord, master *model.ProductMaster) model
 	}
 }
 
-// OpenFileHeader (変更なし)
 func OpenFileHeader(fh *multipart.FileHeader) (multipart.File, error) {
-	// ... (以下略) ...
 	return fh.Open()
 }
-
-// ▼▼▼【ここから追加】トランザクションリストからHTMLテーブル文字列を生成する関数 ▼▼▼
 
 func renderTransactionTableHTML(transactions []model.TransactionRecord) string {
 	var sb strings.Builder
 
-	// 1. テーブルヘッダー (thead)
 	sb.WriteString(`
     <thead>
         <tr>
@@ -309,7 +344,6 @@ func renderTransactionTableHTML(transactions []model.TransactionRecord) string {
         </tr>
     </thead>`)
 
-	// 2. テーブルボディ (tbody)
 	sb.WriteString(`<tbody>`)
 	if len(transactions) == 0 {
 		sb.WriteString(`<tr><td colspan="13">登録されたデータはありません。</td></tr>`)
@@ -331,15 +365,14 @@ func renderTransactionTableHTML(transactions []model.TransactionRecord) string {
 				flagText = strconv.Itoa(tx.Flag)
 			}
 
-			// 1行目
 			sb.WriteString(`<tr>`)
 			sb.WriteString(`<td class="center col-action">－</td>`)
 			sb.WriteString(fmt.Sprintf(`<td class="center col-date">%s</td>`, formattedDate))
 			sb.WriteString(fmt.Sprintf(`<td class="col-yj">%s</td>`, tx.YjCode))
 			sb.WriteString(fmt.Sprintf(`<td colspan="2" class="col-product">%s</td>`, tx.ProductName))
-			sb.WriteString(fmt.Sprintf(`<td class="right col-count">%.0f</td>`, tx.DatQuantity)) // DatQuantityは整数で表示
+			sb.WriteString(fmt.Sprintf(`<td class="right col-count">%.0f</td>`, tx.DatQuantity))
 			sb.WriteString(fmt.Sprintf(`<td class="right col-yjqty">%s</td>`, formattedYjQty))
-			sb.WriteString(fmt.Sprintf(`<td class="right col-yjpackqty">%.0f</td>`, tx.YjPackUnitQty)) // YjPackUnitQtyは整数で表示
+			sb.WriteString(fmt.Sprintf(`<td class="right col-yjpackqty">%.0f</td>`, tx.YjPackUnitQty))
 			sb.WriteString(fmt.Sprintf(`<td class="center col-yjunit">%s</td>`, tx.YjUnitName))
 			sb.WriteString(fmt.Sprintf(`<td class="right col-unitprice">%s</td>`, formattedUnitPrice))
 			sb.WriteString(fmt.Sprintf(`<td class="center col-expiry">%s</td>`, formattedExpiry))
@@ -347,19 +380,18 @@ func renderTransactionTableHTML(transactions []model.TransactionRecord) string {
 			sb.WriteString(fmt.Sprintf(`<td class="center col-line">%s</td>`, tx.LineNumber))
 			sb.WriteString(`</tr>`)
 
-			// 2行目
 			sb.WriteString(`<tr>`)
 			sb.WriteString(`<td></td>`)
 			sb.WriteString(fmt.Sprintf(`<td class="center col-flag">%s</td>`, flagText))
 			sb.WriteString(fmt.Sprintf(`<td class="col-jan">%s</td>`, tx.JanCode))
 			sb.WriteString(fmt.Sprintf(`<td class="col-package">%s</td>`, tx.PackageForm))
 			sb.WriteString(fmt.Sprintf(`<td class="col-maker">%s</td>`, tx.MakerName))
-			sb.WriteString(`<td class="col-form"></td>`)                                                 // 剤型 (空)
-			sb.WriteString(`<td class="right col-janqty"></td>`)                                         // JAN数量 (空)
-			sb.WriteString(fmt.Sprintf(`<td class="right col-janpackqty">%.0f</td>`, tx.JanPackUnitQty)) // JanPackUnitQtyは整数で表示
+			sb.WriteString(`<td class="col-form"></td>`)
+			sb.WriteString(`<td class="right col-janqty"></td>`)
+			sb.WriteString(fmt.Sprintf(`<td class="right col-janpackqty">%.0f</td>`, tx.JanPackUnitQty))
 			sb.WriteString(fmt.Sprintf(`<td class="center col-janunit">%s</td>`, tx.JanUnitName))
 			sb.WriteString(fmt.Sprintf(`<td class="right col-amount">%s</td>`, formattedSubtotal))
-			sb.WriteString(fmt.Sprintf(`<td classcol-lot">%s</td>`, tx.LotNumber))
+			sb.WriteString(fmt.Sprintf(`<td class="col-lot">%s</td>`, tx.LotNumber))
 			sb.WriteString(fmt.Sprintf(`<td class="col-receipt">%s</td>`, tx.ReceiptNumber))
 			sb.WriteString(fmt.Sprintf(`<td class="center col-ma">%s</td>`, tx.ProcessFlagMA))
 			sb.WriteString(`</tr>`)
@@ -369,8 +401,6 @@ func renderTransactionTableHTML(transactions []model.TransactionRecord) string {
 
 	return sb.String()
 }
-
-// ▲▲▲【追加ここまで】▲▲▲
 
 
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\database\clients.go -----
@@ -465,6 +495,7 @@ func GetJcshmsInfoByJan(dbtx DBTX, janCode string) (*model.JcshmsInfo, error) {
 
 
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\database\product_master_query.go -----
+// C:\Users\wasab\OneDrive\デスクトップ\TKR\database\product_master_query.go
 package database
 
 import (
@@ -518,25 +549,16 @@ func GetFilteredProductMasters(dbtx DBTX, usageClass, productName, kanaName, gen
 
 	// 棚番は 0文字より大きい場合、条件に追加 (完全一致)
 	if len(shelfNumber) > 0 {
+		// ▼▼▼【修正】undefined: conditions のバグ修正 ▼▼▼
 		mustConditions = append(mustConditions, "shelf_number = ?") // 完全一致
+		// ▲▲▲【修正ここまで】▲▲▲
 		args = append(args, shelfNumber)
 	}
-
-	// WHERE 句の組み立てロジック
-	// ▼▼▼【修正】条件の数をチェック（usageClassのみは除く）するロジックを削除 ▼▼▼
-	/*
-		if len(mustConditions) <= 1 {
-			// usageClass 以外の検索条件が指定されなかった場合
-			return []model.ProductMaster{}, nil
-		}
-	*/
-	// ▲▲▲【修正ここまで】▲▲▲
 
 	// 最終 WHERE 句の結合
 	if len(mustConditions) > 0 {
 		query += " WHERE " + strings.Join(mustConditions, " AND ")
 	} else {
-		// (ここには到達しないはずだが念のため)
 		return []model.ProductMaster{}, fmt.Errorf("usage class filter is required")
 	}
 
@@ -568,6 +590,20 @@ func GetProductMasterByCode(dbtx DBTX, code string) (*model.ProductMaster, error
 	}
 	return &master, nil
 }
+
+// ▼▼▼【ここから追加】GS1コードで product_master を検索する関数 ▼▼▼
+func GetProductMasterByGs1Code(dbtx DBTX, gs1Code string) (*model.ProductMaster, error) {
+	var master model.ProductMaster
+	query := `SELECT * FROM product_master WHERE gs1_code = ?`
+	err := dbtx.Get(&master, query, gs1Code)
+	if err != nil {
+		// sql.ErrNoRows も含め、エラーとして返す
+		return nil, fmt.Errorf("failed to get product master by gs1_code %s: %w", gs1Code, err)
+	}
+	return &master, nil
+}
+
+// ▲▲▲【追加ここまで】▲▲▲
 
 
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\database\sequence.go -----
@@ -643,11 +679,12 @@ func InitializeSequenceFromMaxYjCode(tx *sqlx.Tx) error {
 
 
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\database\transaction_records_query.go -----
-// C:\Users\wasab\OneDrive\デスクトップ\TKR\database\transaction_records_query.go (全体)
+// C:\Users\wasab\OneDrive\デスクトップ\TKR\database\transaction_records_query.go
 package database
 
 import (
 	"fmt"
+	"strings"
 	"tkr/model"
 
 	"github.com/jmoiron/sqlx"
@@ -727,6 +764,53 @@ func GetTransactionsByProductCodes(db *sqlx.DB, productCodes []string) (map[stri
 	}
 	return transactionsMap, nil
 }
+
+// ▼▼▼【ここから修正】引数名を janCode (product_code) に変更 ▼▼▼
+func SearchTransactions(db *sqlx.DB, janCode string, expiryYYMMDD string, expiryYYMM string, lotNumber string) ([]model.TransactionRecord, error) {
+	var transactions []model.TransactionRecord
+
+	conditions := []string{}
+	args := []interface{}{}
+
+	if janCode != "" {
+		conditions = append(conditions, "jan_code = ?")
+		args = append(args, janCode)
+	}
+
+	if expiryYYMMDD != "" && expiryYYMM != "" {
+		conditions = append(conditions, "(expiry_date = ? OR expiry_date = ?)")
+		args = append(args, expiryYYMM)
+		args = append(args, expiryYYMMDD)
+	} else if expiryYYMMDD != "" {
+		conditions = append(conditions, "expiry_date = ?")
+		args = append(args, expiryYYMMDD)
+	} else if expiryYYMM != "" {
+		conditions = append(conditions, "expiry_date = ?")
+		args = append(args, expiryYYMM)
+	}
+
+	if lotNumber != "" {
+		conditions = append(conditions, "lot_number = ?")
+		args = append(args, lotNumber)
+	}
+
+	if len(conditions) == 0 {
+		return transactions, nil
+	}
+
+	query := `SELECT * FROM transaction_records WHERE `
+	query += strings.Join(conditions, " AND ")
+	query += ` ORDER BY transaction_date, id`
+
+	err := db.Select(&transactions, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to select transactions by dynamic criteria: %w", err)
+	}
+
+	return transactions, nil
+}
+
+// ▲▲▲【修正ここまで】▲▲▲
 
 
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\database\transaction.go -----
@@ -1005,13 +1089,15 @@ func LoadCSV(db *sqlx.DB, filepath, tablename string, expectedColumns int, skipH
 
 
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\masteredit\handler.go -----
-// C:\Users\wasab\OneDrive\デスクトップ\TKR\masteredit\handler.go (全体)
+// C:\Users\wasab\OneDrive\デスクトップ\TKR\masteredit\handler.go
 package masteredit
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
+	"strings" // ★ strings をインポート
 	"tkr/database"
 	"tkr/mastermanager"
 	"tkr/model"
@@ -1027,23 +1113,101 @@ func ListMastersHandler(db *sqlx.DB) http.HandlerFunc {
 		productName := queryParams.Get("product_name")
 		kanaName := queryParams.Get("kana_name")
 		genericName := queryParams.Get("generic_name")
-
 		shelfNumber := queryParams.Get("shelf_number")
+
+		// ▼▼▼【修正】内外注区分が指定されていない場合は空のレスポンスを返す ▼▼▼
+		if usageClass == "" {
+			log.Println("ListMastersHandler: usage_class is required, returning empty.")
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"tableHTML": renderMasterListHTML(nil, "内外注区分を選択してください。"), // 空のテーブルHTML
+				"masters":   []model.ProductMaster{},                      // 空のマスター配列
+			})
+			return
+		}
+		// ▲▲▲【修正ここまで】▲▲▲
 
 		masters, err := database.GetFilteredProductMasters(db, usageClass, productName, kanaName, genericName, shelfNumber)
 
 		if err != nil {
 			log.Printf("Error fetching filtered product masters: %v", err)
-			http.Error(w, "Failed to retrieve product masters", http.StatusInternalServerError)
+			// ▼▼▼【修正】エラー時もJSONで返す ▼▼▼
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"tableHTML": renderMasterListHTML(nil, "マスターの検索中にエラーが発生しました。"),
+				"masters":   []model.ProductMaster{},
+			})
+			// ▲▲▲【修正ここまで】▲▲▲
 			return
 		}
 
+		// ▼▼▼【修正】HTML文字列とマスターJSON配列を両方返す ▼▼▼
+		tableHTML := renderMasterListHTML(masters, "") // ステータスメッセージなし
+
 		w.Header().Set("Content-Type", "application/json")
-		if err := json.NewEncoder(w).Encode(masters); err != nil {
+		if err := json.NewEncoder(w).Encode(map[string]interface{}{
+			"tableHTML": tableHTML, // 生成したHTML
+			"masters":   masters,   // JavaScriptキャッシュ用のJSONデータ
+		}); err != nil {
 			log.Printf("Error encoding product masters to JSON: %v", err)
+			// (フォールバックエラー)
+			http.Error(w, "Failed to encode response", http.StatusInternalServerError)
 		}
+		// ▲▲▲【修正ここまで】▲▲▲
 	}
 }
+
+// ▼▼▼【ここから追加】マスター一覧のHTMLテーブル文字列を生成する関数 ▼▼▼
+func renderMasterListHTML(masters []model.ProductMaster, statusMessage string) string {
+	var sb strings.Builder
+
+	// 1. テーブルヘッダー (thead)
+	sb.WriteString(`
+    <thead>
+        <tr>
+            <th class="col-action"></th>
+            <th class="col-yj">YJコード</th>
+            <th class="col-gs1">GS1コード</th>
+            <th class="col-jan">JANコード</th>
+            <th class="col-product">製品名</th>
+            <th class="col-kana">カナ名</th>
+            <th class="col-maker">メーカー</th>
+            <th class="col-generic">一般名</th>
+            <th class="col-shelf">棚番</th>
+        </tr>
+    </thead>`)
+
+	// 2. テーブルボディ (tbody)
+	sb.WriteString(`<tbody>`)
+	if statusMessage != "" {
+		// 検索前やエラー時のメッセージ
+		sb.WriteString(fmt.Sprintf(`<tr><td colspan="9">%s</td></tr>`, statusMessage))
+	} else if len(masters) == 0 {
+		// 検索結果が0件の場合
+		sb.WriteString(`<tr><td colspan="9">データがありません。</td></tr>`)
+	} else {
+		// 検索結果を描画
+		for _, master := range masters {
+			sb.WriteString(fmt.Sprintf(`<tr data-product-code="%s">`, master.ProductCode))
+			sb.WriteString(fmt.Sprintf(`<td class="center col-action"><button class="edit-master-btn btn" data-code="%s">編集</button></td>`, master.ProductCode))
+			sb.WriteString(fmt.Sprintf(`<td class="col-yj">%s</td>`, master.YjCode))
+			sb.WriteString(fmt.Sprintf(`<td class="col-gs1">%s</td>`, master.Gs1Code))
+			sb.WriteString(fmt.Sprintf(`<td class="col-jan">%s</td>`, master.ProductCode))
+			sb.WriteString(fmt.Sprintf(`<td class="left col-product">%s</td>`, master.ProductName))
+			sb.WriteString(fmt.Sprintf(`<td class="left col-kana">%s</td>`, master.KanaName))
+			sb.WriteString(fmt.Sprintf(`<td class="left col-maker">%s</td>`, master.MakerName))
+			sb.WriteString(fmt.Sprintf(`<td class="left col-generic">%s</td>`, master.GenericName))
+			sb.WriteString(fmt.Sprintf(`<td class="col-shelf">%s</td>`, master.ShelfNumber))
+			sb.WriteString(`</tr>`)
+		}
+	}
+	sb.WriteString(`</tbody>`)
+
+	return sb.String()
+}
+
+// ▲▲▲【追加ここまで】▲▲▲
 
 func UpdateMasterHandler(db *sqlx.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -1618,6 +1782,108 @@ func ParseDat(r io.Reader) ([]model.DatRecord, error) {
 }
 
 
+----- C:\Users\wasab\OneDrive\デスクトップ\TKR\parsers\gs1_parser.go -----
+// C:\Users\wasab\OneDrive\デスクトップ\TKR\parsers\gs1_parser.go
+package parsers
+
+import (
+	"fmt"
+	"strings"
+)
+
+// GS1Result はGS1-128バーコードの解析結果を格納します
+type GS1Result struct {
+	JanCode    string // (01) GTIN (14桁)
+	ExpiryDate string // (17) 有効期限 (YYMMDD)
+	LotNumber  string // (10) ロット番号
+}
+
+// aiLengths は可変長AIの最大長を定義します (今回はロット(10)のみ)
+var aiLengths = map[string]int{
+	"10": 20, // ロット番号 (最大20桁)
+}
+
+// ParseGS1_128 はGS1-128形式の文字列を解析します
+func ParseGS1_128(code string) (*GS1Result, error) {
+	result := &GS1Result{}
+	i := 0
+	length := len(code)
+
+	if length == 0 {
+		return nil, fmt.Errorf("バーコードが空です")
+	}
+
+	for i < length {
+		// (01) GTIN (14桁固定)
+		if strings.HasPrefix(code[i:], "01") {
+			if i+16 > length {
+				return nil, fmt.Errorf("AI(01)のデータが不足しています")
+			}
+			result.JanCode = code[i+2 : i+16]
+			i += 16
+			continue
+		}
+
+		// (17) 有効期限 (6桁固定)
+		if strings.HasPrefix(code[i:], "17") {
+			if i+8 > length {
+				return nil, fmt.Errorf("AI(17)のデータが不足しています")
+			}
+			result.ExpiryDate = code[i+2 : i+8] // YYMMDD
+			i += 8
+			continue
+		}
+
+		// (10) ロット番号 (可変長)
+		if strings.HasPrefix(code[i:], "10") {
+			if i+2 >= length {
+				return nil, fmt.Errorf("AI(10)のデータが不足しています")
+			}
+
+			dataStart := i + 2
+			// 次のAI開始位置、または文字列の終わりまでを探す
+			dataEnd := dataStart
+			maxLength := aiLengths["10"]
+			count := 0
+
+			for dataEnd < length && count < maxLength {
+				// 次のAI開始識別子 (例: '01', '17', '10') があれば、そこが区切り
+				if dataEnd+2 <= length {
+					nextAI := code[dataEnd : dataEnd+2]
+					if _, fixed := aiLengths[nextAI]; fixed { // 可変長AI
+						break
+					}
+					if nextAI == "01" || nextAI == "17" { // 固定長AI
+						break
+					}
+				}
+				dataEnd++
+				count++
+			}
+
+			result.LotNumber = code[dataStart:dataEnd]
+			i = dataEnd
+			continue
+		}
+
+		// 不明なAIまたはデータ部分
+		// ここでは(01)(17)(10)以外は無視して進む
+		i++
+	}
+
+	// GTIN(01)は必須とする (もしバーコードスキャンが(17)や(10)から始まる場合、このチェックは外す)
+	if result.JanCode == "" {
+		// (01)がなくても他の情報があれば良しとする場合
+		if result.ExpiryDate != "" || result.LotNumber != "" {
+			return result, nil
+		}
+		return nil, fmt.Errorf("バーコードから有効な情報(01, 17, 10)が見つかりませんでした")
+	}
+
+	return result, nil
+}
+
+
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\parsers\usage_parser.go -----
 // C:\Users\wasab\OneDrive\デスクトップ\TKR\parsers\usage_parser.go (全体)
 package parsers
@@ -1981,12 +2247,11 @@ import (
 	"github.com/jmoiron/sqlx"
 	_ "github.com/mattn/go-sqlite3"
 
-	"tkr/config" // ★ Import config
+	"tkr/config"
 	"tkr/dat"
 	"tkr/database"
 	"tkr/loader"
 	"tkr/masteredit"
-	// "tkr/usage" // ★ USAGE削除
 )
 
 func main() {
@@ -1998,7 +2263,6 @@ func main() {
 	defer dbConn.Close()
 	log.Println("Database connection successful.")
 
-	// ★ Load config on startup
 	if _, err := config.LoadConfig(); err != nil {
 		log.Printf("WARN: Failed to load config file: %v. Using defaults.", err)
 	}
@@ -2046,30 +2310,17 @@ func main() {
 	})
 
 	mux.HandleFunc("/api/dat/upload", dat.UploadDatHandler(dbConn))
+	// ▼▼▼【ここから追加】期限・ロット検索APIエンドポイント ▼▼▼
+	mux.HandleFunc("/api/dat/search", dat.SearchDatHandler(dbConn))
+	// ▲▲▲【追加ここまで】▲▲▲
 
 	mux.HandleFunc("/api/masters", masteredit.ListMastersHandler(dbConn))
 	mux.HandleFunc("/api/masters/update", masteredit.UpdateMasterHandler(dbConn))
 
-	// ★ USAGE削除 (関連ハンドラを削除)
-	/*
-		mux.HandleFunc("/api/usage/config", func(w http.ResponseWriter, r *http.Request) {
-			if r.Method == http.MethodGet {
-				usage.GetUsageConfigHandler(dbConn)(w, r)
-			} else if r.Method == http.MethodPost {
-				usage.SaveUsageConfigHandler(dbConn)(w, r)
-			} else {
-				http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
-			}
-		})
-		mux.HandleFunc("/api/usage/import", usage.ImportUsageHandler(dbConn)) // Assumes POST method
-	*/
-
 	port := ":8080"
 	log.Printf("Starting server on http://localhost%s", port)
 
-	// ▼▼▼【ここから修正】openBrowser 関数を呼び出す ▼▼▼
 	openBrowser("http://localhost:8080")
-	// ▲▲▲【修正ここまで】▲▲▲
 
 	if err := http.ListenAndServe(port, mux); err != nil {
 		log.Fatalf("server start error: %v", err)
