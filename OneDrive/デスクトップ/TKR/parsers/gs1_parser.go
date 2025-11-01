@@ -31,7 +31,7 @@ func ParseGS1_128(code string) (*GS1Result, error) {
 	for i < length {
 		// (01) GTIN (14桁固定)
 		if strings.HasPrefix(code[i:], "01") {
-			if i+16 > length {
+			if i+16 > length { // AI(2) + Data(14)
 				return nil, fmt.Errorf("AI(01)のデータが不足しています")
 			}
 			result.JanCode = code[i+2 : i+16]
@@ -41,7 +41,7 @@ func ParseGS1_128(code string) (*GS1Result, error) {
 
 		// (17) 有効期限 (6桁固定)
 		if strings.HasPrefix(code[i:], "17") {
-			if i+8 > length {
+			if i+8 > length { // AI(2) + Data(6)
 				return nil, fmt.Errorf("AI(17)のデータが不足しています")
 			}
 			result.ExpiryDate = code[i+2 : i+8] // YYMMDD
@@ -51,29 +51,43 @@ func ParseGS1_128(code string) (*GS1Result, error) {
 
 		// (10) ロット番号 (可変長)
 		if strings.HasPrefix(code[i:], "10") {
-			if i+2 >= length {
+			if i+2 > length { // AI(2) + 少なくとも1桁のデータ
 				return nil, fmt.Errorf("AI(10)のデータが不足しています")
 			}
 
 			dataStart := i + 2
-			// 次のAI開始位置、または文字列の終わりまでを探す
 			dataEnd := dataStart
 			maxLength := aiLengths["10"]
-			count := 0
 
-			for dataEnd < length && count < maxLength {
-				// 次のAI開始識別子 (例: '01', '17', '10') があれば、そこが区切り
-				if dataEnd+2 <= length {
-					nextAI := code[dataEnd : dataEnd+2]
-					if _, fixed := aiLengths[nextAI]; fixed { // 可変長AI
-						break
-					}
-					if nextAI == "01" || nextAI == "17" { // 固定長AI
-						break
-					}
+			for dataEnd < length {
+				if (dataEnd - dataStart) >= maxLength { // 最大長に達したら終了
+					break
 				}
+
+				remaining := code[dataEnd:]
+
+				// ▼▼▼【修正】次のAIが「完全な形」で存在する場合のみ区切る ▼▼▼
+				if len(remaining) >= 2 {
+					nextAI := remaining[:2]
+
+					// 次が AI(01) か？ (01 + 14桁データ が必要)
+					if nextAI == "01" {
+						if len(remaining) >= 16 { // AI(2) + Data(14) = 16
+							break // データが十分あるので、AI(10)はここまで
+						}
+					}
+
+					// 次が AI(17) か？ (17 + 6桁データ が必要)
+					if nextAI == "17" {
+						if len(remaining) >= 8 { // AI(2) + Data(6) = 8
+							break // データが十分あるので、AI(10)はここまで
+						}
+					}
+					// (注: もし AI(10) が続く場合もFNC1が必要だが、FNC1省略運用ではAI(10)の連続は解析不能)
+				}
+				// ▲▲▲【修正ここまで】▲▲▲
+
 				dataEnd++
-				count++
 			}
 
 			result.LotNumber = code[dataStart:dataEnd]
@@ -82,13 +96,12 @@ func ParseGS1_128(code string) (*GS1Result, error) {
 		}
 
 		// 不明なAIまたはデータ部分
-		// ここでは(01)(17)(10)以外は無視して進む
 		i++
 	}
 
-	// GTIN(01)は必須とする (もしバーコードスキャンが(17)や(10)から始まる場合、このチェックは外す)
+	// (01)GTINが見つからなかった場合
 	if result.JanCode == "" {
-		// (01)がなくても他の情報があれば良しとする場合
+		// (17)や(10)だけでも情報があれば良しとする
 		if result.ExpiryDate != "" || result.LotNumber != "" {
 			return result, nil
 		}

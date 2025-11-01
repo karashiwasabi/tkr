@@ -4,6 +4,7 @@ package dat
 import (
 	"database/sql" // ★ sql.ErrNoRows のために追加
 	"encoding/json"
+	"errors" // ★ errors.Is のために追加
 	"fmt"
 	"log"
 	"mime/multipart"
@@ -136,7 +137,7 @@ func UploadDatHandler(db *sqlx.DB) http.HandlerFunc {
 	}
 }
 
-// ▼▼▼【ここから追加】GS1-128検索ハンドラ (2段階検索ロジック) ▼▼▼
+// ▼▼▼【ここから修正】SearchDatHandler のエラーハンドリングを修正 ▼▼▼
 func SearchDatHandler(db *sqlx.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
@@ -168,17 +169,19 @@ func SearchDatHandler(db *sqlx.DB) http.HandlerFunc {
 		// 1. GS1コード(14桁)で product_master を検索
 		master, err := database.GetProductMasterByGs1Code(db, gtin14)
 		if err != nil {
-			if err == sql.ErrNoRows {
+			// ▼▼▼【修正】errors.Is を使って sql.ErrNoRows を正しく判定 ▼▼▼
+			if errors.Is(err, sql.ErrNoRows) {
 				log.Printf("Product master not found for GS1_CODE: %s", gtin14)
 				respondJSONError(w, "GS1コードに対応するマスターが見つかりません。", http.StatusNotFound)
 			} else {
 				log.Printf("Error searching product master by GS1_CODE %s: %v", gtin14, err)
-				respondJSONError(w, "マスター検索中にエラーが発生しました。", http.StatusInternalServerError)
+				respondJSONError(w, "マスター検索中にデータベースエラーが発生しました。", http.StatusInternalServerError)
 			}
+			// ▲▲▲【修正ここまで】▲▲▲
 			return
 		}
 
-		productCode := master.ProductCode // product_master.product_code (JAN)
+		productCode := master.ProductCode
 
 		expiryYYMMDD := gs1Result.ExpiryDate
 		expiryYYMM := ""
@@ -210,7 +213,7 @@ func SearchDatHandler(db *sqlx.DB) http.HandlerFunc {
 	}
 }
 
-// ▲▲▲【追加ここまで】▲▲▲
+// ▲▲▲【修正ここまで】▲▲▲
 
 func MapDatToTransaction(dat model.DatRecord, master *model.ProductMaster) model.TransactionRecord {
 	packageSpec := fmt.Sprintf("%s %v%s", master.PackageForm, master.YjPackUnitQty, master.YjUnitName)
@@ -342,9 +345,7 @@ func renderTransactionTableHTML(transactions []model.TransactionRecord) string {
 			sb.WriteString(fmt.Sprintf(`<td class="right col-janpackqty">%.0f</td>`, tx.JanPackUnitQty))
 			sb.WriteString(fmt.Sprintf(`<td class="center col-janunit">%s</td>`, tx.JanUnitName))
 			sb.WriteString(fmt.Sprintf(`<td class="right col-amount">%s</td>`, formattedSubtotal))
-			// ▼▼▼【修正】class 属性のタイプミスを修正 (classcol-lot -> class="col-lot") ▼▼▼
 			sb.WriteString(fmt.Sprintf(`<td class="col-lot">%s</td>`, tx.LotNumber))
-			// ▲▲▲【修正ここまで】▲▲▲
 			sb.WriteString(fmt.Sprintf(`<td class="col-receipt">%s</td>`, tx.ReceiptNumber))
 			sb.WriteString(fmt.Sprintf(`<td class="center col-ma">%s</td>`, tx.ProcessFlagMA))
 			sb.WriteString(`</tr>`)
