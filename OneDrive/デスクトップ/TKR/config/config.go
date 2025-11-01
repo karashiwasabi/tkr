@@ -1,4 +1,4 @@
-// C:\Users\wasab\OneDrive\デスクトップ\TKR\config\config.go (全体)
+// C:\Users\wasab\OneDrive\デスクトップ\TKR\config\config.go
 package config
 
 import (
@@ -9,11 +9,14 @@ import (
 
 type Config struct {
 	UsageFolderPath string `json:"usageFolderPath"`
+	DatFolderPath   string `json:"datFolderPath"`
 }
 
 var (
 	cfg Config
-	mu  sync.RWMutex
+	// ▼▼▼【修正】RWMex -> RWMutex ▼▼▼
+	mu sync.RWMutex
+	// ▲▲▲【修正ここまで】▲▲▲
 )
 
 const configFilePath = "./tkr_config.json"

@@ -1,4 +1,4 @@
-// C:\Users\wasab\OneDrive\デスクトップ\TKR\database\wholesalers.go (全体)
+// C:\Users\wasab\OneDrive\デスクトップ\TKR\database\wholesalers.go
 package database
 
 import (
@@ -16,6 +16,22 @@ func GetAllWholesalers(db *sqlx.DB) ([]model.Wholesaler, error) {
 	}
 	return wholesalers, nil
 }
+
+// ▼▼▼【ここから追加】卸コードと卸名のマップを取得する関数 ▼▼▼
+func GetWholesalerMap(db *sqlx.DB) (map[string]string, error) {
+	wholesalers, err := GetAllWholesalers(db)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get wholesaler list for map: %w", err)
+	}
+
+	wholesalerMap := make(map[string]string)
+	for _, w := range wholesalers {
+		wholesalerMap[w.WholesalerCode] = w.WholesalerName
+	}
+	return wholesalerMap, nil
+}
+
+// ▲▲▲【追加ここまで】▲▲▲
 
 func CreateWholesaler(db *sqlx.DB, code, name string) error {
 	const q = `INSERT INTO wholesalers (wholesaler_code, wholesaler_name) VALUES (?, ?)`

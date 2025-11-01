@@ -6,12 +6,14 @@
     <link rel="stylesheet" href="/static/css/styles.css">
     <link rel="stylesheet" href="/static/css/table.css">
     <link rel="stylesheet" href="/static/css/masteredit.css">
-    </head>
+    <link rel="stylesheet" href="/static/css/config.css">
+</head>
 <body>
     <header id="main-header">
         <button id="datViewBtn" class="btn">DAT取込</button>
         <button id="masterEditViewBtn" class="btn">マスタ編集</button>
-        </header>
+        <button id="configViewBtn" class="btn">設定</button>
+    </header>
 
     <main>
         <div id="dat-upload-view" class="view active"> <h1>ファイルアップロード</h1>
@@ -40,11 +42,13 @@
             
             <div id="datTableContainer" class="table-container">
                 <table id="mainDataTable" class="data-table">
-                    </table>
+                </table>
             </div>
         </div>
+
         <div id="master-edit-view" class="view">
             <h1>マスタ編集</h1>
+
             <div class="filter-container" style="padding: 10px; margin-bottom: 10px;">
                 <fieldset style="border: 1px solid #ccc; padding: 5px;">
                     <legend>検索条件</legend>
@@ -76,20 +80,83 @@
                     </div>
                 </fieldset>
             </div>
+
             <div id="masterListContainer" class="table-container">
                 <table id="masterListTable" class="data-table">
-                    <thead></thead>
-                    <tbody></tbody>
+                    <thead>
+                    </thead>
+                    <tbody>
+                    </tbody>
                 </table>
             </div>
         </div>
-        </main>
+
+        <div id="config-view" class="view">
+            <h1>設定</h1>
+
+            <section class="config-section">
+                <h2>パス設定</h2>
+                <div class="config-form-container">
+                    
+                    <div class="form-group">
+                        <label for="config-dat-folder-path">伝票取込フォルダパス (DAT):</label>
+                        <input type="text" id="config-dat-folder-path" autocomplete="off">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="config-usage-folder-path">処方取込フォルダパス (CSV):</label>
+                        <input type="text" id="config-usage-folder-path" autocomplete="off">
+                    </div>
+                    
+                    <div class="form-actions">
+                        <button id="configSavePathBtn" class="btn">パス保存</button>
+                    </div>
+                </div>
+            </section>
+
+            <section class="config-section">
+                <h2>卸コード管理</h2>
+                
+                <div class="config-form-container">
+                    <fieldset>
+                        <legend>新規卸コード追加</legend>
+                        <div class="form-row">
+                            <div class="form-group" style="flex-basis: 150px;">
+                                <label for="config-wholesaler-code">卸コード:</label>
+                                <input type="text" id="config-wholesaler-code" autocomplete="off" maxlength="10">
+                            </div>
+                            <div class="form-group" style="flex-basis: 300px;">
+                                <label for="config-wholesaler-name">卸名:</label>
+                                <input type="text" id="config-wholesaler-name" autocomplete="off">
+                            </div>
+                            <div class="form-actions">
+                                <button id="configAddWholesalerBtn" class="btn">追加</button>
+                            </div>
+                        </div>
+                    </fieldset>
+                </div>
+                
+                <div id="wholesalerListContainer" class="table-container" style="max-height: 300px; margin-top: 10px;">
+                    <table id="wholesalerListTable" class="data-table">
+                        <thead>
+                            <tr>
+                                <th style="width: 25%;">卸コード</th>
+                                <th style="width: 60%;">卸名</th>
+                                <th style="width: 15%;">操作</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+        </div>
+    </main>
 
     <div id="loading-overlay" class="hidden">
         <div class="spinner"></div>
         <span id="loading-message">処理中...</span>
-        </div>
-
+    </div>
     <div id="notification-box"></div>
 
     <div id="masterEditModalOverlay" class="modal-overlay hidden">
@@ -139,6 +206,7 @@
                         <input type="text" id="edit-maker-name" class="readonly-field" readonly>
                     </div>
                 </div>
+
                 <div class="form-row readonly-group">
                     <div class="form-group" style="flex-basis: 80px;">
                         <label for="edit-usage-classification">内外注</label>
@@ -169,6 +237,7 @@
                         <input type="number" id="edit-jan-pack-unit-qty" class="readonly-field" readonly>
                     </div>
                 </div>
+
                 <div class="form-row">
                     <div class="form-group" style="flex-basis: 100px;">
                         <label for="edit-nhi-price">薬価 (編集不可: JCSHMS)</label>
@@ -183,6 +252,7 @@
                         <input type="text" id="edit-supplier-wholesale">
                     </div>
                 </div>
+                
                 <div class="form-row">
                     <div class="form-group" style="flex-basis: 100px;">
                         <label for="edit-group-code">薬品分類CD (編集可)</label>
@@ -201,6 +271,7 @@
                         <input type="text" id="edit-user-notes">
                     </div>
                 </div>
+
                 <div class="form-row readonly-group">
                     <div class="form-group" style="flex-basis: 50px;"><label for="edit-flag-poison">毒</label><input type="number" id="edit-flag-poison" class="readonly-field" readonly></div>
                     <div class="form-group" style="flex-basis: 50px;"><label for="edit-flag-deleterious">劇</label><input type="number" id="edit-flag-deleterious" class="readonly-field" readonly></div>
@@ -209,6 +280,7 @@
                     <div class="form-group" style="flex-basis: 50px;"><label for="edit-flag-stimulant">覚</label><input type="number" id="edit-flag-stimulant" class="readonly-field" readonly></div>
                     <div class="form-group" style="flex-basis: 50px;"><label for="edit-flag-stimulant-raw">覚原</label><input type="number" id="edit-flag-stimulant-raw" class="readonly-field" readonly></div>
                 </div>
+                
                  <div class="form-row readonly-group">
                     <div class="form-group" style="flex-basis: 100px;">
                         <label for="edit-is-order-stopped">発注停止</label>
@@ -219,6 +291,7 @@
                         <input type="text" id="edit-specification" class="readonly-field" readonly>
                     </div>
                 </div>
+
                 <div class="form-actions">
                     <button type="button" id="saveMasterBtn" class="btn">保存</button>
                     <button type="button" id="cancelEditMasterBtn" class="btn">閉じる</button>
@@ -226,6 +299,7 @@
             </form>
         </div>
     </div>
+
     <script type="module" src="/static/js/app.js"></script>
 </body>
 </html>

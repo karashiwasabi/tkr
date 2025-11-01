@@ -2,9 +2,9 @@
 package dat
 
 import (
-	"database/sql" // ★ sql.ErrNoRows のために追加
+	"database/sql"
 	"encoding/json"
-	"errors" // ★ errors.Is のために追加
+	"errors"
 	"fmt"
 	"log"
 	"mime/multipart"
@@ -19,6 +19,7 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
+// ▼▼▼【修正】卸名変換マップを引数に追加 ▼▼▼
 func respondJSONError(w http.ResponseWriter, message string, statusCode int) {
 	log.Println("Error response:", message)
 	w.Header().Set("Content-Type", "application/json")
@@ -26,15 +27,25 @@ func respondJSONError(w http.ResponseWriter, message string, statusCode int) {
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"message":   message,
 		"results":   []interface{}{},
-		"tableHTML": renderTransactionTableHTML(nil),
+		"tableHTML": renderTransactionTableHTML(nil, nil), // ★ 卸名マップ(nil)を追加
 	})
 }
 
+// ▲▲▲【修正ここまで】▲▲▲
+
+// ▼▼▼【修正】卸名マップを作成し、HTMLレンダリングに渡す ▼▼▼
 func UploadDatHandler(db *sqlx.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		log.Println("Received DAT upload request...")
 
-		err := r.ParseMultipartForm(32 << 20)
+		// ★ 先に卸マスターを取得・マップ化
+		wholesalerMap, err := database.GetWholesalerMap(db)
+		if err != nil {
+			respondJSONError(w, "卸マスターの読み込みに失敗しました。", http.StatusInternalServerError)
+			return
+		}
+
+		err = r.ParseMultipartForm(32 << 20)
 		if err != nil {
 			respondJSONError(w, "File upload error: "+err.Error(), http.StatusBadRequest)
 			return
@@ -126,7 +137,8 @@ func UploadDatHandler(db *sqlx.DB) http.HandlerFunc {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		htmlString := renderTransactionTableHTML(successfullyInsertedTransactions)
+		// ★ 卸名マップを渡す
+		htmlString := renderTransactionTableHTML(successfullyInsertedTransactions, wholesalerMap)
 
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"message":   fmt.Sprintf("Processed %d DAT file(s). See results for details.", len(processedFiles)),
@@ -137,11 +149,20 @@ func UploadDatHandler(db *sqlx.DB) http.HandlerFunc {
 	}
 }
 
-// ▼▼▼【ここから修正】SearchDatHandler のエラーハンドリングを修正 ▼▼▼
+// ▲▲▲【修正ここまで】▲▲▲
+
+// ▼▼▼【修正】卸名マップを作成し、HTMLレンダリングに渡す ▼▼▼
 func SearchDatHandler(db *sqlx.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			respondJSONError(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		// ★ 先に卸マスターを取得・マップ化
+		wholesalerMap, err := database.GetWholesalerMap(db)
+		if err != nil {
+			respondJSONError(w, "卸マスターの読み込みに失敗しました。", http.StatusInternalServerError)
 			return
 		}
 
@@ -166,10 +187,8 @@ func SearchDatHandler(db *sqlx.DB) http.HandlerFunc {
 			return
 		}
 
-		// 1. GS1コード(14桁)で product_master を検索
 		master, err := database.GetProductMasterByGs1Code(db, gtin14)
 		if err != nil {
-			// ▼▼▼【修正】errors.Is を使って sql.ErrNoRows を正しく判定 ▼▼▼
 			if errors.Is(err, sql.ErrNoRows) {
 				log.Printf("Product master not found for GS1_CODE: %s", gtin14)
 				respondJSONError(w, "GS1コードに対応するマスターが見つかりません。", http.StatusNotFound)
@@ -177,7 +196,6 @@ func SearchDatHandler(db *sqlx.DB) http.HandlerFunc {
 				log.Printf("Error searching product master by GS1_CODE %s: %v", gtin14, err)
 				respondJSONError(w, "マスター検索中にデータベースエラーが発生しました。", http.StatusInternalServerError)
 			}
-			// ▲▲▲【修正ここまで】▲▲▲
 			return
 		}
 
@@ -192,7 +210,6 @@ func SearchDatHandler(db *sqlx.DB) http.HandlerFunc {
 		log.Printf("Parsed GS1: GTIN(14)='%s' -> ProductCode(JAN)='%s', Expiry(6)='%s', Expiry(4)='%s', Lot='%s'",
 			gtin14, productCode, expiryYYMMDD, expiryYYMM, gs1Result.LotNumber)
 
-		// 2. ProductCode(JAN), 期限(4/6), ロットで transaction_records を検索
 		transactions, err := database.SearchTransactions(db, productCode, expiryYYMMDD, expiryYYMM, gs1Result.LotNumber)
 
 		if err != nil {
@@ -203,7 +220,8 @@ func SearchDatHandler(db *sqlx.DB) http.HandlerFunc {
 
 		log.Printf("Found %d transactions matching criteria.", len(transactions))
 
-		htmlString := renderTransactionTableHTML(transactions)
+		// ★ 卸名マップを渡す
+		htmlString := renderTransactionTableHTML(transactions, wholesalerMap)
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]interface{}{
@@ -263,7 +281,8 @@ func OpenFileHeader(fh *multipart.FileHeader) (multipart.File, error) {
 	return fh.Open()
 }
 
-func renderTransactionTableHTML(transactions []model.TransactionRecord) string {
+// ▼▼▼【修正】卸名マップ(map[string]string)を引数に追加 ▼▼▼
+func renderTransactionTableHTML(transactions []model.TransactionRecord, wholesalerMap map[string]string) string {
 	var sb strings.Builder
 
 	sb.WriteString(`
@@ -290,7 +309,7 @@ func renderTransactionTableHTML(transactions []model.TransactionRecord) string {
             <th class="col-form">剤型</th>
             <th class="col-janqty">JAN数量</th>
             <th class="col-janpackqty">JAN包装数</th>
-            <th classs="col-janunit">JAN単位</th>
+            <th class="col-janunit">JAN単位</th>
             <th class="col-amount">金額</th>
             <th class="col-lot">ロット</th>
             <th class="col-receipt">伝票番号</th>
@@ -319,6 +338,14 @@ func renderTransactionTableHTML(transactions []model.TransactionRecord) string {
 				flagText = strconv.Itoa(tx.Flag)
 			}
 
+			// ★ 卸名をマップから取得
+			wholesalerName := tx.ClientCode
+			if wholesalerMap != nil {
+				if name, ok := wholesalerMap[tx.ClientCode]; ok {
+					wholesalerName = name
+				}
+			}
+
 			sb.WriteString(`<tr>`)
 			sb.WriteString(`<td class="center col-action">－</td>`)
 			sb.WriteString(fmt.Sprintf(`<td class="center col-date">%s</td>`, formattedDate))
@@ -330,7 +357,8 @@ func renderTransactionTableHTML(transactions []model.TransactionRecord) string {
 			sb.WriteString(fmt.Sprintf(`<td class="center col-yjunit">%s</td>`, tx.YjUnitName))
 			sb.WriteString(fmt.Sprintf(`<td class="right col-unitprice">%s</td>`, formattedUnitPrice))
 			sb.WriteString(fmt.Sprintf(`<td class="center col-expiry">%s</td>`, formattedExpiry))
-			sb.WriteString(fmt.Sprintf(`<td class="center col-wholesaler">%s</td>`, tx.ClientCode))
+			// ★ 卸コードではなく卸名を表示
+			sb.WriteString(fmt.Sprintf(`<td class="center col-wholesaler">%s</td>`, wholesalerName))
 			sb.WriteString(fmt.Sprintf(`<td class="center col-line">%s</td>`, tx.LineNumber))
 			sb.WriteString(`</tr>`)
 
@@ -355,3 +383,5 @@ func renderTransactionTableHTML(transactions []model.TransactionRecord) string {
 
 	return sb.String()
 }
+
+// ▲▲▲【修正ここまで】▲▲▲

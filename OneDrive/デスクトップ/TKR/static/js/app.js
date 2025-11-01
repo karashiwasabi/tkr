@@ -1,9 +1,10 @@
 // C:\Users\wasab\OneDrive\デスクトップ\TKR\static\js\app.js
 import { initDatUpload } from './dat.js';
 import { initMasterEditView } from './masteredit.js';
+import { initConfigView } from './config.js'; // ★【追加】
 
 let loadingOverlay, loadingMessage, notificationBox;
-let views, datViewBtn, masterEditViewBtn;
+let views, datViewBtn, masterEditViewBtn, configViewBtn; // ★【追加】configViewBtn
 
 window.showLoading = (message = '処理中...') => {
     if (!loadingOverlay) loadingOverlay = document.getElementById('loading-overlay');
@@ -37,6 +38,10 @@ function setActiveView(targetId) {
             view.classList.remove('active');
         }
     });
+    
+    // ★【追加】カスタムイベントを発火させて、各JSモジュールにビューの変更を通知
+    document.dispatchEvent(new CustomEvent('setActiveView', { detail: { viewId: targetId } }));
+
     if (targetId === 'master-edit-view') {
         const masterListBody = document.querySelector('#masterListTable tbody');
         if(masterListBody && masterListBody.children.length <= 1) {
@@ -54,9 +59,11 @@ document.addEventListener('DOMContentLoaded', () => {
     views = document.querySelectorAll('.view');
     datViewBtn = document.getElementById('datViewBtn');
     masterEditViewBtn = document.getElementById('masterEditViewBtn');
+    configViewBtn = document.getElementById('configViewBtn'); // ★【追加】
 
     initDatUpload();
     initMasterEditView();
+    initConfigView(); // ★【追加】
 
     if (datViewBtn) {
         datViewBtn.addEventListener('click', () => setActiveView('dat-upload-view'));
@@ -64,6 +71,10 @@ document.addEventListener('DOMContentLoaded', () => {
     if (masterEditViewBtn) 
     {
         masterEditViewBtn.addEventListener('click', () => setActiveView('master-edit-view'));
+    }
+    // ★【追加】
+    if (configViewBtn) {
+        configViewBtn.addEventListener('click', () => setActiveView('config-view'));
     }
 
     setActiveView('dat-upload-view');

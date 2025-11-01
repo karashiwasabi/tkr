@@ -1,0 +1,72 @@
+/* C:\Users\wasab\OneDrive\デスクトップ\TKR\static\css\config.css */
+
+#config-view h2 {
+    margin-top: 15px;
+    margin-bottom: 5px;
+    font-size: 1.1em;
+    border-bottom: 1px solid #eee;
+    padding-bottom: 3px;
+}
+
+/* 設定セクションの共通スタイル */
+.config-section {
+    background-color: #fdfdfd;
+    border: 1px solid #ddd;
+    padding: 10px 15px;
+    margin-bottom: 15px;
+    border-radius: 4px;
+}
+
+/* フォームコンテナ (パス設定や卸追加) */
+.config-form-container {
+    padding: 5px;
+}
+
+.config-form-container .form-row {
+    display: flex;
+    flex-wrap: wrap;
+    margin-bottom: 8px;
+    gap: 10px;
+    align-items: flex-end; /* ラベルとボタンの高さを揃える */
+}
+
+.config-form-container .form-group {
+    display: flex;
+    flex-direction: column;
+    flex-basis: 150px; 
+    flex-grow: 1;
+}
+
+.config-form-container .form-group label {
+    font-weight: bold;
+    margin-bottom: 3px;
+    font-size: 10px;
+}
+
+.config-form-container .form-group input[type="text"] {
+    width: 100%;
+    padding: 3px;
+    border: 1px solid #ccc;
+    border-radius: 3px;
+    font-size: inherit;
+    font-family: inherit;
+    box-sizing: border-box;
+}
+
+.config-form-container .form-actions {
+    margin-top: 15px;
+    margin-left: 10px; /* 入力欄との隙間 */
+}
+
+/* 卸一覧テーブルの削除ボタン */
+#wholesalerListTable .delete-wholesaler-btn {
+    padding: 1px 4px;
+    font-size: 9px;
+    background-color: #fbeeee;
+    border-color: #dc3545;
+    color: #dc3545;
+}
+#wholesalerListTable .delete-wholesaler-btn:hover {
+    background-color: #dc3545;
+    color: #fff;
+}

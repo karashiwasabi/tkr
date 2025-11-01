@@ -74,14 +74,30 @@ func main() {
 		log.Printf("Successfully returned JCSHMS info for JAN: %s", janCode)
 	})
 
+	// ▼▼▼【修正】構文エラーを修正し、すべてのルートが含まれるようにします ▼▼▼
 	mux.HandleFunc("/api/dat/upload", dat.UploadDatHandler(dbConn))
-
-	// ▼▼▼【ここから追加】GS1-128検索APIエンドポイント ▼▼▼
 	mux.HandleFunc("/api/dat/search", dat.SearchDatHandler(dbConn))
-	// ▲▲▲【追加ここまで】▲▲▲
 
 	mux.HandleFunc("/api/masters", masteredit.ListMastersHandler(dbConn))
 	mux.HandleFunc("/api/masters/update", masteredit.UpdateMasterHandler(dbConn))
+
+	// 卸管理API
+	mux.HandleFunc("/api/wholesalers/list", ListWholesalersHandler(dbConn))
+	mux.HandleFunc("/api/wholesalers/create", CreateWholesalerHandler(dbConn))
+	mux.HandleFunc("/api/wholesalers/delete/", DeleteWholesalerHandler(dbConn))
+
+	// パス設定など
+	mux.HandleFunc("/api/config", func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			GetConfigHandler()(w, r)
+		case http.MethodPost:
+			SaveConfigHandler()(w, r)
+		default:
+			http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+		}
+	})
+	// ▲▲▲【修正ここまで】▲▲▲
 
 	port := ":8080"
 	log.Printf("Starting server on http://localhost%s", port)
