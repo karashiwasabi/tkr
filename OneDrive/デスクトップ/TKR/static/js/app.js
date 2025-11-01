@@ -1,10 +1,13 @@
 // C:\Users\wasab\OneDrive\デスクトップ\TKR\static\js\app.js
 import { initDatUpload } from './dat.js';
 import { initMasterEditView } from './masteredit.js';
-import { initConfigView } from './config.js'; // ★【追加】
+import { initConfigView } from './config.js'; 
+import { initUsageUpload } from './usage.js'; // ▼▼▼【変更なし】▼▼▼
 
 let loadingOverlay, loadingMessage, notificationBox;
-let views, datViewBtn, masterEditViewBtn, configViewBtn; // ★【追加】configViewBtn
+// ▼▼▼【修正】usageViewBtn を追加 ▼▼▼
+let views, datViewBtn, usageViewBtn, masterEditViewBtn, configViewBtn;
+// ▲▲▲【修正ここまで】▲▲▲
 
 window.showLoading = (message = '処理中...') => {
     if (!loadingOverlay) loadingOverlay = document.getElementById('loading-overlay');
@@ -12,10 +15,12 @@ window.showLoading = (message = '処理中...') => {
     if (loadingMessage) loadingMessage.textContent = message;
     if (loadingOverlay) loadingOverlay.classList.remove('hidden');
 };
+
 window.hideLoading = () => {
     if (!loadingOverlay) loadingOverlay = document.getElementById('loading-overlay');
     if (loadingOverlay) loadingOverlay.classList.add('hidden');
 };
+
 window.showNotification = (message, type = 'success') => {
     if (!notificationBox) notificationBox = document.getElementById('notification-box');
     if (notificationBox) {
@@ -38,8 +43,7 @@ function setActiveView(targetId) {
             view.classList.remove('active');
         }
     });
-    
-    // ★【追加】カスタムイベントを発火させて、各JSモジュールにビューの変更を通知
+
     document.dispatchEvent(new CustomEvent('setActiveView', { detail: { viewId: targetId } }));
 
     if (targetId === 'master-edit-view') {
@@ -58,24 +62,32 @@ document.addEventListener('DOMContentLoaded', () => {
     notificationBox = document.getElementById('notification-box');
     views = document.querySelectorAll('.view');
     datViewBtn = document.getElementById('datViewBtn');
+    usageViewBtn = document.getElementById('usageViewBtn'); // ▼▼▼【ここに追加】▼▼▼
     masterEditViewBtn = document.getElementById('masterEditViewBtn');
-    configViewBtn = document.getElementById('configViewBtn'); // ★【追加】
+    configViewBtn = document.getElementById('configViewBtn'); 
 
     initDatUpload();
+    initUsageUpload(); // ▼▼▼【変更なし】▼▼▼
     initMasterEditView();
-    initConfigView(); // ★【追加】
+    initConfigView(); 
 
     if (datViewBtn) {
         datViewBtn.addEventListener('click', () => setActiveView('dat-upload-view'));
     }
+    // ▼▼▼【ここに追加】USAGEボタンのリスナー ▼▼▼
+    if (usageViewBtn) {
+        usageViewBtn.addEventListener('click', () => setActiveView('usage-upload-view'));
+    }
+    // ▲▲▲【追加ここまで】▲▲▲
     if (masterEditViewBtn) 
-    {
+  
+  {
         masterEditViewBtn.addEventListener('click', () => setActiveView('master-edit-view'));
     }
-    // ★【追加】
+    
     if (configViewBtn) {
         configViewBtn.addEventListener('click', () => setActiveView('config-view'));
-    }
+}
 
     setActiveView('dat-upload-view');
 });

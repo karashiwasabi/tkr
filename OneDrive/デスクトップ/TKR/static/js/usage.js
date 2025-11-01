@@ -1,148 +1,140 @@
 // C:\Users\wasab\OneDrive\デスクトップ\TKR\static\js\usage.js
 
-let usageFolderPathInput;
-let saveUsageConfigBtn;
-let manualImportUsageBtn;
-let usageImportResultContainer;
-let usageDataTableBody;
-
-async function loadUsageConfig() {
-    console.log("Loading usage config...");
-    try {
-        const response = await fetch('/api/usage/config');
-        if (!response.ok) {
-            throw new Error(`Failed to load config: ${response.statusText}`);
-        }
-        const config = await response.json();
-        if (usageFolderPathInput && config.usageFolderPath) {
-            usageFolderPathInput.value = config.usageFolderPath;
-        }
-        console.log("Usage config loaded:", config);
-    } catch (error) {
-        console.error("Error loading usage config:", error);
-        window.showNotification(`設定の読み込みに失敗しました: ${error.message}`, 'error');
-    }
+// dat.js の renderEmptyTable をコピー
+function renderEmptyTable(dataTable) {
+    if (!dataTable) return;
+    const columnCount = 13;
+    dataTable.innerHTML = `
+    <thead>
+        <tr>
+            <th rowspan="2" class="col-action">－</th>
+            <th class="col-date">日付</th>
+            <th class="col-yj">YJ</th>
+            <th colspan="2" class="col-product">製品名</th>
+            <th class="col-count">個数</th>
+            <th class="col-yjqty">YJ数量</th>
+            <th class="col-yjpackqty">YJ包装数</th>
+            <th class="col-yjunit">YJ単位</th>
+            <th class="col-unitprice">単価</th>
+            <th class="col-expiry">期限</th>
+            <th class="col-wholesaler">卸</th>
+            <th class="col-line">行</th>
+        </tr>
+        <tr>
+            <th class="col-flag">種別</th>
+            <th class="col-jan">JAN</th>
+            <th class="col-package">包装</th>
+            <th class="col-maker">メーカー</th>
+            <th class="col-form">剤型</th>
+            <th class="col-janqty">JAN数量</th>
+            <th class="col-janpackqty">JAN包装数</th>
+            <th class="col-janunit">JAN単位</th>
+            <th class="col-amount">金額</th>
+            <th class="col-lot">ロット</th>
+            <th class="col-receipt">伝票番号</th>
+            <th class="col-ma">MA</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr><td colspan="${columnCount}">登録されたデータはありません。</td></tr>
+    </tbody>
+    `;
 }
 
-async function saveUsageConfig() {
-    const folderPath = usageFolderPathInput ? usageFolderPathInput.value : '';
-    console.log("Saving usage config:", folderPath);
-    window.showLoading('設定を保存中...');
-    try {
-        const response = await fetch('/api/usage/config', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ usageFolderPath: folderPath }),
-        });
-        if (!response.ok) {
-             let errorText = `サーバーエラー (HTTP ${response.status})`;
-             try {
-                 const text = await response.text();
-                 errorText = text || errorText;
-             } catch (e) {}
-             throw new Error(errorText);
-        }
-        const result = await response.json();
-        window.showNotification(result.message || '設定を保存しました。', 'success');
-        console.log("Usage config saved.");
-    } catch (error) {
-        console.error("Error saving usage config:", error);
-        window.showNotification(`設定の保存に失敗しました: ${error.message}`, 'error');
-    } finally {
-        window.hideLoading();
-    }
-}
-
-async function triggerManualImport() {
-    console.log("Triggering manual usage import...");
-    if (usageImportResultContainer) usageImportResultContainer.textContent = '取り込み処理を実行中...';
-    window.showLoading('処方ファイルを取り込み中...');
-    try {
-        const response = await fetch('/api/usage/import', {
-            method: 'POST', // Trigger import via POST
-        });
-         if (!response.ok) {
-             let errorText = `サーバーエラー (HTTP ${response.status})`;
-             try {
-                 const text = await response.text();
-                 errorText = text || errorText;
-             } catch (e) {}
-             throw new Error(errorText);
-         }
-        const result = await response.json();
-
-        // Display summary message
-        if (usageImportResultContainer) {
-            usageImportResultContainer.textContent = result.message || '取り込み処理が完了しました。';
-        }
-        window.showNotification(result.message || '処方ファイルの取り込みが完了しました。', result.success ? 'success' : 'warning');
-
-        // Render results table (assuming result.history is an array of import attempts)
-        renderUsageImportHistory(result.history); // Implement this function if needed
-
-        console.log("Manual import finished:", result);
-
-    } catch (error) {
-        console.error("Error during manual import:", error);
-         if (usageImportResultContainer) {
-             usageImportResultContainer.textContent = `エラー: ${error.message}`;
-         }
-        window.showNotification(`取り込みエラー: ${error.message}`, 'error');
-    } finally {
-        window.hideLoading();
-    }
-}
-
-// Function to render import history (Placeholder - adapt based on actual API response)
-function renderUsageImportHistory(history) {
-    if (!usageDataTableBody) return;
-
-    if (!history || history.length === 0) {
-        usageDataTableBody.innerHTML = '<tr><td colspan="5">取り込み履歴はありません。</td></tr>';
+// dat.js の handleDatUpload をコピーし、USAGE用に変更
+async function handleUsageUpload(files, usageFileInput, uploadResultContainer, dataTable) {
+    if (!files || files.length === 0) {
         return;
     }
 
-    let tableHtml = '';
-    // Sort history newest first if needed: history.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
-    history.forEach(entry => {
-        const statusClass = entry.success ? 'status-success' : 'status-error';
-        const statusText = entry.success ? '成功' : 'エラー';
-        const timestamp = entry.timestamp ? new Date(entry.timestamp).toLocaleString() : '-';
-        tableHtml += `
-            <tr>
-                <td class="center">${timestamp}</td>
-                <td class="left">${entry.fileName || '-'}</td>
-                <td class="center ${statusClass}">${statusText}</td>
-                <td class="right">${entry.processedCount || 0}</td>
-                <td class="left">${entry.error || ''}</td>
-            </tr>
-        `;
-    });
-    usageDataTableBody.innerHTML = tableHtml;
+    if (uploadResultContainer) uploadResultContainer.innerHTML = '<p>USAGEファイルをアップロード中...</p>';
+    if (dataTable) dataTable.innerHTML = '<thead></thead><tbody><tr><td colspan="13">処理中...</td></tr></tbody>';
+    window.showLoading('USAGEファイルを処理中...');
+
+    const formData = new FormData();
+    for (const file of files) {
+        formData.append('file', file);
+    }
+
+    try {
+        // ▼▼▼ APIエンドポイントは /api/usage/upload ▼▼▼
+        const response = await fetch('/api/usage/upload', {
+            method: 'POST',
+            body: formData,
+        });
+        // ▲▲▲ 変更ここまで ▲▲▲
+        
+        const result = await response.json(); 
+
+        if (!response.ok) {
+            throw new Error(result.message || `サーバーエラー (HTTP ${response.status})`);
+        }
+
+        let summaryHtml = `<h3>${result.message || '処理が完了しました。'}</h3>`;
+        
+        // USAGEハンドラは 'results' 配列を返さない想定だが、DATに合わせておく
+        if (result.results && Array.isArray(result.results)) {
+            summaryHtml += '<ul>';
+            result.results.forEach(fileResult => {
+                const statusClass = fileResult.success ? 'status-success' : 'status-error';
+                const statusText = fileResult.success ? '成功' : 'エラー';
+                const errorDetail = fileResult.error ? `: ${fileResult.error}` : '';
+                const parsed = fileResult.records_parsed || 0;
+                const inserted = fileResult.records_inserted || 0;
+
+                summaryHtml += `<li><strong>${fileResult.filename}:</strong> `;
+                summaryHtml += `<span class="${statusClass}">${statusText}</span> (パース: ${parsed}件, 登録: ${inserted}件)${errorDetail}`;
+                summaryHtml += '</li>';
+            });
+            summaryHtml += '</ul>';
+        }
+        if (uploadResultContainer) uploadResultContainer.innerHTML = summaryHtml;
+        
+        // dat.js と同様に tableHTML を期待する
+        if (dataTable && result.tableHTML != null) { 
+            dataTable.innerHTML = result.tableHTML;
+        } else if (dataTable) {
+            renderEmptyTable(dataTable);
+        }
+        
+        window.showNotification(result.message || 'USAGEファイルの処理が完了しました。', 'success');
+
+    } catch (error) {
+        console.error('Upload failed:', error);
+        if (uploadResultContainer) uploadResultContainer.innerHTML = `<p style="color: red;">エラーが発生しました: ${error.message}</p>`;
+        window.showNotification(`エラー: ${error.message}`, 'error');
+        if (dataTable) {
+            dataTable.innerHTML = `<thead></thead><tbody><tr><td colspan="13" class="status-error">エラーが発生しました: ${error.message}</td></tr></tbody>`;
+        }
+    } finally {
+        window.hideLoading();
+        if (usageFileInput) usageFileInput.value = '';
+    }
 }
 
+// dat.js の initDatUpload をコピーし、USAGE用に変更
+export function initUsageUpload() {
+    // ▼▼▼【修正】USAGE専用のIDを参照するように変更 ▼▼▼
+    const usageUploadBtn = document.getElementById('usageUploadBtn');
+    const usageFileInput = document.getElementById('usageFileInput');
+    const uploadResultContainer = document.getElementById('usageUploadResultContainer');
+    const dataTable = document.getElementById('usageMainDataTable');
+    // ▲▲▲【修正ここまで】▲▲▲
 
-export function initUsageView() {
-    usageFolderPathInput = document.getElementById('usageFolderPath');
-    saveUsageConfigBtn = document.getElementById('saveUsageConfigBtn');
-    manualImportUsageBtn = document.getElementById('manualImportUsageBtn');
-    usageImportResultContainer = document.getElementById('usageImportResultContainer');
-    const usageDataTable = document.getElementById('usageDataTable');
-    usageDataTableBody = usageDataTable ? usageDataTable.querySelector('tbody') : null;
-
-    if (saveUsageConfigBtn) {
-        saveUsageConfigBtn.addEventListener('click', saveUsageConfig);
+    if (usageUploadBtn && usageFileInput) {
+        usageUploadBtn.addEventListener('click', () => {
+            usageFileInput.click();
+        });
+        usageFileInput.addEventListener('change', (event) => {
+            handleUsageUpload(event.target.files, usageFileInput, uploadResultContainer, dataTable);
+        });
+    } else {
+        console.error('USAGE Upload button or file input not found.');
     }
-    if (manualImportUsageBtn) {
-        manualImportUsageBtn.addEventListener('click', triggerManualImport);
+
+     // 初期テーブル表示
+     renderEmptyTable(dataTable);
+     if (uploadResultContainer) {
+        uploadResultContainer.innerHTML = '<p>「USAGEファイル選択」ボタンを押してファイルを選んでください。</p>';
     }
-
-    // Load initial config when the view is initialized (or becomes active)
-    loadUsageConfig();
-    // Initialize or load existing import history if available
-    renderUsageImportHistory([]); // Start with an empty table
-
-    console.log("Usage View Initialized.");
 }

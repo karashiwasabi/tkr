@@ -168,7 +168,7 @@ type TransactionRecord struct {
 	ProcessFlagMA       string  `db:"process_flag_ma" json:"processFlagMA"`
 }
 
-// ▼▼▼【ここから追加】未定義だった型を追加 ▼▼▼
+// ▼▼▼【ここから追加】(WASABI  より移植) ▼▼▼
 
 type Client struct {
 	ClientCode string `db:"client_code" json:"clientCode"`

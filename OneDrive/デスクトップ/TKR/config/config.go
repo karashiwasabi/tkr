@@ -8,8 +8,10 @@ import (
 )
 
 type Config struct {
+	// ▼▼▼【ここに追加】▼▼▼
 	UsageFolderPath string `json:"usageFolderPath"`
-	DatFolderPath   string `json:"datFolderPath"`
+	// ▲▲▲【追加ここまで】▲▲▲
+	DatFolderPath string `json:"datFolderPath"`
 }
 
 var (

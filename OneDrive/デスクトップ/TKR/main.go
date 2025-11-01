@@ -17,7 +17,8 @@ import (
 	"tkr/database"
 	"tkr/loader"
 	"tkr/masteredit"
-	"tkr/units" // ★ units パッケージをインポート
+	"tkr/units"
+	"tkr/usage" // ▼▼▼【ここに追加】▼▼▼
 )
 
 func main() {
@@ -38,14 +39,11 @@ func main() {
 	}
 	log.Println("Database initialization complete.")
 
-	// ▼▼▼【ここから追加】単位(TANI.CSV)マスタのロード ▼▼▼
 	if _, err := units.LoadTANIFile("SOU/TANI.CSV"); err != nil {
-		// TANI.CSVは必須ではないため、警告のみで終了しない
 		log.Printf("WARN: Failed to load TANI.CSV: %v. Unit names may not display correctly.", err)
 	} else {
 		log.Println("Unit (TANI.CSV) master loaded successfully.")
 	}
-	// ▲▲▲【追加ここまで】▲▲▲
 
 	mux := http.NewServeMux()
 
@@ -84,9 +82,12 @@ func main() {
 		log.Printf("Successfully returned JCSHMS info for JAN: %s", janCode)
 	})
 
-	// ▼▼▼【修正】構文エラーを修正し、すべてのルートが含まれるようにします ▼▼▼
 	mux.HandleFunc("/api/dat/upload", dat.UploadDatHandler(dbConn))
 	mux.HandleFunc("/api/dat/search", dat.SearchDatHandler(dbConn))
+
+	// ▼▼▼【ここに追加】USAGEハンドラの登録 ▼▼▼
+	mux.HandleFunc("/api/usage/upload", usage.UploadUsageHandler(dbConn))
+	// ▲▲▲【追加ここまで】▲▲▲
 
 	mux.HandleFunc("/api/masters", masteredit.ListMastersHandler(dbConn))
 	mux.HandleFunc("/api/masters/update", masteredit.UpdateMasterHandler(dbConn))
@@ -108,11 +109,7 @@ func main() {
 		}
 	})
 
-	// ▼▼▼【ここに追加】単位マップ取得API ▼▼▼
 	mux.HandleFunc("/api/units/map", units.GetTaniMapHandler())
-	// ▲▲▲【追加ここまで】▲▲▲
-
-	// ▲▲▲【修正ここまで】▲▲▲
 
 	port := ":8080"
 	log.Printf("Starting server on http://localhost%s", port)

@@ -385,7 +385,8 @@ body {
 .data-table th {
   background-color: #f2f2f2;
   font-weight: bold;
-  text-align: center; /* ヘッダーは中央揃え */
+  text-align: center;
+  /* ヘッダーは中央揃え */
 }
 /* ▲▲▲ 修正 ▲▲▲ */
 
@@ -442,8 +443,12 @@ body {
 .data-table td.col-janqty     { text-align: right; }
 .data-table td.col-yjpackqty  { text-align: right; }
 .data-table td.col-janpackqty { text-align: right; }
-/* .data-table td.col-yjunit     { text-align: left; } (デフォルト) */
-/* .data-table td.col-janunit    { text-align: left; } (デフォルト) */
+
+/* ▼▼▼【ここを修正】YJ単位とJAN単位を左寄せに変更 ▼▼▼ */
+.data-table td.col-yjunit     { text-align: left; }
+.data-table td.col-janunit    { text-align: left; }
+/* ▲▲▲ 修正ここまで ▲▲▲ */
+
 .data-table td.col-unitprice  { text-align: right; }
 .data-table td.col-amount     { text-align: right; }
 .data-table td.col-expiry     { text-align: center; }
@@ -459,102 +464,6 @@ body {
 .status-success { color: green; }
 .status-error   { color: red; }
 
------ C:\Users\wasab\OneDrive\デスクトップ\TKR\static\css\usage.css -----
-/* C:\Users\wasab\OneDrive\デスクトップ\TKR\static\css\usage.css */
-
-#usage-view h2 {
-    margin-top: 15px;
-    margin-bottom: 5px;
-    font-size: 1.1em;
-    border-bottom: 1px solid #eee;
-    padding-bottom: 3px;
-}
-
-.usage-settings-container,
-.usage-import-container {
-    background-color: #f8f8f8;
-    border: 1px solid #ddd;
-    padding: 10px;
-    margin-bottom: 15px;
-    border-radius: 4px;
-}
-
-.usage-settings-container .form-group {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    margin-bottom: 5px;
-}
-
-.usage-settings-container label {
-    font-weight: bold;
-    min-width: 150px;
-}
-
-.usage-settings-container input[type="text"] {
-    flex-grow: 1;
-    padding: 3px;
-    border: 1px solid #ccc;
-    border-radius: 3px;
-    font-size: inherit;
-    font-family: inherit;
-}
-
-.description {
-    font-size: 0.9em;
-    color: #666;
-    margin-top: 5px;
-    margin-bottom: 0;
-}
-
-#usageImportResultContainer {
-    font-size: 0.9em;
-    margin-top: 10px;
-    padding: 8px;
-    border: 1px dashed #ccc;
-    background-color: #fff;
-    min-height: 20px;
-}
-
-#usageDataTableContainer .data-table th,
-#usageDataTableContainer .data-table td {
-    padding: 3px 5px; /* Adjust padding for usage table */
-    height: auto; /* Allow height to adjust */
-    white-space: normal; /* Allow wrapping */
-    text-overflow: clip; /* Clip instead of ellipsis */
-}
-
-#usageDataTableContainer .data-table th:nth-child(1), /* 取込日時 */
-#usageDataTableContainer .data-table td:nth-child(1) {
-    width: 15%;
-    text-align: center;
-}
-
-#usageDataTableContainer .data-table th:nth-child(2), /* ファイル名 */
-#usageDataTableContainer .data-table td:nth-child(2) {
-    width: 30%;
-    text-align: left;
-}
-
-#usageDataTableContainer .data-table th:nth-child(3), /* ステータス */
-#usageDataTableContainer .data-table td:nth-child(3) {
-    width: 10%;
-    text-align: center;
-}
-#usageDataTableContainer .data-table th:nth-child(4), /* 処理件数 */
-#usageDataTableContainer .data-table td:nth-child(4) {
-    width: 10%;
-    text-align: right;
-}
-
-#usageDataTableContainer .data-table th:nth-child(5), /* エラー詳細 */
-#usageDataTableContainer .data-table td:nth-child(5) {
-    width: 35%;
-    text-align: left;
-    font-size: 0.9em;
-    color: #e60000; /* Error details in red */
-}
-
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\index.html -----
 <!DOCTYPE html>
 <html lang="ja">
@@ -569,12 +478,14 @@ body {
 <body>
     <header id="main-header">
         <button id="datViewBtn" class="btn">DAT取込</button>
+        <button id="usageViewBtn" class="btn">USAGE取込</button>
         <button id="masterEditViewBtn" class="btn">マスタ編集</button>
         <button id="configViewBtn" class="btn">設定</button>
     </header>
 
     <main>
-        <div id="dat-upload-view" class="view active"> <h1>ファイルアップロード</h1>
+        <div id="dat-upload-view" class="view active">
+            <h1>ファイルアップロード (DAT)</h1>
     
             <div style="margin-bottom: 20px;">
                 <button id="datUploadBtn" class="btn">DATファイル選択</button>
@@ -583,7 +494,7 @@ body {
 
             <div class="filter-container" style="padding: 10px; margin-bottom: 10px; background-color: #f7f7f7; border: 1px solid #ddd;">
                 <fieldset style="border: 1px solid #ccc; padding: 5px;">
-                    <legend>GS1-128 バーコード検索</legend>
+                    <legend>GS1-128 バーコード検索 (DAT)</legend>
                     <div style="display: flex; flex-wrap: wrap; gap: 10px; align-items: center;">
                         <div class="form-group" style="flex-basis: 300px; flex-grow: 1;">
                             <label for="dat-search-barcode">バーコード入力 (JAN+期限+ロット):</label>
@@ -594,16 +505,32 @@ body {
                 </fieldset>
             </div>
             
-            <div id="uploadResultContainer">
+            <div id="datUploadResultContainer">
                 <p>「DATファイル選択」ボタンを押してファイルを選んでください。</p>
             </div>
             
             <div id="datTableContainer" class="table-container">
-                <table id="mainDataTable" class="data-table">
+                <table id="datMainDataTable" class="data-table">
                 </table>
             </div>
         </div>
+        <div id="usage-upload-view" class="view">
+            <h1>ファイルアップロード (USAGE)</h1>
+    
+            <div style="margin-bottom: 20px;">
+                <button id="usageUploadBtn" class="btn">USAGEファイル選択</button>
+                <input type="file" id="usageFileInput" accept=".csv,.CSV,.txt,.TXT" class="hidden">
+            </div>
 
+            <div id="usageUploadResultContainer">
+                <p>「USAGEファイル選択」ボタンを押してファイルを選んでください。</p>
+            </div>
+            
+            <div id="usageTableContainer" class="table-container">
+                <table id="usageMainDataTable" class="data-table">
+                </table>
+            </div>
+        </div>
         <div id="master-edit-view" class="view">
             <h1>マスタ編集</h1>
 
@@ -655,7 +582,6 @@ body {
             <section class="config-section">
                 <h2>パス設定</h2>
                 <div class="config-form-container">
-                    
                     <div class="form-group">
                         <label for="config-dat-folder-path">伝票取込フォルダパス (DAT):</label>
                         <input type="text" id="config-dat-folder-path" autocomplete="off">
@@ -665,7 +591,7 @@ body {
                         <label for="config-usage-folder-path">処方取込フォルダパス (CSV):</label>
                         <input type="text" id="config-usage-folder-path" autocomplete="off">
                     </div>
-                    
+
                     <div class="form-actions">
                         <button id="configSavePathBtn" class="btn">パス保存</button>
                     </div>
@@ -812,7 +738,7 @@ body {
                 </div>
                 
                 <div class="form-row">
-                    <div class="form-group" style="flex-basis: 100px;">
+                     <div class="form-group" style="flex-basis: 100px;">
                         <label for="edit-group-code">薬品分類CD (編集可)</label>
                         <input type="text" id="edit-group-code">
                     </div>

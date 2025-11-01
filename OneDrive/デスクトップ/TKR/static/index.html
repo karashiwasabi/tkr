@@ -11,12 +11,14 @@
 <body>
     <header id="main-header">
         <button id="datViewBtn" class="btn">DAT取込</button>
+        <button id="usageViewBtn" class="btn">USAGE取込</button>
         <button id="masterEditViewBtn" class="btn">マスタ編集</button>
         <button id="configViewBtn" class="btn">設定</button>
     </header>
 
     <main>
-        <div id="dat-upload-view" class="view active"> <h1>ファイルアップロード</h1>
+        <div id="dat-upload-view" class="view active">
+            <h1>ファイルアップロード (DAT)</h1>
     
             <div style="margin-bottom: 20px;">
                 <button id="datUploadBtn" class="btn">DATファイル選択</button>
@@ -25,7 +27,7 @@
 
             <div class="filter-container" style="padding: 10px; margin-bottom: 10px; background-color: #f7f7f7; border: 1px solid #ddd;">
                 <fieldset style="border: 1px solid #ccc; padding: 5px;">
-                    <legend>GS1-128 バーコード検索</legend>
+                    <legend>GS1-128 バーコード検索 (DAT)</legend>
                     <div style="display: flex; flex-wrap: wrap; gap: 10px; align-items: center;">
                         <div class="form-group" style="flex-basis: 300px; flex-grow: 1;">
                             <label for="dat-search-barcode">バーコード入力 (JAN+期限+ロット):</label>
@@ -36,16 +38,32 @@
                 </fieldset>
             </div>
             
-            <div id="uploadResultContainer">
+            <div id="datUploadResultContainer">
                 <p>「DATファイル選択」ボタンを押してファイルを選んでください。</p>
             </div>
             
             <div id="datTableContainer" class="table-container">
-                <table id="mainDataTable" class="data-table">
+                <table id="datMainDataTable" class="data-table">
                 </table>
             </div>
         </div>
+        <div id="usage-upload-view" class="view">
+            <h1>ファイルアップロード (USAGE)</h1>
+    
+            <div style="margin-bottom: 20px;">
+                <button id="usageUploadBtn" class="btn">USAGEファイル選択</button>
+                <input type="file" id="usageFileInput" accept=".csv,.CSV,.txt,.TXT" class="hidden">
+            </div>
 
+            <div id="usageUploadResultContainer">
+                <p>「USAGEファイル選択」ボタンを押してファイルを選んでください。</p>
+            </div>
+            
+            <div id="usageTableContainer" class="table-container">
+                <table id="usageMainDataTable" class="data-table">
+                </table>
+            </div>
+        </div>
         <div id="master-edit-view" class="view">
             <h1>マスタ編集</h1>
 
@@ -97,7 +115,6 @@
             <section class="config-section">
                 <h2>パス設定</h2>
                 <div class="config-form-container">
-                    
                     <div class="form-group">
                         <label for="config-dat-folder-path">伝票取込フォルダパス (DAT):</label>
                         <input type="text" id="config-dat-folder-path" autocomplete="off">
@@ -107,7 +124,7 @@
                         <label for="config-usage-folder-path">処方取込フォルダパス (CSV):</label>
                         <input type="text" id="config-usage-folder-path" autocomplete="off">
                     </div>
-                    
+
                     <div class="form-actions">
                         <button id="configSavePathBtn" class="btn">パス保存</button>
                     </div>
@@ -254,7 +271,7 @@
                 </div>
                 
                 <div class="form-row">
-                    <div class="form-group" style="flex-basis: 100px;">
+                     <div class="form-group" style="flex-basis: 100px;">
                         <label for="edit-group-code">薬品分類CD (編集可)</label>
                         <input type="text" id="edit-group-code">
                     </div>

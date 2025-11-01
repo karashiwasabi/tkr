@@ -1,4 +1,4 @@
-// C:\Users\wasab\OneDrive\デスクトップ\TKR\parsers\usage_parser.go (全体)
+// C:\Users\wasab\OneDrive\デスクトップ\TKR\parsers\usage_parser.go
 package parsers
 
 import (
@@ -6,12 +6,13 @@ import (
 	"fmt"
 	"io"
 	"strconv"
-	"tkr/model"
+	"tkr/model" // TKRのモデルを参照
 
 	"golang.org/x/text/encoding/japanese"
 	"golang.org/x/text/transform"
 )
 
+// ParseUsageはUSAGE CSVを解析し、UnifiedInputRecordのスライスを返します。
 func ParseUsage(r io.Reader) ([]model.UnifiedInputRecord, error) {
 	reader := csv.NewReader(transform.NewReader(r, japanese.ShiftJIS.NewDecoder()))
 	reader.FieldsPerRecord = -1
@@ -27,7 +28,7 @@ func ParseUsage(r io.Reader) ([]model.UnifiedInputRecord, error) {
 		}
 
 		if len(rec) < 6 {
-			continue
+			continue // skip incomplete rows
 		}
 
 		yjQty, _ := strconv.ParseFloat(rec[4], 64)

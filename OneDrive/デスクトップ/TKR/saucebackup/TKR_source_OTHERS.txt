@@ -9,8 +9,10 @@ import (
 )
 
 type Config struct {
+	// ▼▼▼【ここに追加】▼▼▼
 	UsageFolderPath string `json:"usageFolderPath"`
-	DatFolderPath   string `json:"datFolderPath"`
+	// ▲▲▲【追加ここまで】▲▲▲
+	DatFolderPath string `json:"datFolderPath"`
 }
 
 var (
@@ -83,6 +85,7 @@ import (
 	"tkr/mastermanager"
 	"tkr/model"
 	"tkr/parsers"
+	"tkr/units"
 
 	"github.com/jmoiron/sqlx"
 )
@@ -95,13 +98,13 @@ func respondJSONError(w http.ResponseWriter, message string, statusCode int) {
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"message":   message,
 		"results":   []interface{}{},
-		"tableHTML": renderTransactionTableHTML(nil, nil), // ★ 卸名マップ(nil)を追加
+		"tableHTML": RenderTransactionTableHTML(nil, nil), // ★ 卸名マップ(nil)を追加, Rを大文字に
 	})
 }
 
 // ▲▲▲【修正ここまで】▲▲▲
 
-// ▼▼▼【修正】卸名マップを作成し、HTMLレンダリングに渡す ▼▼▼
+// ▼▼▼【修正】UploadDatHandler (変更なし) ▼▼▼
 func UploadDatHandler(db *sqlx.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		log.Println("Received DAT upload request...")
@@ -205,8 +208,8 @@ func UploadDatHandler(db *sqlx.DB) http.HandlerFunc {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		// ★ 卸名マップを渡す
-		htmlString := renderTransactionTableHTML(successfullyInsertedTransactions, wholesalerMap)
+		// ★ 卸名マップを渡し、Rを大文字に
+		htmlString := RenderTransactionTableHTML(successfullyInsertedTransactions, wholesalerMap)
 
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"message":   fmt.Sprintf("Processed %d DAT file(s). See results for details.", len(processedFiles)),
@@ -219,7 +222,7 @@ func UploadDatHandler(db *sqlx.DB) http.HandlerFunc {
 
 // ▲▲▲【修正ここまで】▲▲▲
 
-// ▼▼▼【修正】卸名マップを作成し、HTMLレンダリングに渡す ▼▼▼
+// ▼▼▼【修正】SearchDatHandler (変更なし) ▼▼▼
 func SearchDatHandler(db *sqlx.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
@@ -288,8 +291,8 @@ func SearchDatHandler(db *sqlx.DB) http.HandlerFunc {
 
 		log.Printf("Found %d transactions matching criteria.", len(transactions))
 
-		// ★ 卸名マップを渡す
-		htmlString := renderTransactionTableHTML(transactions, wholesalerMap)
+		// ★ 卸名マップを渡し、Rを大文字に
+		htmlString := RenderTransactionTableHTML(transactions, wholesalerMap)
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]interface{}{
@@ -302,7 +305,54 @@ func SearchDatHandler(db *sqlx.DB) http.HandlerFunc {
 // ▲▲▲【修正ここまで】▲▲▲
 
 func MapDatToTransaction(dat model.DatRecord, master *model.ProductMaster) model.TransactionRecord {
-	packageSpec := fmt.Sprintf("%s %v%s", master.PackageForm, master.YjPackUnitQty, master.YjUnitName)
+	// ▼▼▼【ここから修正】製品名と包装仕様の生成ロジックをWASABIに合わせる (units.ResolveName と 数量計算を追加) ▼▼▼
+
+	// 1. 製品名と規格を連結
+	productNameWithSpec := master.ProductName
+	if master.Specification != "" {
+		productNameWithSpec = master.ProductName + " " + master.Specification
+	}
+
+	// 2. 数量の計算 (DATの個数から計算)
+	var yjQuantity, janQuantity float64
+	if master.YjPackUnitQty > 0 {
+		yjQuantity = dat.DatQuantity * master.YjPackUnitQty
+	}
+	if master.JanPackUnitQty > 0 {
+		janQuantity = dat.DatQuantity * master.JanPackUnitQty
+	}
+
+	// 3. 詳細な包装仕様を生成 (units.ResolveName を使用)
+	yjUnitName := units.ResolveName(master.YjUnitName)
+	packageSpec := fmt.Sprintf("%s %g%s", master.PackageForm, master.YjPackUnitQty, yjUnitName)
+
+	janUnitCodeStr := fmt.Sprintf("%d", master.JanUnitCode)
+	var janUnitName string
+
+	if master.JanUnitCode == 0 {
+		janUnitName = yjUnitName
+	} else {
+		janUnitName = units.ResolveName(janUnitCodeStr)
+	}
+
+	if master.JanPackInnerQty > 0 && master.JanPackUnitQty > 0 {
+		packageSpec += fmt.Sprintf(" (%g%s×%g%s)",
+			master.JanPackInnerQty,
+			yjUnitName,
+			master.JanPackUnitQty,
+			janUnitName,
+		)
+	}
+
+	// 4. MAフラグの設定
+	var processFlagMA string
+	if master.Origin == "JCSHMS" {
+		processFlagMA = "COMPLETE"
+	} else {
+		processFlagMA = "PROVISIONAL"
+	}
+
+	// ▲▲▲【修正ここまで】▲▲▲
 
 	return model.TransactionRecord{
 		TransactionDate:     dat.Date,
@@ -312,21 +362,21 @@ func MapDatToTransaction(dat model.DatRecord, master *model.ProductMaster) model
 		Flag:                dat.Flag,
 		JanCode:             master.ProductCode,
 		YjCode:              master.YjCode,
-		ProductName:         master.ProductName,
+		ProductName:         productNameWithSpec, // ★ 修正した製品名を使用
 		KanaName:            master.KanaName,
 		UsageClassification: master.UsageClassification,
 		PackageForm:         master.PackageForm,
-		PackageSpec:         packageSpec,
+		PackageSpec:         packageSpec, // ★ 修正した包装仕様を使用
 		MakerName:           master.MakerName,
-		DatQuantity:         dat.DatQuantity,
+		DatQuantity:         dat.DatQuantity, // DATファイルからの生データ
 		JanPackInnerQty:     master.JanPackInnerQty,
-		JanQuantity:         0,
+		JanQuantity:         janQuantity, // ★ 数量計算を反映
 		JanPackUnitQty:      master.JanPackUnitQty,
-		JanUnitName:         "",
-		JanUnitCode:         fmt.Sprintf("%d", master.JanUnitCode),
-		YjQuantity:          0,
+		JanUnitName:         janUnitName, // ★ 修正したJAN単位名を使用
+		JanUnitCode:         janUnitCodeStr,
+		YjQuantity:          yjQuantity, // ★ 数量計算を反映
 		YjPackUnitQty:       master.YjPackUnitQty,
-		YjUnitName:          master.YjUnitName,
+		YjUnitName:          yjUnitName, // ★ 解決済みのYJ単位名を使用
 		UnitPrice:           dat.UnitPrice,
 		PurchasePrice:       master.PurchasePrice,
 		SupplierWholesale:   master.SupplierWholesale,
@@ -341,7 +391,7 @@ func MapDatToTransaction(dat model.DatRecord, master *model.ProductMaster) model
 		FlagPsychotropic:    master.FlagPsychotropic,
 		FlagStimulant:       master.FlagStimulant,
 		FlagStimulantRaw:    master.FlagStimulantRaw,
-		ProcessFlagMA:       "",
+		ProcessFlagMA:       processFlagMA, // ★ MAフラグを設定
 	}
 }
 
@@ -349,13 +399,14 @@ func OpenFileHeader(fh *multipart.FileHeader) (multipart.File, error) {
 	return fh.Open()
 }
 
-// ▼▼▼【修正】卸名マップ(map[string]string)を引数に追加 ▼▼▼
-func renderTransactionTableHTML(transactions []model.TransactionRecord, wholesalerMap map[string]string) string {
+// ▼▼▼【修正】renderTransactionTableHTML -> RenderTransactionTableHTML (公開関数化) ▼▼▼
+func RenderTransactionTableHTML(transactions []model.TransactionRecord, wholesalerMap map[string]string) string {
 	var sb strings.Builder
 
 	sb.WriteString(`
     <thead>
-        <tr>
+     
+   <tr>
             <th rowspan="2" class="col-action">－</th>
             <th class="col-date">日付</th>
             <th class="col-yj">YJ</th>
@@ -363,7 +414,8 @@ func renderTransactionTableHTML(transactions []model.TransactionRecord, wholesal
             <th class="col-count">個数</th>
             <th class="col-yjqty">YJ数量</th>
             <th class="col-yjpackqty">YJ包装数</th>
-            <th class="col-yjunit">YJ単位</th>
+    
+        <th class="col-yjunit">YJ単位</th>
             <th class="col-unitprice">単価</th>
             <th class="col-expiry">期限</th>
             <th class="col-wholesaler">卸</th>
@@ -371,7 +423,8 @@ func renderTransactionTableHTML(transactions []model.TransactionRecord, wholesal
         </tr>
         <tr>
             <th class="col-flag">種別</th>
-            <th class="col-jan">JAN</th>
+          
+  <th class="col-jan">JAN</th>
             <th class="col-package">包装</th>
             <th class="col-maker">メーカー</th>
             <th class="col-form">剤型</th>
@@ -379,7 +432,8 @@ func renderTransactionTableHTML(transactions []model.TransactionRecord, wholesal
             <th class="col-janpackqty">JAN包装数</th>
             <th class="col-janunit">JAN単位</th>
             <th class="col-amount">金額</th>
-            <th class="col-lot">ロット</th>
+      
+      <th class="col-lot">ロット</th>
             <th class="col-receipt">伝票番号</th>
             <th class="col-ma">MA</th>
         </tr>
@@ -402,6 +456,10 @@ func renderTransactionTableHTML(transactions []model.TransactionRecord, wholesal
 				flagText = "納品"
 			case 2:
 				flagText = "返品"
+			// ▼▼▼【ここに追加】処方フラグ(3)の表示 ▼▼▼
+			case 3:
+				flagText = "処方"
+			// ▲▲▲【追加ここまで】▲▲▲
 			default:
 				flagText = strconv.Itoa(tx.Flag)
 			}
@@ -434,10 +492,12 @@ func renderTransactionTableHTML(transactions []model.TransactionRecord, wholesal
 			sb.WriteString(`<td></td>`)
 			sb.WriteString(fmt.Sprintf(`<td class="center col-flag">%s</td>`, flagText))
 			sb.WriteString(fmt.Sprintf(`<td class="col-jan">%s</td>`, tx.JanCode))
-			sb.WriteString(fmt.Sprintf(`<td class="col-package">%s</td>`, tx.PackageForm))
+			// ▼▼▼【ここが修正箇所です】▼▼▼
+			sb.WriteString(fmt.Sprintf(`<td class="col-package">%s</td>`, tx.PackageSpec))
+			// ▲▲▲【修正ここまで】▲▲▲
 			sb.WriteString(fmt.Sprintf(`<td class="col-maker">%s</td>`, tx.MakerName))
 			sb.WriteString(`<td class="col-form"></td>`)
-			sb.WriteString(`<td class="right col-janqty"></td>`)
+			sb.WriteString(fmt.Sprintf(`<td class="right col-janqty">%.2f</td>`, tx.JanQuantity)) // ★ JAN数量
 			sb.WriteString(fmt.Sprintf(`<td class="right col-janpackqty">%.0f</td>`, tx.JanPackUnitQty))
 			sb.WriteString(fmt.Sprintf(`<td class="center col-janunit">%s</td>`, tx.JanUnitName))
 			sb.WriteString(fmt.Sprintf(`<td class="right col-amount">%s</td>`, formattedSubtotal))
@@ -451,8 +511,6 @@ func renderTransactionTableHTML(transactions []model.TransactionRecord, wholesal
 
 	return sb.String()
 }
-
-// ▲▲▲【修正ここまで】▲▲▲
 
 
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\database\clients.go -----
@@ -500,6 +558,7 @@ func GetAllClients(db *sqlx.DB) ([]model.Client, error) {
 
 
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\database\jcshms_query.go -----
+// C:\Users\wasab\OneDrive\デスクトップ\TKR\database\jcshms_query.go
 package database
 
 import (
@@ -523,15 +582,17 @@ type DBTX interface {
 // 引数の dbtx DBTX は product_master_query.go で定義されたインターフェース型を使う
 func GetJcshmsInfoByJan(dbtx DBTX, janCode string) (*model.JcshmsInfo, error) {
 	var info model.JcshmsInfo
+	// ▼▼▼【ここを修正】 j.JC020 をSELECTに追加 ▼▼▼
 	query := `
 		SELECT
-			j.JC000, j.JC009, j.JC018, j.JC019, j.JC022, j.JC024, j.JC030, j.JC013, j.JC037, j.JC039,
+			j.JC000, j.JC009, j.JC018, j.JC019, j.JC020, j.JC022, j.JC024, j.JC030, j.JC013, j.JC037, j.JC039,
 			j.JC044, j.JC049, j.JC050, j.JC122, j.JC124,
 			j.JC061, j.JC062, j.JC063, j.JC064, j.JC065, j.JC066,
 			ja.JA006, ja.JA007, ja.JA008
 		FROM jcshms AS j
 		LEFT JOIN jancode AS ja ON j.JC000 = ja.JA001
 		WHERE j.JC000 = ?`
+	// ▲▲▲【修正ここまで】▲▲▲
 
 	err := dbtx.Get(&info, query, janCode) // product_master_query.go で定義された DBTX.Get を使う
 
@@ -770,6 +831,7 @@ func InsertTransactionRecord(tx *sqlx.Tx, record model.TransactionRecord) error 
 	return nil
 }
 
+// ▼▼▼【ここから追加】(WASABI  より移植) ▼▼▼
 func DeleteUsageTransactionsInDateRange(tx *sqlx.Tx, minDate, maxDate string) error {
 	const q = `DELETE FROM transaction_records WHERE flag = 3 AND transaction_date BETWEEN ? AND ?`
 	_, err := tx.Exec(q, minDate, maxDate)
@@ -778,6 +840,8 @@ func DeleteUsageTransactionsInDateRange(tx *sqlx.Tx, minDate, maxDate string) er
 	}
 	return nil
 }
+
+// ▲▲▲【追加ここまで】▲▲▲
 
 func GetTransactionsByProductCodes(db *sqlx.DB, productCodes []string) (map[string][]model.TransactionRecord, error) {
 	transactionsMap := make(map[string][]model.TransactionRecord)
@@ -1320,7 +1384,7 @@ func UpdateMasterHandler(db *sqlx.DB) http.HandlerFunc {
 
 
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\mastermanager\manager.go -----
-// C:\Users\wasab\OneDrive\デスクトップ\TKR\mastermanager/manager.go
+// C:\Users\wasab\OneDrive\デスクトップ\TKR\mastermanager\manager.go
 package mastermanager
 
 import (
@@ -1337,10 +1401,8 @@ import (
 )
 
 // YJコードの判定 (WASABIのロジックでは主にYJコードをキーとして使用)
-// ▼▼▼【ここから修正】YJコードは11桁または12桁の英数字を含む形式に修正 ▼▼▼
 var yjCodeRegex = regexp.MustCompile(`^[0-9A-Z]{11,12}$`)
 
-// ▲▲▲【修正ここまで】▲▲▲
 // JANコードの判定は13桁の数字
 var janCodeRegex = regexp.MustCompile(`^[0-9]{13}$`)
 
@@ -1453,7 +1515,7 @@ func FindOrCreateMaster(tx *sqlx.Tx, productCodeOrKey string, productName string
 	return newMaster, nil
 }
 
-// JcshmsToProductMasterInput (変更なし)
+// JcshmsToProductMasterInput (規格マッピングの修正は前回実施済み)
 func JcshmsToProductMasterInput(jcshms *model.JcshmsInfo) model.ProductMasterInput {
 	var unitNhiPrice float64
 	if jcshms.NhiPriceFactor > 0 {
@@ -1476,7 +1538,7 @@ func JcshmsToProductMasterInput(jcshms *model.JcshmsInfo) model.ProductMasterInp
 		GenericName:   strings.TrimSpace(jcshms.GenericName),
 
 		MakerName:           strings.TrimSpace(jcshms.MakerName),
-		Specification:       "",
+		Specification:       strings.TrimSpace(jcshms.Specification),
 		UsageClassification: strings.TrimSpace(jcshms.UsageClassification),
 		PackageForm:         strings.TrimSpace(jcshms.PackageForm),
 		YjUnitName:          strings.TrimSpace(jcshms.YjUnitName),
@@ -1502,7 +1564,7 @@ func JcshmsToProductMasterInput(jcshms *model.JcshmsInfo) model.ProductMasterInp
 	}
 }
 
-// UpsertProductMasterSqlx (変更なし)
+// UpsertProductMasterSqlx (修正箇所)
 func UpsertProductMasterSqlx(tx *sqlx.Tx, input model.ProductMasterInput) (*model.ProductMaster, error) {
 	query := `
 		INSERT INTO product_master (
@@ -1541,7 +1603,6 @@ func UpsertProductMasterSqlx(tx *sqlx.Tx, input model.ProductMasterInput) (*mode
 	}
 
 	var insertedMaster model.ProductMaster
-
 	err = tx.Get(&insertedMaster, "SELECT * FROM product_master WHERE product_code = ?", input.ProductCode)
 
 	if err != nil {
@@ -1563,6 +1624,10 @@ type JcshmsInfo struct {
 	ProductCode string `db:"JC000" json:"productCode"`
 	YjCode      string `db:"JC009" json:"yjCode"`
 	ProductName string `db:"JC018" json:"productName"`
+
+	// ▼▼▼【ここに追加】▼▼▼
+	Specification string `db:"JC020" json:"specification"` // 規格容量
+	// ▲▲▲【追加ここまで】▲▲▲
 
 	KanaNameShort string `db:"JC019" json:"kanaNameShort"`
 
@@ -1720,7 +1785,7 @@ type TransactionRecord struct {
 	ProcessFlagMA       string  `db:"process_flag_ma" json:"processFlagMA"`
 }
 
-// ▼▼▼【ここから追加】未定義だった型を追加 ▼▼▼
+// ▼▼▼【ここから追加】(WASABI  より移植) ▼▼▼
 
 type Client struct {
 	ClientCode string `db:"client_code" json:"clientCode"`
@@ -1960,7 +2025,7 @@ func ParseGS1_128(code string) (*GS1Result, error) {
 
 
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\parsers\usage_parser.go -----
-// C:\Users\wasab\OneDrive\デスクトップ\TKR\parsers\usage_parser.go (全体)
+// C:\Users\wasab\OneDrive\デスクトップ\TKR\parsers\usage_parser.go
 package parsers
 
 import (
@@ -1968,12 +2033,13 @@ import (
 	"fmt"
 	"io"
 	"strconv"
-	"tkr/model"
+	"tkr/model" // TKRのモデルを参照
 
 	"golang.org/x/text/encoding/japanese"
 	"golang.org/x/text/transform"
 )
 
+// ParseUsageはUSAGE CSVを解析し、UnifiedInputRecordのスライスを返します。
 func ParseUsage(r io.Reader) ([]model.UnifiedInputRecord, error) {
 	reader := csv.NewReader(transform.NewReader(r, japanese.ShiftJIS.NewDecoder()))
 	reader.FieldsPerRecord = -1
@@ -1989,7 +2055,7 @@ func ParseUsage(r io.Reader) ([]model.UnifiedInputRecord, error) {
 		}
 
 		if len(rec) < 6 {
-			continue
+			continue // skip incomplete rows
 		}
 
 		yjQty, _ := strconv.ParseFloat(rec[4], 64)
@@ -2008,174 +2074,281 @@ func ParseUsage(r io.Reader) ([]model.UnifiedInputRecord, error) {
 }
 
 
+----- C:\Users\wasab\OneDrive\デスクトップ\TKR\units\handler.go -----
+// C:\Users\wasab\OneDrive\デスクトップ\TKR\units\handler.go
+package units
+
+import (
+	"encoding/json"
+	"net/http"
+)
+
+// GetTaniMapHandlerは、ロード済みの単位マップを返します。
+func GetTaniMapHandler() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if internalMap == nil {
+			json.NewEncoder(w).Encode(make(map[string]string))
+			return
+		}
+		json.NewEncoder(w).Encode(internalMap)
+	}
+}
+
+
+----- C:\Users\wasab\OneDrive\デスクトップ\TKR\units\units.go -----
+// C:\Users\wasab\OneDrive\デスクトップ\TKR\units\units.go
+
+package units
+
+import (
+	"encoding/csv"
+	"fmt"
+	"io"
+	"os"
+	"tkr/model" // ★ TKRのモデルを参照
+
+	"golang.org/x/text/encoding/japanese"
+	"golang.org/x/text/transform"
+)
+
+var internalMap map[string]string
+var reverseMap map[string]string
+
+// FormatPackageSpecは、JCSHMSのデータから仕様通りの包装文字列を生成します。
+func FormatPackageSpec(jcshms *model.JcshmsInfo) string {
+	if jcshms == nil {
+		return ""
+	}
+
+	yjUnitName := ResolveName(jcshms.YjUnitName)
+	pkg := fmt.Sprintf("%s %g%s", jcshms.PackageForm, jcshms.YjPackUnitQty, yjUnitName)
+
+	if jcshms.JanPackInnerQty.Valid && jcshms.JanPackUnitQty.Valid && jcshms.JanPackUnitQty.Float64 != 0 {
+		resolveJanUnitName := func(code string) string {
+			if code != "0" && code != "" {
+				return ResolveName(code)
+			}
+			return "" // 0か空の場合は単位を省略
+		}
+
+		janUnitName := resolveJanUnitName(jcshms.JanUnitCode.String)
+
+		pkg += fmt.Sprintf(" (%g%s×%g%s)",
+			jcshms.JanPackInnerQty.Float64,
+			yjUnitName,
+			jcshms.JanPackUnitQty.Float64,
+			janUnitName,
+		)
+	}
+	return pkg
+}
+
+// (TKRには FormatSimplePackageSpec はありません)
+
+// LoadTANIFile は SOU/TANI.CSV を読み込み、単位コードと単位名のマップをメモリにロードします。
+func LoadTANIFile(path string) (map[string]string, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, fmt.Errorf("LoadTANIFile: open %s: %w", path, err)
+	}
+	defer file.Close()
+
+	decoder := japanese.ShiftJIS.NewDecoder()
+	reader := csv.NewReader(transform.NewReader(file, decoder))
+	reader.LazyQuotes = true
+	reader.FieldsPerRecord = -1
+
+	m := make(map[string]string)
+	for {
+		record, err := reader.Read()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, fmt.Errorf("LoadTANIFile: read %s: %w", path, err)
+		}
+		if len(record) < 2 {
+			continue
+		}
+		code := record[0]
+		name := record[1]
+		m[code] = name
+	}
+	internalMap = m
+
+	reverseMap = make(map[string]string)
+	for code, name := range internalMap {
+		reverseMap[name] = code
+	}
+
+	return m, nil
+}
+
+// ResolveName は単位コードを単位名に変換します。
+func ResolveName(code string) string {
+	if internalMap == nil {
+		return code
+	}
+	if name, ok := internalMap[code]; ok {
+		return name
+	}
+	return code
+}
+
+// ResolveCode は単位名を単位コードに変換します。
+func ResolveCode(name string) string {
+	if reverseMap == nil {
+		return ""
+	}
+	if code, ok := reverseMap[name]; ok {
+		return code
+	}
+	return ""
+}
+
+
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\usage\handler.go -----
 // C:\Users\wasab\OneDrive\デスクトップ\TKR\usage\handler.go
 package usage
 
 import (
-	"database/sql"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
+	"mime/multipart"
 	"net/http"
 	"os"
-	"path/filepath"
+	"strconv"
 	"strings"
-	"sync"
-	"time"
-	"tkr/config"
+	"tkr/config" // TKRのconfig
+	"tkr/dat"    // ▼▼▼【ここに追加】(RenderTransactionTableHTMLのため) ▼▼▼
 	"tkr/database"
 	"tkr/mastermanager"
 	"tkr/model"
 	"tkr/parsers"
+	"tkr/units" // TKRのunits
 
 	"github.com/jmoiron/sqlx"
 )
 
-var (
-	importMutex sync.Mutex
-)
-
-// GetUsageConfigHandler retrieves the current usage import configuration.
-func GetUsageConfigHandler(db *sqlx.DB) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		cfg := config.GetConfig()
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(cfg)
-	}
+// respondJSONError はTKRのDATハンドラ に倣ったエラー応答関数です。
+func respondJSONError(w http.ResponseWriter, message string, statusCode int) {
+	log.Println("Error response:", message)
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(statusCode)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"message": message,
+		"results": []interface{}{},
+		// ▼▼▼【修正】datパッケージの関数を呼ぶ ▼▼▼
+		"tableHTML": dat.RenderTransactionTableHTML(nil, nil),
+		// ▲▲▲【修正ここまで】▲▲▲
+	})
 }
 
-// SaveUsageConfigHandler saves the usage import configuration.
-func SaveUsageConfigHandler(db *sqlx.DB) http.HandlerFunc {
+// UploadUsageHandler は自動または手動でのUSAGEファイルアップロードを処理します。
+func UploadUsageHandler(db *sqlx.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		var newCfg config.Config
-		if err := json.NewDecoder(r.Body).Decode(&newCfg); err != nil {
-			http.Error(w, "Invalid request body", http.StatusBadRequest)
-			return
-		}
+		var file io.Reader
+		var err error
 
-		// Basic validation: Check if path exists and is a directory (optional but recommended)
-		if newCfg.UsageFolderPath != "" {
-			info, err := os.Stat(newCfg.UsageFolderPath)
+		// TKRでは手動アップロード（multipart/form-data）のみをまず実装します。
+		// 自動取込（POST）ロジックはWASABI から移植します。
+
+		if strings.Contains(r.Header.Get("Content-Type"), "multipart/form-data") {
+			// 手動アップロードの場合
+			log.Println("Processing manual USAGE file upload...")
+			var f multipart.File
+			f, _, err = r.FormFile("file")
 			if err != nil {
-				if os.IsNotExist(err) {
-					http.Error(w, fmt.Sprintf("フォルダが見つかりません: %s", newCfg.UsageFolderPath), http.StatusBadRequest)
-					return
-				}
-				log.Printf("Error checking folder path '%s': %v", newCfg.UsageFolderPath, err)
-				http.Error(w, "フォルダパスの確認中にエラーが発生しました", http.StatusInternalServerError)
+				respondJSONError(w, "ファイルの取得に失敗しました: "+err.Error(), http.StatusBadRequest)
 				return
 			}
-			if !info.IsDir() {
-				http.Error(w, fmt.Sprintf("指定されたパスはフォルダではありません: %s", newCfg.UsageFolderPath), http.StatusBadRequest)
+			defer f.Close()
+			file = f
+		} else {
+			// 自動取込（Content-TypeなしのPOST）の場合
+			log.Println("Processing automatic USAGE file import...")
+			cfg, cfgErr := config.LoadConfig()
+			if cfgErr != nil {
+				respondJSONError(w, "設定ファイルの読み込みに失敗: "+cfgErr.Error(), http.StatusInternalServerError)
 				return
 			}
+			if cfg.UsageFolderPath == "" {
+				respondJSONError(w, "処方取込フォルダパス(usageFolderPath)が設定されていません。", http.StatusBadRequest)
+				return
+			}
+
+			rawPath := cfg.UsageFolderPath
+			// WASABI と同様にパスをクリーンアップ
+			unquotedPath := strings.Trim(strings.TrimSpace(rawPath), "\"")
+			filePath := strings.ReplaceAll(unquotedPath, "\\", "/")
+
+			log.Printf("Opening specified USAGE file: %s", filePath)
+			f, fErr := os.Open(filePath)
+			if fErr != nil {
+				displayError := fmt.Sprintf("設定されたパスのファイルを開けませんでした。\nパス: %s\nエラー: %v", filePath, fErr)
+				respondJSONError(w, displayError, http.StatusInternalServerError)
+				return
+			}
+			defer f.Close()
+			file = f
 		}
 
-		if err := config.SaveConfig(newCfg); err != nil {
-			log.Printf("Error saving config: %v", err)
-			http.Error(w, "設定の保存に失敗しました", http.StatusInternalServerError)
-			return
-		}
+		// ▼▼▼【ここから修正】卸マップ取得とHTML生成を追加 ▼▼▼
 
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]string{"message": "設定を保存しました。"})
-	}
-}
-
-// ImportUsageHandler manually triggers the import of usage files from the configured folder.
-func ImportUsageHandler(db *sqlx.DB) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		// Prevent concurrent imports
-		if !importMutex.TryLock() {
-			http.Error(w, "他の取り込み処理が実行中です。しばらく待ってから再試行してください。", http.StatusConflict)
-			return
-		}
-		defer importMutex.Unlock()
-
-		cfg := config.GetConfig()
-		folderPath := cfg.UsageFolderPath
-		if folderPath == "" {
-			http.Error(w, "処方ファイル取込フォルダが設定されていません。", http.StatusBadRequest)
-			return
-		}
-
-		log.Printf("Starting manual usage import from: %s", folderPath)
-
-		files, err := os.ReadDir(folderPath)
+		// 卸マスターを取得・マップ化 (HTML描画用)
+		wholesalerMap, err := database.GetWholesalerMap(db)
 		if err != nil {
-			log.Printf("Error reading usage directory '%s': %v", folderPath, err)
-			http.Error(w, fmt.Sprintf("フォルダの読み取りに失敗しました: %s", folderPath), http.StatusInternalServerError)
+			respondJSONError(w, "卸マスターの読み込みに失敗しました。", http.StatusInternalServerError)
 			return
 		}
 
-		var importResults []map[string]interface{}
-		var overallSuccess = true
-		var processedFileCount int
-
-		for _, file := range files {
-			if file.IsDir() || !strings.HasSuffix(strings.ToLower(file.Name()), ".csv") {
-				continue // Skip directories and non-CSV files
-			}
-
-			processedFileCount++
-			filePath := filepath.Join(folderPath, file.Name())
-			log.Printf("Processing usage file: %s", filePath)
-			fileResult := map[string]interface{}{
-				"fileName":       file.Name(),
-				"timestamp":      time.Now().Format(time.RFC3339),
-				"success":        false,
-				"processedCount": 0,
-				"error":          "",
-			}
-
-			err := processSingleUsageFile(db, filePath)
-			if err != nil {
-				log.Printf("Error processing file %s: %v", file.Name(), err)
-				fileResult["error"] = err.Error()
-				overallSuccess = false
-			} else {
-				fileResult["success"] = true
-				// TODO: Add processed count if needed by modifying processSingleUsageFile
-			}
-			importResults = append(importResults, fileResult)
-
-			// Optionally move or delete processed file here
-			// os.Rename(filePath, filePath+".processed") or os.Remove(filePath)
+		// 共通の処理関数を呼び出す
+		processedRecords, procErr := processUsageFile(db, file)
+		if procErr != nil {
+			respondJSONError(w, procErr.Error(), http.StatusInternalServerError)
+			return
 		}
 
-		log.Printf("Finished manual usage import. Processed %d CSV files.", processedFileCount)
+		// TKRのDATハンドラと同様に、HTMLテーブルを生成
+		htmlString := dat.RenderTransactionTableHTML(processedRecords, wholesalerMap)
 
-		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		json.NewEncoder(w).Encode(map[string]interface{}{
-			"message": fmt.Sprintf("%d 件のCSVファイルを処理しました。", processedFileCount),
-			"success": overallSuccess, // Overall success flag
-			"history": importResults,  // Results for each file
+			"message":   fmt.Sprintf("%d件の処方データを処理しました。", len(processedRecords)),
+			"results":   []interface{}{}, // DATハンドラに合わせる
+			"tableHTML": htmlString,      // HTMLをレスポンスに含める
 		})
+		// ▲▲▲【修正ここまで】▲▲▲
 	}
 }
 
-// processSingleUsageFile handles the parsing and DB insertion for one usage file.
-func processSingleUsageFile(db *sqlx.DB, filePath string) error {
-	file, err := os.Open(filePath)
+// processUsageFile はファイルストリームから処方データを解析しDBに登録する共通関数です。
+func processUsageFile(db *sqlx.DB, file io.Reader) ([]model.TransactionRecord, error) {
+	// 1. CSVパース (TKR/parsers/usage_parser.go)
+	parsed, err := parsers.ParseUsage(file)
 	if err != nil {
-		return fmt.Errorf("ファイルを開けません: %w", err)
+		return nil, fmt.Errorf("USAGEファイルの解析に失敗しました: %w", err)
 	}
-	defer file.Close()
 
-	parsedRecords, err := parsers.ParseUsage(file)
+	// 2. 重複除去 (WASABI のロジック)
+	filtered := removeUsageDuplicates(parsed)
+	if len(filtered) == 0 {
+		return []model.TransactionRecord{}, nil
+	}
+
+	// 3. トランザクション開始 (TKR流)
+	tx, err := db.Beginx()
 	if err != nil {
-		return fmt.Errorf("ファイルのパースに失敗しました: %w", err)
+		return nil, fmt.Errorf("トランザクションの開始に失敗: %w", err)
 	}
+	defer tx.Rollback() // エラー時は自動ロールバック
 
-	if len(parsedRecords) == 0 {
-		log.Printf("ファイル %s に有効なレコードがありません。", filepath.Base(filePath))
-		return nil // Not an error, just empty
-	}
-
-	// Determine date range for deletion
-	minDate, maxDate := parsedRecords[0].Date, parsedRecords[0].Date
-	for _, rec := range parsedRecords {
+	// 4. 既存データ削除 (WASABI のロジック)
+	minDate, maxDate := "99999999", "00000000"
+	for _, rec := range filtered {
 		if rec.Date < minDate {
 			minDate = rec.Date
 		}
@@ -2184,126 +2357,153 @@ func processSingleUsageFile(db *sqlx.DB, filePath string) error {
 		}
 	}
 
-	tx, err := db.Beginx()
-	if err != nil {
-		return fmt.Errorf("トランザクションの開始に失敗しました: %w", err)
-	}
-	defer tx.Rollback() // Rollback on any error
-
-	// Delete existing records in the date range
 	if err := database.DeleteUsageTransactionsInDateRange(tx, minDate, maxDate); err != nil {
-		return fmt.Errorf("既存レコードの削除に失敗しました (%s - %s): %w", minDate, maxDate, err)
+		return nil, fmt.Errorf("既存の処方データ削除に失敗: %w", err)
 	}
 
-	// Assume a default client or derive from filename if needed. WASABI derived from filename.
-	// For simplicity, let's try finding/creating a default client "CL0000" / "処方取込"
-	defaultClientCode := "CL0000"
-	defaultClientName := "処方取込"
-	clientExists, err := database.CheckClientExistsByName(tx, defaultClientName)
-	if err != nil {
-		return fmt.Errorf("得意先 '%s' の存在確認に失敗しました: %w", defaultClientName, err)
-	}
-	if !clientExists {
-		// Get next CL code if "CL0000" doesn't exist either
-		var actualClientCode string
-		err = tx.Get(&actualClientCode, "SELECT client_code FROM client_master WHERE client_code=?", defaultClientCode)
-		if err != nil {
-			if err == sql.ErrNoRows {
-				// CL0000 doesn't exist, generate new one
-				newCode, seqErr := database.NextSequenceInTx(tx, "CL", "CL", 4)
-				if seqErr != nil {
-					return fmt.Errorf("新規得意先コードの採番に失敗しました: %w", seqErr)
-				}
-				actualClientCode = newCode
-				if err := database.CreateClientInTx(tx, actualClientCode, defaultClientName); err != nil {
-					return fmt.Errorf("新規得意先 '%s' (%s) の作成に失敗しました: %w", defaultClientName, actualClientCode, err)
-				}
-			} else {
-				return fmt.Errorf("得意先 '%s' の確認中にエラー: %w", defaultClientCode, err)
+	// 5. マスター特定とデータ挿入
+	var finalRecords []model.TransactionRecord
+	for i, rec := range filtered {
+		// 5a. マスター特定 (TKR/mastermanager)
+		key := rec.JanCode
+		if key == "" || key == "0000000000000" {
+			// JANがない場合はYJコードをキーにする (TKRのmastermanagerはYJもJANも扱える)
+			key = rec.YjCode
+			if key == "" {
+				// 両方ない場合は製品名で合成キー
+				key = fmt.Sprintf("9999999999999%s", rec.ProductName)
 			}
-		} else {
-			actualClientCode = defaultClientCode // CL0000 exists, use it
 		}
-		defaultClientCode = actualClientCode
-	} else {
-		// Client exists by name, get its code
-		err = tx.Get(&defaultClientCode, "SELECT client_code FROM client_master WHERE client_name=?", defaultClientName)
+
+		master, err := mastermanager.FindOrCreateMaster(tx, key, rec.ProductName)
 		if err != nil {
-			return fmt.Errorf("得意先コード '%s' の取得に失敗しました: %w", defaultClientName, err)
+			return nil, fmt.Errorf("マスターの特定/作成に失敗 (Key: %s, Name: %s): %w", key, rec.ProductName, err)
 		}
+
+		// 5b. TransactionRecordへのマッピング (TKR/dat/handler.go を参考に)
+		transaction := MapUsageToTransaction(rec, master, i+1)
+
+		// 5c. DB挿入 (TKR/database)
+		if err := database.InsertTransactionRecord(tx, transaction); err != nil {
+			return nil, fmt.Errorf("処方レコードの挿入に失敗 (JAN: %s): %w", transaction.JanCode, err)
+		}
+
+		finalRecords = append(finalRecords, transaction)
 	}
 
-	// Insert new records
-	for i, rec := range parsedRecords {
-		// Find or create master using YJ code primarily, then JAN code
-		// ▼▼▼【ここから修正】キー選択ロジックを WASABI の YJ 優先に設定 ▼▼▼
-		masterKey := rec.YjCode // WASABIのロジック: まず YjCode を使う
-		if masterKey == "" {
-			masterKey = rec.JanCode // YjCode が空なら JanCode を使う
-		}
-		// ▲▲▲【修正ここまで】▲▲▲
+	// 6. コミット
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("トランザクションのコミットに失敗: %w", err)
+	}
 
-		// Skip if both are empty? Or create provisional based on product name?
-		if masterKey == "" {
-			log.Printf("WARN: Skipping usage record %d in %s - YJ and JAN codes are empty. Product: %s", i+1, filepath.Base(filePath), rec.ProductName)
+	return finalRecords, nil
+}
+
+// MapUsageToTransaction は、パースした処方データとマスターからDB用のTransactionRecordを作成します。
+// TKRの `dat.MapDatToTransaction` を参考にします。
+func MapUsageToTransaction(rec model.UnifiedInputRecord, master *model.ProductMaster, lineNumber int) model.TransactionRecord {
+	// 1. 製品名と規格を連結
+	productNameWithSpec := master.ProductName
+	if master.Specification != "" {
+		productNameWithSpec = master.ProductName + " " + master.Specification
+	}
+
+	// 2. 数量の計算 (USAGEはYJ数量が直接入ってくる)
+	yjQuantity := rec.YjQuantity
+	var janQuantity float64
+	if master.JanPackInnerQty > 0 {
+		janQuantity = yjQuantity / master.JanPackInnerQty
+	}
+
+	// 3. 詳細な包装仕様を生成 (units.ResolveName を使用)
+	yjUnitName := units.ResolveName(master.YjUnitName)
+	packageSpec := fmt.Sprintf("%s %g%s", master.PackageForm, master.YjPackUnitQty, yjUnitName)
+
+	janUnitCodeStr := fmt.Sprintf("%d", master.JanUnitCode)
+	var janUnitName string
+
+	if master.JanUnitCode == 0 {
+		janUnitName = yjUnitName
+	} else {
+		janUnitName = units.ResolveName(janUnitCodeStr)
+	}
+
+	if master.JanPackInnerQty > 0 && master.JanPackUnitQty > 0 {
+		packageSpec += fmt.Sprintf(" (%g%s×%g%s)",
+			master.JanPackInnerQty,
+			yjUnitName,
+			master.JanPackUnitQty,
+			janUnitName,
+		)
+	}
+
+	// 4. MAフラグの設定
+	var processFlagMA string
+	if master.Origin == "JCSHMS" {
+		processFlagMA = "COMPLETE"
+	} else {
+		processFlagMA = "PROVISIONAL"
+	}
+
+	// 5. 単価と金額 (処方の場合は薬価 [NhiPrice] を使用)
+	unitPrice := master.NhiPrice
+	subtotal := yjQuantity * unitPrice
+
+	return model.TransactionRecord{
+		TransactionDate:     rec.Date,
+		ClientCode:          "", // 処方では得意先コードは不要
+		ReceiptNumber:       fmt.Sprintf("USAGE-%s", rec.Date),
+		LineNumber:          strconv.Itoa(lineNumber),
+		Flag:                3, // 処方
+		JanCode:             master.ProductCode,
+		YjCode:              master.YjCode,
+		ProductName:         productNameWithSpec,
+		KanaName:            master.KanaName,
+		UsageClassification: master.UsageClassification,
+		PackageForm:         master.PackageForm,
+		PackageSpec:         packageSpec,
+		MakerName:           master.MakerName,
+		DatQuantity:         0, // DAT由来ではない
+		JanPackInnerQty:     master.JanPackInnerQty,
+		JanQuantity:         janQuantity,
+		JanPackUnitQty:      master.JanPackUnitQty,
+		JanUnitName:         janUnitName,
+		JanUnitCode:         janUnitCodeStr,
+		YjQuantity:          yjQuantity,
+		YjPackUnitQty:       master.YjPackUnitQty,
+		YjUnitName:          yjUnitName,
+		UnitPrice:           unitPrice, // 薬価
+		PurchasePrice:       master.PurchasePrice,
+		SupplierWholesale:   master.SupplierWholesale,
+		Subtotal:            subtotal, // 薬価 * YJ数量
+		TaxAmount:           0,
+		TaxRate:             0,
+		ExpiryDate:          "", // 処方データにはない
+		LotNumber:           "", // 処方データにはない
+		FlagPoison:          master.FlagPoison,
+		FlagDeleterious:     master.FlagDeleterious,
+		FlagNarcotic:        master.FlagNarcotic,
+		FlagPsychotropic:    master.FlagPsychotropic,
+		FlagStimulant:       master.FlagStimulant,
+		FlagStimulantRaw:    master.FlagStimulantRaw,
+		ProcessFlagMA:       processFlagMA,
+	}
+}
+
+// removeUsageDuplicates は処方レコードから重複を除外します (WASABI のロジック)
+func removeUsageDuplicates(records []model.UnifiedInputRecord) []model.UnifiedInputRecord {
+	seen := make(map[string]struct{})
+	var result []model.UnifiedInputRecord
+	for _, r := range records {
+		// 処方データは 日付+JAN+YJ+製品名 が同じなら重複とみなす
+		key := fmt.Sprintf("%s|%s|%s|%s", r.Date, r.JanCode, r.YjCode, r.ProductName)
+		if _, ok := seen[key]; ok {
 			continue
 		}
-
-		master, err := mastermanager.FindOrCreateMaster(tx, masterKey, rec.ProductName)
-		if err != nil {
-			// Log error and fail the whole file for now.
-			return fmt.Errorf("レコード %d のマスター処理に失敗しました (Key: %s, Name: %s): %w", i+1, masterKey, rec.ProductName, err)
-		}
-
-		// Map to TransactionRecord
-		transaction := model.TransactionRecord{
-			TransactionDate:     rec.Date,
-			ClientCode:          defaultClientCode,      // Use the determined client code
-			ReceiptNumber:       "",                     // Usage doesn't have receipt number
-			LineNumber:          fmt.Sprintf("%d", i+1), // Use line number
-			Flag:                3,                      // 3 for Usage
-			JanCode:             master.ProductCode,     // Use code from master (should be JAN or synthetic JAN)
-			YjCode:              master.YjCode,
-			ProductName:         master.ProductName,
-			KanaName:            master.KanaName,
-			UsageClassification: master.UsageClassification,
-			PackageForm:         master.PackageForm,
-			// PackageSpec needs calculation like in DAT handler
-			PackageSpec:       fmt.Sprintf("%s %v%s", master.PackageForm, master.YjPackUnitQty, master.YjUnitName), // Basic spec
-			MakerName:         master.MakerName,
-			DatQuantity:       0, // Not from DAT
-			JanPackInnerQty:   master.JanPackInnerQty,
-			JanQuantity:       0, // To be calculated if needed
-			JanPackUnitQty:    master.JanPackUnitQty,
-			JanUnitName:       "", // Determine if needed
-			JanUnitCode:       fmt.Sprintf("%d", master.JanUnitCode),
-			YjQuantity:        rec.YjQuantity, // From usage file
-			YjPackUnitQty:     master.YjPackUnitQty,
-			YjUnitName:        rec.YjUnitName, // Prefer unit name from usage file
-			UnitPrice:         0,              // Usage doesn't have price
-			PurchasePrice:     master.PurchasePrice,
-			SupplierWholesale: master.SupplierWholesale,
-			Subtotal:          0,
-			// Fill flags from master
-			FlagPoison:       master.FlagPoison,
-			FlagDeleterious:  master.FlagDeleterious,
-			FlagNarcotic:     master.FlagNarcotic,
-			FlagPsychotropic: master.FlagPsychotropic,
-			FlagStimulant:    master.FlagStimulant,
-			FlagStimulantRaw: master.FlagStimulantRaw,
-		}
-
-		if err := database.InsertTransactionRecord(tx, transaction); err != nil {
-			return fmt.Errorf("レコード %d の登録に失敗しました (YJ: %s, JAN: %s): %w", i+1, rec.YjCode, rec.JanCode, err)
-		}
+		seen[key] = struct{}{}
+		result = append(result, r)
 	}
-
-	// Commit transaction
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("トランザクションのコミットに失敗しました: %w", err)
-	}
-
-	return nil
+	return result
 }
 
 
@@ -2404,6 +2604,8 @@ import (
 	"tkr/database"
 	"tkr/loader"
 	"tkr/masteredit"
+	"tkr/units"
+	"tkr/usage" // ▼▼▼【ここに追加】▼▼▼
 )
 
 func main() {
@@ -2423,6 +2625,12 @@ func main() {
 		log.Fatalf("Database initialization failed: %v", err)
 	}
 	log.Println("Database initialization complete.")
+
+	if _, err := units.LoadTANIFile("SOU/TANI.CSV"); err != nil {
+		log.Printf("WARN: Failed to load TANI.CSV: %v. Unit names may not display correctly.", err)
+	} else {
+		log.Println("Unit (TANI.CSV) master loaded successfully.")
+	}
 
 	mux := http.NewServeMux()
 
@@ -2461,9 +2669,12 @@ func main() {
 		log.Printf("Successfully returned JCSHMS info for JAN: %s", janCode)
 	})
 
-	// ▼▼▼【修正】構文エラーを修正し、すべてのルートが含まれるようにします ▼▼▼
 	mux.HandleFunc("/api/dat/upload", dat.UploadDatHandler(dbConn))
 	mux.HandleFunc("/api/dat/search", dat.SearchDatHandler(dbConn))
+
+	// ▼▼▼【ここに追加】USAGEハンドラの登録 ▼▼▼
+	mux.HandleFunc("/api/usage/upload", usage.UploadUsageHandler(dbConn))
+	// ▲▲▲【追加ここまで】▲▲▲
 
 	mux.HandleFunc("/api/masters", masteredit.ListMastersHandler(dbConn))
 	mux.HandleFunc("/api/masters/update", masteredit.UpdateMasterHandler(dbConn))
@@ -2484,7 +2695,8 @@ func main() {
 			http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
 		}
 	})
-	// ▲▲▲【修正ここまで】▲▲▲
+
+	mux.HandleFunc("/api/units/map", units.GetTaniMapHandler())
 
 	port := ":8080"
 	log.Printf("Starting server on http://localhost%s", port)
