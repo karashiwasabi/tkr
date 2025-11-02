@@ -2,25 +2,19 @@
 import { hiraganaToKatakana } from './utils.js';
 
 let activeCallback = null;
-let activeRowElement = null; // どの行から呼び出されたかを保持
-let skipQueryLengthCheck = false; 
+let activeRowElement = null;
 
-// モーダルのDOM要素
-let modal, closeModalBtn, searchInput, searchBtn, searchResultsBody;
+let modal, closeModalBtn, searchBtn, searchResultsBody;
+let modalGs1Input, modalUsageClassRadios, modalKanaInput, modalGenericInput, modalShelfInput;
+let modalGs1Form;
 
-/**
- * モーダルを非表示にする
- */
 function hideModal() {
   if (modal) {
         modal.classList.add('hidden');
-        document.body.classList.remove('modal-open'); // TKRにはこのクラスはないかもしれないが念のため
+        document.body.classList.remove('modal-open');
     }
 }
 
-/**
- * 検索結果テーブルの「選択」ボタンが押されたときの処理
- */
 function handleResultClick(event) {
   if (event.target && event.target.classList.contains('select-product-btn')) {
     const product = JSON.parse(event.target.dataset.product);
@@ -31,27 +25,29 @@ function handleResultClick(event) {
   }
 }
 
-/**
- * 検索を実行する
- */
 async function performSearch() {
-  const query = hiraganaToKatakana(searchInput.value.trim());
-  if (!skipQueryLengthCheck && query.length < 2) {
-    window.showNotification('検索キーワードを2文字以上入力してください。', 'warning');
-    searchResultsBody.innerHTML = '<tr><td colspan="6" class="center">2文字以上入力して検索してください。</td></tr>';
-    return;
-  }
+  // ▼▼▼【修正】一般名(modalGenericInput)も取得する ▼▼▼
+  const kanaName = hiraganaToKatakana(modalKanaInput.value.trim());
+  const genericName = modalGenericInput.value.trim(); // ★追加
+  const shelfNumber = modalShelfInput.value.trim();
+  const selectedUsageRadio = document.querySelector('input[name="modal_usage_class"]:checked');
+  const usageClass = selectedUsageRadio ? selectedUsageRadio.value : '';
+  // ▲▲▲【修正ここまで】▲▲▲
+
+  const searchApi = modal.dataset.searchApi || '/api/products/search_filtered';
   
-  // 検索APIのURLをモーダルのdata属性から取得
-  const searchApi = modal.dataset.searchApi || '/api/products/search_filtered'; // デフォルト
+  const params = new URLSearchParams();
+  params.append('kanaName', kanaName);
+  params.append('genericName', genericName); // ★追加
+  params.append('shelfNumber', shelfNumber);
+  params.append('dosageForm', usageClass);
+
   searchResultsBody.innerHTML = '<tr><td colspan="6" class="center">検索中...</td></tr>';
 
   try {
-    const separator = searchApi.includes('?') ? '&' : '?';
-    const fullUrl = `${searchApi}${separator}q=${encodeURIComponent(query)}`;
+    const fullUrl = `${searchApi}?${params.toString()}`;
     
     const res = await fetch(fullUrl);
-
     if (!res.ok) {
         throw new Error(`サーバーエラー: ${res.status}`);
     }
@@ -62,18 +58,41 @@ async function performSearch() {
   }
 }
 
-/**
- * 検索結果をテーブルに描画する
- */
+// ... (handleGs1Search, renderSearchResults 関数は変更なし) ...
+async function handleGs1Search(event) {
+    event.preventDefault();
+    const barcode = modalGs1Input.value.trim();
+    if (!barcode) return;
+    let gs1Code = barcode;
+    if (barcode.startsWith('01') && barcode.length >= 16) {
+        gs1Code = barcode.substring(2, 16);
+    }
+    searchResultsBody.innerHTML = '<tr><td colspan="6" class="center">GS1コードで検索中...</td></tr>';
+    window.showLoading('GS1コードで検索中...');
+    try {
+        const res = await fetch(`/api/product/by_gs1?gs1_code=${gs1Code}`);
+        if (!res.ok) {
+             if (res.status === 404) {
+                throw new Error('このGS1コードはマスターに登録されていません。');
+             }
+            throw new Error(`サーバーエラー: ${res.status}`);
+        }
+        const product = await res.json();
+        renderSearchResults([product]);
+    } catch (err) {
+        searchResultsBody.innerHTML = `<tr><td colspan="6" class="center" style="color:red;">${err.message}</td></tr>`;
+    } finally {
+        window.hideLoading();
+        modalGs1Input.value = '';
+    }
+}
 function renderSearchResults(products) {
   if (!products || products.length === 0) {
     searchResultsBody.innerHTML = '<tr><td colspan="6" class="center">該当する製品が見つかりません。</td></tr>';
     return;
   }
-
   let html = '';
   products.forEach(p => {
-    // TKRでは isAdopted フラグはないため、クラス付与はしない
     const productData = JSON.stringify(p);
     html += `
       <tr>
@@ -89,68 +108,67 @@ function renderSearchResults(products) {
   searchResultsBody.innerHTML = html;
 }
 
-/**
- * モーダルを初期化する (app.jsから呼ばれる)
- */
+
 export function initSearchModal() {
   modal = document.getElementById('tkr-search-modal-overlay');
   closeModalBtn = document.getElementById('closeSearchModalBtn');
-  searchInput = document.getElementById('product-search-input');
   searchBtn = document.getElementById('product-search-btn');
   const searchResultsTable = document.getElementById('search-results-table');
   searchResultsBody = searchResultsTable ? searchResultsTable.querySelector('tbody') : null;
 
-  if (!modal || !closeModalBtn || !searchInput || !searchBtn || !searchResultsBody) {
+  modalGs1Form = document.getElementById('modal-search-gs1-form');
+  modalGs1Input = document.getElementById('modal-search-gs1');
+  modalUsageClassRadios = document.getElementById('modal-search-usage-class');
+  modalKanaInput = document.getElementById('modal-search-kana');
+  modalGenericInput = document.getElementById('modal-search-generic'); // 取得
+  modalShelfInput = document.getElementById('modal-search-shelf');
+
+  if (!modal || !closeModalBtn || !searchBtn || !searchResultsBody || !modalGs1Form || !modalGenericInput) { // チェックに追加
     console.error("品目検索モーダルの必須要素が見つかりません。");
     return;
   }
 
   closeModalBtn.addEventListener('click', hideModal);
   searchBtn.addEventListener('click', performSearch);
-  
-  searchInput.addEventListener('keypress', (e) => {
+  modalGs1Form.addEventListener('submit', handleGs1Search);
+
+  const handleKeyPress = (e) => {
     if (e.key === 'Enter') {
       e.preventDefault();
       performSearch();
     }
-  });
+  };
+  modalKanaInput.addEventListener('keypress', handleKeyPress);
+  modalGenericInput.addEventListener('keypress', handleKeyPress); // リスナー追加
+  modalShelfInput.addEventListener('keypress', handleKeyPress);
 
   searchResultsBody.addEventListener('click', handleResultClick);
   console.log("Search Modal Initialized.");
 }
 
-/**
- * モーダルを表示する (外部のJSから呼び出される)
- * @param {HTMLElement} rowElement - 呼び出し元の行要素 (オプション)
- * @param {Function} callback - 選択後に実行されるコールバック関数
- * @param {object} options - オプション (searchApi, initialResults, skipQueryLengthCheck)
- */
+// ... (showModal 関数は変更なし) ...
 export function showModal(rowElement, callback, options = {}) {
   if (!modal) {
       console.error("Search modal is not initialized.");
       return;
   }
-  
   document.body.classList.add('modal-open');
-  activeRowElement = rowElement; // 呼び出し元を記憶
+  activeRowElement = rowElement;
   activeCallback = callback; 
-  
-  skipQueryLengthCheck = options.skipQueryLengthCheck || false;
-  searchInput.placeholder = skipQueryLengthCheck ? '絞り込み (Enterで検索)' : '製品名またはカナ名（2文字以上）';
-  
-  const searchApi = options.searchApi || '/api/products/search_filtered'; // デフォルトAPI
+  const searchApi = options.searchApi || '/api/products/search_filtered';
   modal.dataset.searchApi = searchApi;
-  
   modal.classList.remove('hidden');
-  searchInput.value = '';
-  
+  modalGs1Input.value = '';
+  modalKanaInput.value = '';
+  modalGenericInput.value = '';
+  modalShelfInput.value = '';
+  document.querySelector('input[name="modal_usage_class"][value=""]').checked = true;
   setTimeout(() => {
-      searchInput.focus();
-  }, 100); // モーダル表示アニメーション後にフォーカス
-
+      modalGs1Input.focus();
+  }, 100);
   if (options.initialResults) {
       renderSearchResults(options.initialResults);
   } else {
-      searchResultsBody.innerHTML = '<tr><td colspan="6" class="center">検索キーワードを入力してください。</td></tr>';
+      searchResultsBody.innerHTML = '<tr><td colspan="6" class="center">検索ボタンを押してください。</td></tr>';
   }
 }

@@ -1,20 +1,17 @@
 // C:\Users\wasab\OneDrive\デスクトップ\TKR\static\js\inventory_adjustment_logic.js
 import { hiraganaToKatakana, getLocalDateString } from './utils.js';
 import { setUnitMap, generateFullHtml, createFinalInputRow } from './inventory_adjustment_ui.js';
-// ▼▼▼【ここに追加】▼▼▼
 import { showModal } from './search_modal.js';
-// ▲▲▲【追加ここまで】▲▲▲
 
 // ### グローバル変数 ###
 let view, outputContainer;
-let dosageFormFilter, kanaNameInput, selectProductBtn, barcodeInput, shelfNumberInput;
+// ▼▼▼【修正】不要なフィルター変数を削除 ▼▼▼
+let selectProductBtn, barcodeInput;
+// ▲▲▲【修正ここまで】▲▲▲
 let currentYjCode = null;
 let lastLoadedDataCache = null;
 
-// ### ロジック (Logic module) ###
-
-// (parseGS1_128, handleAdjustmentBarcodeScan, handleBarcodeScan 関数は変更なし)
-// ... (関数定義) ...
+// ... (parseGS1_128, handleAdjustmentBarcodeScan, handleBarcodeScan 関数は変更なし) ...
 function parseGS1_128(code) {
     let rest = code;
     const data = {};
@@ -166,51 +163,29 @@ async function handleBarcodeScan(e) {
 
 /**
  * 「品目を選択...」ボタンの処理
- * [cite_start](WASABI: inventory_adjustment_logic.js [cite: 866-871] より移植・TKR用に修正)
  */
-// ▼▼▼【ここから修正】showModalを呼び出すように変更 ▼▼▼
+// ▼▼▼【ここから修正】無条件でモーダルを開くように変更 ▼▼▼
 async function onSelectProductClick() {
-    const dosageForm = dosageFormFilter.value;
-    const kanaName = hiraganaToKatakana(kanaNameInput.value);
-    const shelfNumber = shelfNumberInput.value.trim();
-    
-    const params = new URLSearchParams({
-        dosageForm: dosageForm,
-        kanaName: kanaName,
-        shelfNumber: shelfNumber,
-    });
-    const apiUrl = `/api/products/search_filtered?${params.toString()}`;
-    // 検索条件が何か入力されていれば、モーダル側での文字数チェックをスキップ
-    const shouldSkipQueryLengthCheck = !!(dosageForm || kanaName || shelfNumber);
+    // API URL はモーダル側で定義済みのものを使用
+    const apiUrl = '/api/products/search_filtered';
 
-    window.showLoading();
-    try {
-        const res = await fetch(apiUrl);
-        if (!res.ok) throw new Error('品目リストの取得に失敗しました。');
-        const products = await res.json();
-        window.hideLoading();
-
-        // モーダルを表示
-        showModal(
-            view, // 呼び出し元要素 (ビュー全体)
-            (selectedProduct) => { // 選択時コールバック
-                loadAndRenderDetails(selectedProduct.yjCode);
-            }, 
-            { // オプション
-                initialResults: products, 
-                searchApi: apiUrl,
-                skipQueryLengthCheck: shouldSkipQueryLengthCheck
-            }
-        );
-
-    } catch (err) {
-        window.hideLoading();
-        window.showNotification(err.message, 'error');
-    }
+    // モーダルを表示
+    showModal(
+        view, // 呼び出し元要素 (ビュー全体)
+        (selectedProduct) => { // 選択時コールバック
+            // モーダルで品目が選択されたら、台帳を読み込む
+            loadAndRenderDetails(selectedProduct.yjCode);
+        }, 
+        { // オプション
+            searchApi: apiUrl,
+            // skipQueryLengthCheck: true (モーダル側で検索条件が固定化されたため不要)
+            // initialResults: [] (モーダル側で検索してもらう)
+        }
+    );
 }
 // ▲▲▲【修正ここまで】▲▲▲
 
-// (loadAndRenderDetails, reverseCalculateStock, updateFinalInventoryTotal, findMaster, saveInventoryData, initInventoryAdjustment 関数は変更なし)
+// (loadAndRenderDetails, reverseCalculateStock, updateFinalInventoryTotal, findMaster, saveInventoryData は変更なし)
 // ... (関数定義) ...
 async function loadAndRenderDetails(yjCode) {
     currentYjCode = yjCode;
@@ -388,32 +363,43 @@ async function saveInventoryData() {
     }
 }
 
+
 export async function initInventoryAdjustment() {
     let localUnitMap = {};
     try {
         const res = await fetch('/api/units/map');
         if (!res.ok) throw new Error('単位マスタの取得に失敗');
         localUnitMap = await res.json();
-        setUnitMap(localUnitMap);
+        setUnitMap(localUnitMap); // UIモジュールに単位マップを設定
     } catch (err) {
         console.error(err);
         window.showNotification(err.message, 'error');
     }
+
     view = document.getElementById('inventory-adjustment-view');
-    if (!view) return;
-    dosageFormFilter = document.getElementById('ia-dosageForm');
-    kanaNameInput = document.getElementById('ia-kanaName');
+    if (!view) {
+        console.error("Inventory Adjustment View not found.");
+        return;
+    }
+
+    // ▼▼▼【修正】削除したDOMへの参照を削除 ▼▼▼
+    // dosageFormFilter = document.getElementById('ia-dosageForm');
+    // kanaNameInput = document.getElementById('ia-kanaName');
+    // shelfNumberInput = document.getElementById('ia-shelf-number');
+    // ▲▲▲【修正ここまで】▲▲▲
+    
     selectProductBtn = document.getElementById('ia-select-product-btn');
     outputContainer = document.getElementById('inventory-adjustment-output');
     barcodeInput = document.getElementById('ia-barcode-input');
     const barcodeForm = document.getElementById('ia-barcode-form');
-    shelfNumberInput = document.getElementById('ia-shelf-number');
+
     if (barcodeForm) {
         barcodeForm.addEventListener('submit', handleBarcodeScan);
     }
     if (selectProductBtn) {
         selectProductBtn.addEventListener('click', onSelectProductClick);
     }
+    
     outputContainer.addEventListener('input', (e) => {
         const targetClassList = e.target.classList;
         if (targetClassList.contains('physical-stock-input')) {
@@ -424,6 +410,7 @@ export async function initInventoryAdjustment() {
             updateFinalInventoryTotal(productCode);
         }
     });
+
     outputContainer.addEventListener('click', (e) => {
         const target = e.target;
         if (target.classList.contains('add-deadstock-row-btn')) {
@@ -435,6 +422,7 @@ export async function initInventoryAdjustment() {
                 tbody.insertAdjacentHTML('beforeend', newRowHTML);
             }
         }
+      
         if (target.classList.contains('delete-deadstock-row-btn')) {
             const topRow = target.closest('tr');
             const bottomRow = topRow.nextElementSibling;
@@ -447,19 +435,25 @@ export async function initInventoryAdjustment() {
             saveInventoryData();
         }
     });
+
     outputContainer.addEventListener('submit', (e) => {
         if (e.target.id === 'adjustment-barcode-form') {
             handleAdjustmentBarcodeScan(e);
         }
     });
+
     document.addEventListener('loadInventoryAdjustment', (e) => {
         const { yjCode } = e.detail;
         if (yjCode) {
-            dosageFormFilter.value = '';
-            kanaNameInput.value = '';
-            shelfNumberInput.value = '';
+            // 他のビューからジャンプしてきた場合
+            // ▼▼▼【修正】削除した要素への参照を削除 ▼▼▼
+            // dosageFormFilter.value = '';
+            // kanaNameInput.value = '';
+            // shelfNumberInput.value = '';
+            // ▲▲▲【修正ここまで】▲▲▲
             loadAndRenderDetails(yjCode);
         }
     });
+
     console.log("Inventory Adjustment View Initialized.");
 }

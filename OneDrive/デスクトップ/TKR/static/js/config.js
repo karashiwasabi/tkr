@@ -2,18 +2,23 @@
 
 let usageFolderPathInput;
 let datFolderPathInput;
-// ▼▼▼【ここに追加】▼▼▼
 let calculationDaysInput;
 let savePathBtn;
-let saveDaysBtn; // 集計期間保存ボタン
-// ▲▲▲【追加ここまで】▲▲▲
+let saveDaysBtn;
 
 let wholesalerListTableBody;
 let newWholesalerCodeInput, newWholesalerNameInput, addWholesalerBtn;
 
 // --- 1. 設定 (パス・期間) ---
 
+// ▼▼▼【修正】loadConfig を export するラッパー関数に変更 ▼▼▼
+export async function loadConfigAndWholesalers() {
+    await loadConfig();
+    await loadWholesalers();
+}
+
 async function loadConfig() {
+// ▲▲▲【修正ここまで】▲▲▲
     try {
         const response = await fetch('/api/config');
         if (!response.ok) {
@@ -27,12 +32,9 @@ async function loadConfig() {
         if (datFolderPathInput) {
             datFolderPathInput.value = config.datFolderPath || '';
         }
-        // ▼▼▼【ここに追加】▼▼▼
         if (calculationDaysInput) {
             calculationDaysInput.value = config.calculationPeriodDays || 90;
         }
-        // ▲▲▲【追加ここまで】▲▲▲
-
     } catch (error) {
         console.error("Error loading config:", error);
         window.showNotification(error.message, 'error');
@@ -42,22 +44,18 @@ async function loadConfig() {
 async function saveConfig() {
     const usagePath = usageFolderPathInput ? usageFolderPathInput.value : '';
     const datPath = datFolderPathInput ? datFolderPathInput.value : '';
-    // ▼▼▼【ここに追加】▼▼▼
     const calcDays = calculationDaysInput ? parseInt(calculationDaysInput.value, 10) : 90;
-    // ▲▲▲【追加ここまで】▲▲▲
     
     window.showLoading('設定を保存中...');
     try {
         const response = await fetch('/api/config', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            // ▼▼▼【修正】CalculationPeriodDays も保存する ▼▼▼
             body: JSON.stringify({ 
                 usageFolderPath: usagePath,
                 datFolderPath: datPath,
                 calculationPeriodDays: calcDays 
             }),
-            // ▲▲▲【修正ここまで】▲▲▲
         });
         
         if (!response.ok) {
@@ -200,10 +198,9 @@ export function initConfigView() {
     datFolderPathInput = document.getElementById('config-dat-folder-path');
     savePathBtn = document.getElementById('configSavePathBtn');
 
-    // ▼▼▼【ここに追加】集計期間 ▼▼▼
+    // 集計期間
     calculationDaysInput = document.getElementById('config-calculation-days');
     saveDaysBtn = document.getElementById('configSaveDaysBtn');
-    // ▲▲▲【追加ここまで】▲▲▲
     
     // 卸管理
     const wholesalerListTable = document.getElementById('wholesalerListTable');
@@ -216,11 +213,9 @@ export function initConfigView() {
     if (savePathBtn) {
         savePathBtn.addEventListener('click', saveConfig);
     }
-    // ▼▼▼【ここに追加】▼▼▼
     if (saveDaysBtn) {
         saveDaysBtn.addEventListener('click', saveConfig); // 同じ保存関数を呼ぶ
     }
-    // ▲▲▲【追加ここまで】▲▲▲
     
     if (addWholesalerBtn) {
         addWholesalerBtn.addEventListener('click', handleAddWholesaler);
@@ -234,12 +229,14 @@ export function initConfigView() {
         });
     }
     
-    // 画面表示時にデータをロードする
-    document.addEventListener('setActiveView', (event) => {
-        if (event.detail.viewId === 'config-view') {
-            loadConfig();
-            loadWholesalers();
-        }
-    });
+    // ▼▼▼【削除】画面表示時のロード処理は app.js の setActiveView に移管 ▼▼▼
+    // document.addEventListener('setActiveView', (event) => {
+    //     if (event.detail.viewId === 'config-view') {
+    //         loadConfig();
+    //         loadWholesalers();
+    //     }
+    // });
+    // ▲▲▲【削除ここまで】▲▲▲
+
     console.log("Config View Initialized.");
 }

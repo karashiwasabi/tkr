@@ -2,10 +2,14 @@
 package main
 
 import (
-	"encoding/json"
+	"encoding/json" // ▼▼▼【ここに追加】▼▼▼
+	"html/template" // ▼▼▼【ここに追加】▼▼▼
+	"io/fs"         // ▼▼▼【ここに追加】▼▼▼
 	"log"
 	"net/http"
+	"os" // ▼▼▼【ここに追加】▼▼▼
 	"os/exec"
+	"path/filepath" // ▼▼▼【ここに追加】▼▼▼
 	"runtime"
 	"strings"
 
@@ -15,13 +19,21 @@ import (
 	"tkr/config"
 	"tkr/dat"
 	"tkr/database"
-	"tkr/inventoryadjustment" // ▼▼▼【ここに追加】▼▼▼
+	"tkr/inventoryadjustment"
 	"tkr/loader"
 	"tkr/masteredit"
-	"tkr/product" // ▼▼▼【ここに追加】▼▼▼
+	"tkr/product"
 	"tkr/units"
 	"tkr/usage"
 )
+
+// ▼▼▼【ここから追加】HTMLテンプレートを保持する変数 ▼▼▼
+var (
+	appTemplate *template.Template
+	viewsFS     fs.FS
+)
+
+// ▲▲▲【追加ここまで】▲▲▲
 
 func main() {
 	log.Println("Connecting to database...")
@@ -47,18 +59,84 @@ func main() {
 		log.Println("Unit (TANI.CSV) master loaded successfully.")
 	}
 
+	// ▼▼▼【ここから追加】HTMLテンプレートの読み込み処理 ▼▼▼
+	// 'static' フォルダをFSとしてキャプチャ
+	staticFS := os.DirFS("static")
+	// 'static/views' サブディレクトリをFSとしてキャプチャ
+	viewsFS, err = fs.Sub(staticFS, "views")
+	if err != nil {
+		// 'static/views' がなくてもエラーにしない（TKRの構成に合わせて柔軟に）
+		log.Printf("WARN: 'static/views' directory not found. Will only load index.html. %v", err)
+		// viewsFS が nil でも続行
+	}
+
+	// メインの index.html をパース
+	appTemplate, err = template.ParseFS(staticFS, "index.html")
+	if err != nil {
+		log.Fatalf("Failed to parse index.html: %v", err)
+	}
+
+	if viewsFS != nil {
+		// viewsFS (static/views) 内のすべての .html ファイルを追加でパース
+		appTemplate, err = appTemplate.ParseFS(viewsFS, "*.html")
+		if err != nil {
+			log.Fatalf("Failed to parse views/*.html: %v", err)
+		}
+	}
+	log.Println("HTML templates loaded and parsed.")
+	// ▲▲▲【追加ここまで】▲▲▲
+
 	mux := http.NewServeMux()
 
 	mux.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("./static"))))
 
+	// ▼▼▼【修正】ルートハンドラをテンプレートを描画するように変更 ▼▼▼
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/" {
 			http.NotFound(w, r)
 			return
 		}
-		http.ServeFile(w, r, "./static/index.html")
-	})
 
+		// viewsFS から全ビューのファイル名を取得
+		viewFiles := []string{}
+		if viewsFS != nil {
+			viewFiles, err = fs.Glob(viewsFS, "*.html")
+			if err != nil {
+				log.Printf("Error globbing view files: %v", err)
+				http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+				return
+			}
+		}
+
+		// 全ビューを結合するためのデータマップ
+		viewMap := make(map[string]template.HTML)
+		for _, file := range viewFiles {
+			// ファイル名 (例: dat_view.html) からキー (dat_view) を作成
+			key := strings.TrimSuffix(file, filepath.Ext(file))
+			// バッファにビューを描画
+			var viewContent strings.Builder
+			if err := appTemplate.ExecuteTemplate(&viewContent, file, nil); err != nil {
+				log.Printf("Error executing view template %s: %v", file, err)
+				http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+				return
+			}
+			viewMap[key] = template.HTML(viewContent.String())
+		}
+
+		// メインの index.html テンプレートに全ビューを埋め込んで描画
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		err = appTemplate.ExecuteTemplate(w, "index.html", struct {
+			Views map[string]template.HTML
+		}{
+			Views: viewMap,
+		})
+		if err != nil {
+			log.Printf("Error executing main template: %v", err)
+		}
+	})
+	// ▲▲▲【修正ここまで】▲▲▲
+
+	// ( ... JCSHMS APIハンドラ ... )
 	mux.HandleFunc("/api/jcshms/", func(w http.ResponseWriter, r *http.Request) {
 		janCode := strings.TrimPrefix(r.URL.Path, "/api/jcshms/")
 		if janCode == "" {
@@ -84,6 +162,7 @@ func main() {
 		log.Printf("Successfully returned JCSHMS info for JAN: %s", janCode)
 	})
 
+	// ( ... 他のAPIハンドラ ... )
 	mux.HandleFunc("/api/dat/upload", dat.UploadDatHandler(dbConn))
 	mux.HandleFunc("/api/dat/search", dat.SearchDatHandler(dbConn))
 	mux.HandleFunc("/api/usage/upload", usage.UploadUsageHandler(dbConn))
@@ -91,23 +170,17 @@ func main() {
 	mux.HandleFunc("/api/masters", masteredit.ListMastersHandler(dbConn))
 	mux.HandleFunc("/api/masters/update", masteredit.UpdateMasterHandler(dbConn))
 
-	// ▼▼▼【ここから追加】棚卸調整・集計API ▼▼▼
 	mux.HandleFunc("/api/inventory/adjust/data", inventoryadjustment.GetInventoryDataHandler(dbConn))
 	mux.HandleFunc("/api/inventory/adjust/save", inventoryadjustment.SaveInventoryDataHandler(dbConn))
-	// ▼▼▼【追加ここまで】▲▲▲
 
-	// ▼▼▼【ここから追加】品目検索API ▼▼▼
 	mux.HandleFunc("/api/products/search_filtered", product.SearchProductsHandler(dbConn))
 	mux.HandleFunc("/api/product/by_gs1", product.GetProductByGS1Handler(dbConn))
-	mux.HandleFunc("/api/master/by_code/", product.GetMasterByCodeHandler(dbConn)) // マスタ編集画面でも流用
-	// ▲▲▲【追加ここまで】▲▲▲
+	mux.HandleFunc("/api/master/by_code/", product.GetMasterByCodeHandler(dbConn))
 
-	// 卸管理API
 	mux.HandleFunc("/api/wholesalers/list", ListWholesalersHandler(dbConn))
 	mux.HandleFunc("/api/wholesalers/create", CreateWholesalerHandler(dbConn))
 	mux.HandleFunc("/api/wholesalers/delete/", DeleteWholesalerHandler(dbConn))
 
-	// パス設定など
 	mux.HandleFunc("/api/config", func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:
@@ -131,6 +204,7 @@ func main() {
 	}
 }
 
+// ( ... openBrowser 関数 ... )
 func openBrowser(url string) {
 	var err error
 	switch runtime.GOOS {

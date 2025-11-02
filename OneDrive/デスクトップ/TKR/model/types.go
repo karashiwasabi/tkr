@@ -179,14 +179,11 @@ type UnifiedInputRecord struct {
 	YjUnitName  string
 }
 
-// ▼▼▼【ここから追加】(WASABI: model/types.go  より移植・簡略化) ▼▼▼
-
-// ProductMasterView は製品マスターを画面表示用に拡張したものです。
 type ProductMasterView struct {
 	ProductMaster
 	FormattedPackageSpec string `json:"formattedPackageSpec"`
 	JanUnitName          string `json:"janUnitName"`
-	IsAdopted            bool   `json:"isAdopted,omitempty"` // TKRでは未使用
+	IsAdopted            bool   `json:"isAdopted,omitempty"`
 }
 
 // AggregationFilters は集計時のフィルタ条件です。
@@ -200,6 +197,9 @@ type AggregationFilters struct {
 	YjCode       string
 	MovementOnly bool
 	ShelfNumber  string
+	// ▼▼▼【ここに追加】(WASABI: model/types.go より) ▼▼▼
+	GenericName string // 一般名
+	// ▲▲▲【追加ここまで】▲▲▲
 }
 
 // StockLedgerYJGroup はYJコード単位の集計グループです。
@@ -211,7 +211,7 @@ type StockLedgerYJGroup struct {
 	StartingBalance interface{}               `json:"startingBalance"`
 	NetChange       float64                   `json:"netChange"`
 	EndingBalance   interface{}               `json:"endingBalance"`
-	IsReorderNeeded bool                      `json:"isReorderNeeded"` // TKRでは未使用
+	IsReorderNeeded bool                      `json:"isReorderNeeded"`
 }
 
 // StockLedgerPackageGroup は包装キー単位の集計グループです。
@@ -243,5 +243,3 @@ type DeadStockRecord struct {
 	ExpiryDate       string  `json:"expiryDate"`
 	LotNumber        string  `json:"lotNumber"`
 }
-
-// ▲▲▲【追加ここまで】▲▲▲

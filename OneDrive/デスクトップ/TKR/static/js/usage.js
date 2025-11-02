@@ -1,5 +1,9 @@
 // C:\Users\wasab\OneDrive\デスクトップ\TKR\static\js\usage.js
 
+// ▼▼▼【ここから追加】グローバル変数化 ▼▼▼
+let usageUploadBtn, usageFileInput, uploadResultContainer, dataTable;
+// ▲▲▲【追加ここまで】▲▲▲
+
 // dat.js の renderEmptyTable をコピー
 function renderEmptyTable(dataTable) {
     if (!dataTable) return;
@@ -57,22 +61,18 @@ async function handleUsageUpload(files, usageFileInput, uploadResultContainer, d
     }
 
     try {
-        // ▼▼▼ APIエンドポイントは /api/usage/upload ▼▼▼
         const response = await fetch('/api/usage/upload', {
             method: 'POST',
             body: formData,
         });
-        // ▲▲▲ 変更ここまで ▲▲▲
         
         const result = await response.json(); 
-
         if (!response.ok) {
             throw new Error(result.message || `サーバーエラー (HTTP ${response.status})`);
         }
 
         let summaryHtml = `<h3>${result.message || '処理が完了しました。'}</h3>`;
         
-        // USAGEハンドラは 'results' 配列を返さない想定だが、DATに合わせておく
         if (result.results && Array.isArray(result.results)) {
             summaryHtml += '<ul>';
             result.results.forEach(fileResult => {
@@ -90,7 +90,6 @@ async function handleUsageUpload(files, usageFileInput, uploadResultContainer, d
         }
         if (uploadResultContainer) uploadResultContainer.innerHTML = summaryHtml;
         
-        // dat.js と同様に tableHTML を期待する
         if (dataTable && result.tableHTML != null) { 
             dataTable.innerHTML = result.tableHTML;
         } else if (dataTable) {
@@ -112,14 +111,22 @@ async function handleUsageUpload(files, usageFileInput, uploadResultContainer, d
     }
 }
 
+// ▼▼▼【ここから追加】app.jsから呼ばれる関数 ▼▼▼
+export function fetchAndRenderUsage() {
+    // USAGE画面も表示されるたびに空にする
+    renderEmptyTable(dataTable);
+    if (uploadResultContainer) {
+        uploadResultContainer.innerHTML = '<p>「USAGEファイル選択」ボタンを押してファイルを選んでください。</p>';
+    }
+}
+// ▲▲▲【追加ここまで】▲▲▲
+
 // dat.js の initDatUpload をコピーし、USAGE用に変更
 export function initUsageUpload() {
-    // ▼▼▼【修正】USAGE専用のIDを参照するように変更 ▼▼▼
-    const usageUploadBtn = document.getElementById('usageUploadBtn');
-    const usageFileInput = document.getElementById('usageFileInput');
-    const uploadResultContainer = document.getElementById('usageUploadResultContainer');
-    const dataTable = document.getElementById('usageMainDataTable');
-    // ▲▲▲【修正ここまで】▲▲▲
+    usageUploadBtn = document.getElementById('usageUploadBtn');
+    usageFileInput = document.getElementById('usageFileInput');
+    uploadResultContainer = document.getElementById('usageUploadResultContainer');
+    dataTable = document.getElementById('usageMainDataTable');
 
     if (usageUploadBtn && usageFileInput) {
         usageUploadBtn.addEventListener('click', () => {
@@ -132,9 +139,10 @@ export function initUsageUpload() {
         console.error('USAGE Upload button or file input not found.');
     }
 
-     // 初期テーブル表示
-     renderEmptyTable(dataTable);
-     if (uploadResultContainer) {
-        uploadResultContainer.innerHTML = '<p>「USAGEファイル選択」ボタンを押してファイルを選んでください。</p>';
-    }
+     // ▼▼▼【削除】起動時の描画処理は fetchAndRenderUsage に移動 ▼▼▼
+     // renderEmptyTable(dataTable);
+     // if (uploadResultContainer) {
+     //    uploadResultContainer.innerHTML = '<p>「USAGEファイル選択」ボタンを押してファイルを選んでください。</p>';
+     // }
+     // ▲▲▲【削除ここまで】▲▲▲
 }

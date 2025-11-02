@@ -440,6 +440,74 @@
     color: #e60000;
     font-weight: bold;
 }
+/* ▼▼▼【ここから追加】固定検索パネル用スタイル ▼▼▼ */
+#tkr-search-modal-overlay .filter-container {
+    padding: 10px;
+    margin-top: 10px;
+    border: 1px solid #ddd;
+}
+
+#tkr-search-modal-overlay .modal-search-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 10px;
+}
+
+#tkr-search-modal-overlay .form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+#tkr-search-modal-overlay .form-group label {
+    font-size: 10px;
+    font-weight: bold;
+}
+#tkr-search-modal-overlay .form-group input[type="text"] {
+    font-size: 1.0em;
+    padding: 4px;
+    border: 1px solid #ccc;
+}
+#tkr-search-modal-overlay .radio-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+    align-items: center;
+    padding-top: 5px; /* ラベルと高さを合わせる */
+}
+#tkr-search-modal-overlay .radio-group label {
+    font-size: 1.0em;
+    font-weight: normal;
+    display: flex;
+    align-items: center;
+    gap: 2px;
+}
+#tkr-search-modal-overlay .form-actions {
+    text-align: right;
+    border-top: none;
+    margin-top: 10px;
+    padding-top: 0;
+}
+/* ▲▲▲【追加ここまで】▲▲▲ */
+
+
+/* 検索結果テーブル (変更なし) */
+#search-results-table {
+    font-size: 10px;
+}
+#search-results-table th, 
+#search-results-table td {
+    padding: 3px 4px;
+    height: auto;
+    min-height: 18px;
+}
+#search-results-table tr.adopted-item td {
+    color: #e60000;
+    font-weight: bold;
+}
+#search-results-table tr.adopted-item td .select-product-btn {
+    color: #e60000;
+    font-weight: bold;
+}
 
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\css\styles.css -----
 /* TKR/static/css/styles.css (Table styles removed) */
@@ -718,6 +786,199 @@ body {
 .status-success { color: green; }
 .status-error   { color: red; }
 
+----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\views\config_view.html -----
+<div id="config-view" class="view">
+    <h1>設定</h1>
+    <section class="config-section">
+        <h2>パス設定</h2>
+        <div class="config-form-container">
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="config-dat-folder-path">伝票取込フォルダパス (DAT):</label>
+                    <input type="text" id="config-dat-folder-path" autocomplete="off">
+                </div>
+                <div class="form-group">
+                    <label for="config-usage-folder-path">処方取込フォルダパス (CSV):</label>
+                    <input type="text" id="config-usage-folder-path" autocomplete="off">
+                </div>
+            </div>
+            <div class="form-actions">
+                <button id="configSavePathBtn" class="btn">パス保存</button>
+            </div>
+        </div>
+    </section>
+    <section class="config-section">
+        <h2>集計設定</h2>
+        <div class="config-form-container">
+            <div class="form-row">
+                <div class="form-group" style="flex-basis: 150px;">
+                    <label for="config-calculation-days">在庫集計期間 (日数):</label>
+                    <input type="number" id="config-calculation-days" autocomplete="off" value="90">
+                </div>
+            </div>
+            <div class="form-actions">
+                <button id="configSaveDaysBtn" class="btn">集計期間保存</button>
+            </div>
+        </div>
+    </section>
+    <section class="config-section">
+        <h2>卸コード管理</h2>
+        <div class="config-form-container">
+            <fieldset>
+                <legend>新規卸コード追加</legend>
+                <div class="form-row">
+                    <div class="form-group" style="flex-basis: 150px;">
+                        <label for="config-wholesaler-code">卸コード:</label>
+                        <input type="text" id="config-wholesaler-code" autocomplete="off" maxlength="10">
+                    </div>
+                    <div class="form-group" style="flex-basis: 300px;">
+                        <label for="config-wholesaler-name">卸名:</label>
+                        <input type="text" id="config-wholesaler-name" autocomplete="off">
+                    </div>
+                    <div class="form-actions">
+                        <button id="configAddWholesalerBtn" class="btn">追加</button>
+                    </div>
+                </div>
+            </fieldset>
+        </div>
+        <div id="wholesalerListContainer" class="table-container" style="max-height: 300px; margin-top: 10px;">
+            <table id="wholesalerListTable" class="data-table">
+                <thead>
+                    <tr>
+                        <th style="width: 25%;">卸コード</th>
+                        <th style="width: 60%;">卸名</th>
+                        <th style="width: 15%;">操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+                </tbody>
+            </table>
+        </div>
+    </section>
+</div>
+
+----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\views\dat_view.html -----
+<div id="dat-upload-view" class="view">
+    <h1>ファイルアップロード (DAT)</h1>
+
+    <div style="margin-bottom: 20px;">
+        <button id="datUploadBtn" class="btn">DATファイル選択</button>
+        <input type="file" id="datFileInput" multiple accept=".dat,.DAT" class="hidden">
+    </div>
+
+    <div class="filter-container" style="padding: 10px; margin-bottom: 10px; background-color: #f7f7f7; border: 1px solid #ddd;">
+        <fieldset style="border: 1px solid #ccc; padding: 5px;">
+            <legend>GS1-128 バーコード検索 (DAT)</legend>
+            <div style="display: flex; flex-wrap: wrap; gap: 10px; align-items: center;">
+                <div class="form-group" style="flex-basis: 300px; flex-grow: 1;">
+                    <label for="dat-search-barcode">バーコード入力 (JAN+期限+ロット):</label>
+                    <input type="text" id="dat-search-barcode" style="padding: 3px; font-size: inherit; width: 100%; box-sizing: border-box;" placeholder="0114987..." autofocus autocomplete="off">
+                </div>
+                <button id="datSearchBtn" class="btn" style="padding: 5px 10px; margin-left: auto; align-self: flex-end;">検索</button>
+            </div>
+        </fieldset>
+    </div>
+    
+    <div id="datUploadResultContainer">
+        <p>「DATファイル選択」ボタンを押してファイルを選んでください。</p>
+    </div>
+    
+    <div id="datTableContainer" class="table-container">
+        <table id="datMainDataTable" class="data-table">
+        </table>
+    </div>
+</div>
+
+----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\views\inventory_adjustment_view.html -----
+<div id="inventory-adjustment-view" class="view">
+    <h1>棚卸調整 (1品目ごと)</h1>
+    <div class="filter-container" style="padding: 10px; margin-bottom: 10px; background-color: #f0f8ff;">
+        <fieldset style="border: 1px solid #ccc; padding: 5px;">
+            <legend>品目検索</legend>
+            <div style="display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end;">
+                
+                <div class="form-group" style="flex-basis: 300px; flex-grow: 1;">
+                    <label for="ia-barcode-input">GS1バーコードスキャン:</label>
+                    <form id="ia-barcode-form" style="margin: 0;">
+                        <input type="text" id="ia-barcode-input" style="padding: 3px; font-size: inherit;" autocomplete="off" placeholder="GS1-128 (JAN+期限+ロット)">
+                    </form>
+                </div>
+
+                <div class="form-group">
+                    <button id="ia-select-product-btn" class="btn" style="padding: 5px 10px;">品目を選択...</button>
+                </div>
+
+                </div>
+        </fieldset>
+    </div>
+    <div id="inventory-adjustment-output" class="table-container">
+        <p>上記検索条件で品目を指定してください。</p>
+    </div>
+</div>
+
+----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\views\master_edit_view.html -----
+<div id="master-edit-view" class="view">
+    <h1>マスタ編集</h1>
+    <div class="filter-container" style="padding: 10px; margin-bottom: 10px;">
+        <fieldset style="border: 1px solid #ccc; padding: 5px;">
+            <legend>検索条件</legend>
+            <div style="display: flex; flex-wrap: wrap; gap: 10px; align-items: center;">
+                <div class="form-group">
+                    <label style="font-weight: bold;">内外注区分:</label>
+                    <label><input type="radio" name="usage_class" value="内" checked> 内</label>
+                    <label><input type="radio" name="usage_class" value="外"> 外</label>
+                    <label><input type="radio" name="usage_class" value="注"> 注</label>
+                    <label><input type="radio" name="usage_class" value="他"> 他</label>
+                </div>
+                <div class="form-group" style="flex-basis: 200px;">
+                    <label for="master-search-prod-name">製品名 (部分一致):</label>
+                    <input type="text" id="master-search-prod-name" style="padding: 3px; font-size: inherit;" autocomplete="off">
+                </div>
+                <div class="form-group" style="flex-basis: 200px;">
+                    <label for="master-search-kana-name">カナ名 (前方一致):</label>
+                    <input type="text" id="master-search-kana-name" style="padding: 3px; font-size: inherit;" autocomplete="off">
+                </div>
+                <div class="form-group" style="flex-basis: 200px;">
+                    <label for="master-search-generic-name">一般名 (部分一致):</label>
+                    <input type="text" id="master-search-generic-name" style="padding: 3px; font-size: inherit;" autocomplete="off">
+                </div>
+                <div class="form-group" style="flex-basis: 100px;">
+                    <label for="master-search-shelf-number">棚番 (完全一致):</label>
+                    <input type="text" id="master-search-shelf-number" style="padding: 3px; font-size: inherit;" autocomplete="off">
+                </div>
+                <button id="masterSearchBtn" class="btn" style="padding: 5px 10px; margin-left: auto;">検索</button>
+            </div>
+        </fieldset>
+    </div>
+    <div id="masterListContainer" class="table-container">
+        <table id="masterListTable" class="data-table">
+            <thead>
+            </thead>
+            <tbody>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\views\usage_view.html -----
+<div id="usage-upload-view" class="view">
+    <h1>ファイルアップロード (USAGE)</h1>
+
+    <div style="margin-bottom: 20px;">
+        <button id="usageUploadBtn" class="btn">USAGEファイル選択</button>
+        <input type="file" id="usageFileInput" accept=".csv,.CSV,.txt,.TXT" class="hidden">
+    </div>
+
+    <div id="usageUploadResultContainer">
+        <p>「USAGEファイル選択」ボタンを押してファイルを選んでください。</p>
+    </div>
+    
+    <div id="usageTableContainer" class="table-container">
+        <table id="usageMainDataTable" class="data-table">
+        </table>
+    </div>
+</div>
+
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\index.html -----
 <!DOCTYPE html>
 <html lang="ja">
@@ -730,7 +991,7 @@ body {
     <link rel="stylesheet" href="/static/css/config.css">
     <link rel="stylesheet" href="/static/css/inventory_adjustment.css">
     <link rel="stylesheet" href="/static/css/search_modal.css">
-    </head>
+</head>
 <body>
     <header id="main-header">
         <button id="datViewBtn" class="btn">DAT取込</button>
@@ -741,6 +1002,17 @@ body {
     </header>
 
     <main>
+        {{if .Views}}
+            {{range .Views}}
+                {{.}}
+            {{end}}
+        {{else}}
+            <div id="dat-upload-view" class="view active">DATビュー</div>
+            <div id="usage-upload-view" class="view">USAGEビュー</div>
+            <div id="inventory-adjustment-view" class="view">棚卸調整ビュー</div>
+            <div id="master-edit-view" class="view">マスタ編集ビュー</div>
+            <div id="config-view" class="view">設定ビュー</div>
+        {{end}}
         </main>
 
     <div id="loading-overlay" class="hidden">
@@ -750,21 +1022,78 @@ body {
     <div id="notification-box"></div>
 
     <div id="masterEditModalOverlay" class="modal-overlay hidden">
+        <div class="modal-content">
+            <h2>製品マスター編集</h2>
+            <form id="masterEditForm" autocomplete="off">
+                <div class="form-row readonly-group">
+                    <div class="form-group" style="flex-basis: 120px;">
+                        <label for="edit-yj-code">YJコード (編集不可: JCSHMS)</label>
+                        <input type="text" id="edit-yj-code" class="readonly-field" readonly>
+                    </div>
+                    <div class="form-group" style="flex-basis: 120px;">
+                        <label for="view-product-code">JANコード (キー)</label>
+                        <input type="text" id="view-product-code" class="readonly-field" readonly>
+                        <input type="hidden" id="edit-product-code">
+                    </div>
+                    <div class="form-group" style="flex-basis: 120px;">
+                        <label for="edit-gs1-code">GS1コード (編集不可: JCSHMS)</label>
+                        <input type="text" id="edit-gs1-code" class="readonly-field" readonly>
+                    </div>
+                    <div class="form-group" style="flex-basis: 100px;">
+                        <label for="edit-origin">由来 (編集不可)</label>
+                        <input type="text" id="edit-origin" class="readonly-field" readonly>
+                    </div>
+                </div>
+                <div class="form-actions">
+                    <button type="button" id="saveMasterBtn" class="btn">保存</button>
+                    <button type="button" id="cancelEditMasterBtn" class="btn">閉じる</button>
+                </div>
+            </form>
         </div>
-
+    </div>
+    
     <div id="tkr-search-modal-overlay" class="modal-overlay hidden">
         <div class="modal-content" id="tkr-search-modal-content">
             <h2>品目検索</h2>
-            <div class="filter-container" style="background-color: #f4f4f4;">
-                <div style="display: flex; gap: 10px; align-items: flex-end;">
-                    <div class="form-group" style="flex-grow: 1;">
-                        <label for="product-search-input">検索 (製品名, カナ名)</label>
-                        <input type="text" id="product-search-input" style="font-size: 1.1em; padding: 4px;" autocomplete="off">
+            <div class="filter-container" style="background-color: #f4f4f4; border: 1px solid #ccc; padding: 10px;">
+                <fieldset style="border: none; padding: 0; margin: 0;">
+                    <legend style="font-weight: bold; font-size: 1.1em; margin-bottom: 5px;">検索条件</legend>
+                    <div class="modal-search-grid">
+                        <div class="form-group">
+                            <label for="modal-search-gs1">GS1バーコードスキャン:</label>
+                            <form id="modal-search-gs1-form" style="margin: 0;">
+                                <input type="text" id="modal-search-gs1" autocomplete="off" placeholder="GS1-128スキャン...">
+                            </form>
+                        </div>
+                        <div class="form-group">
+                            <label>内外注区分:</label>
+                            <div class="radio-group" id="modal-search-usage-class">
+                                <label><input type="radio" name="modal_usage_class" value="" checked> 全</label>
+                                <label><input type="radio" name="modal_usage_class" value="内"> 内</label>
+                                <label><input type="radio" name="modal_usage_class" value="外"> 外</label>
+                                <label><input type="radio" name="modal_usage_class" value="注"> 注</label>
+                                <label><input type="radio" name="modal_usage_class" value="他"> 他</label>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="modal-search-kana">カナ名 (前方一致):</label>
+                            <input type="text" id="modal-search-kana" autocomplete="off">
+                        </div>
+                        <div class="form-group">
+                            <label for="modal-search-generic">一般名 (部分一致):</label>
+                            <input type="text" id="modal-search-generic" autocomplete="off">
+                        </div>
+                        <div class="form-group">
+                            <label for="modal-search-shelf">棚番 (部分一致):</label>
+                            <input type="text" id="modal-search-shelf" autocomplete="off">
+                        </div>
                     </div>
-                    <button id="product-search-btn" class="btn" style="padding: 5px 10px;">検索</button>
-                </div>
+                    <div class="form-actions" style="border-top: none; margin-top: 10px; padding-top: 0;">
+                        <button id="product-search-btn" class="btn" style="padding: 5px 10px;">この条件で検索</button>
+                    </div>
+                </fieldset>
             </div>
-            <div id="search-results-container" class="table-container" style="max-height: 60vh; overflow-y: auto; margin-top: 10px;">
+            <div id="search-results-container" class="table-container" style="max-height: 50vh; overflow-y: auto; margin-top: 10px;">
                 <table id="search-results-table" class="data-table">
                     <thead>
                         <tr>
@@ -778,7 +1107,7 @@ body {
                     </thead>
                     <tbody>
                         <tr>
-                            <td colspan="6" class="center">検索キーワードを入力してください。</td>
+                            <td colspan="6" class="center">検索ボタンを押してください。</td>
                         </tr>
                     </tbody>
                 </table>
@@ -788,6 +1117,7 @@ body {
             </div>
         </div>
     </div>
+    
     <script type="module" src="/static/js/app.js"></script>
 </body>
 </html>

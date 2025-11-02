@@ -1,5 +1,10 @@
 // TKR/static/js/dat.js
 
+// ▼▼▼【ここから追加】グローバル変数化 ▼▼▼
+let datUploadBtn, datFileInput, uploadResultContainer, dataTable;
+let datSearchBtn, barcodeInput;
+// ▲▲▲【追加ここまで】▲▲▲
+
 function renderEmptyTable(dataTable) {
     if (!dataTable) return;
     const columnCount = 13;
@@ -12,8 +17,7 @@ function renderEmptyTable(dataTable) {
             <th colspan="2" class="col-product">製品名</th>
             <th class="col-count">個数</th>
             <th class="col-yjqty">YJ数量</th>
-      
-      <th class="col-yjpackqty">YJ包装数</th>
+            <th class="col-yjpackqty">YJ包装数</th>
             <th class="col-yjunit">YJ単位</th>
             <th class="col-unitprice">単価</th>
             <th class="col-expiry">期限</th>
@@ -21,8 +25,7 @@ function renderEmptyTable(dataTable) {
             <th class="col-line">行</th>
         </tr>
         <tr>
-            
-<th class="col-flag">種別</th>
+            <th class="col-flag">種別</th>
             <th class="col-jan">JAN</th>
             <th class="col-package">包装</th>
             <th class="col-maker">メーカー</th>
@@ -30,8 +33,7 @@ function renderEmptyTable(dataTable) {
             <th class="col-janqty">JAN数量</th>
             <th class="col-janpackqty">JAN包装数</th>
             <th class="col-janunit">JAN単位</th>
-        
-    <th class="col-amount">金額</th>
+            <th class="col-amount">金額</th>
             <th class="col-lot">ロット</th>
             <th class="col-receipt">伝票番号</th>
             <th class="col-ma">MA</th>
@@ -104,7 +106,6 @@ async function handleDatUpload(files, datFileInput, uploadResultContainer, dataT
     }
 }
 
-// ▼▼▼【修正】GS1検索機能（変更なし、DATビューに残す） ▼▼▼
 async function handleDatSearch(barcodeInput, uploadResultContainer, dataTable) {
     const barcode = barcodeInput ? barcodeInput.value.trim() : '';
     if (!barcode) {
@@ -128,8 +129,7 @@ async function handleDatSearch(barcodeInput, uploadResultContainer, dataTable) {
         }
 
         if (uploadResultContainer) {
-            uploadResultContainer.innerHTML = `<p>${result.message ||
-'検索が完了しました。'}</p>`;
+            uploadResultContainer.innerHTML = `<p>${result.message || '検索が完了しました。'}</p>`;
         }
 
         if (dataTable && result.tableHTML != null) {
@@ -154,18 +154,29 @@ async function handleDatSearch(barcodeInput, uploadResultContainer, dataTable) {
         }
     }
 }
-// ▲▲▲【修正ここまで】▲▲▲
+
+// ▼▼▼【ここから追加】app.jsから呼ばれる関数 ▼▼▼
+export function fetchAndRenderDat() {
+    // DAT画面は表示されるたびに空にする
+    renderEmptyTable(dataTable);
+    if (uploadResultContainer) {
+        uploadResultContainer.innerHTML = '<p>「DATファイル選択」ボタンを押してファイルを選んでください。</p>';
+    }
+    if (barcodeInput) {
+        barcodeInput.value = '';
+        // オートフォーカスは app.js の setActiveView に移動
+    }
+}
+// ▲▲▲【追加ここまで】▲▲▲
 
 export function initDatUpload() {
-    // ▼▼▼【修正】DAT専用のIDを参照するように変更 ▼▼▼
-    const datUploadBtn = document.getElementById('datUploadBtn');
-    const datFileInput = document.getElementById('datFileInput');
-    const uploadResultContainer = document.getElementById('datUploadResultContainer');
-    const dataTable = document.getElementById('datMainDataTable');
+    datUploadBtn = document.getElementById('datUploadBtn');
+    datFileInput = document.getElementById('datFileInput');
+    uploadResultContainer = document.getElementById('datUploadResultContainer');
+    dataTable = document.getElementById('datMainDataTable');
 
-    const datSearchBtn = document.getElementById('datSearchBtn');
-    const barcodeInput = document.getElementById('dat-search-barcode');
-    // ▲▲▲【修正ここまで】▲▲▲
+    datSearchBtn = document.getElementById('datSearchBtn');
+    barcodeInput = document.getElementById('dat-search-barcode');
 
     if (datUploadBtn && datFileInput) {
         datUploadBtn.addEventListener('click', () => {
@@ -191,9 +202,11 @@ export function initDatUpload() {
     } else {
         console.error('DAT Search button or barcode input field not found.');
     }
-
-     renderEmptyTable(dataTable);
-    if (uploadResultContainer) {
-        uploadResultContainer.innerHTML = '<p>「DATファイル選択」ボタンを押してファイルを選んでください。</p>';
-    }
+    
+    // ▼▼▼【削除】起動時の描画処理は fetchAndRenderDat に移動 ▼▼▼
+    // renderEmptyTable(dataTable);
+    // if (uploadResultContainer) {
+    //     uploadResultContainer.innerHTML = '<p>「DATファイル選択」ボタンを押してファイルを選んでください。</p>';
+    // }
+    // ▲▲▲【削除ここまで】▲▲▲
 }

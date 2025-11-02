@@ -1,15 +1,23 @@
 // C:\Users\wasab\OneDrive\デスクトップ\TKR\static\js\app.js
-import { initDatUpload } from './dat.js';
-import { initMasterEditView } from './masteredit.js';
-import { initConfigView } from './config.js'; 
-import { initUsageUpload } from './usage.js';
+import { initDatUpload, fetchAndRenderDat } from './dat.js';
+import { initMasterEditView, fetchAndRenderMasters } from './masteredit.js';
+import { initConfigView, loadConfigAndWholesalers } from './config.js'; 
+import { initUsageUpload, fetchAndRenderUsage } from './usage.js';
 import { initInventoryAdjustment } from './inventory_adjustment_logic.js';
-// ▼▼▼【ここに追加】▼▼▼
 import { initSearchModal } from './search_modal.js';
-// ▲▲▲【追加ここまで】▲▲▲
 
 let loadingOverlay, loadingMessage, notificationBox;
 let views, datViewBtn, usageViewBtn, inventoryAdjustmentViewBtn, masterEditViewBtn, configViewBtn;
+
+// ▼▼▼【ここから追加】初期化済みフラグ ▼▼▼
+const initializedViews = {
+    dat: false,
+    usage: false,
+    inventoryAdjustment: false,
+    masterEdit: false,
+    config: false,
+};
+// ▲▲▲【追加ここまで】▲▲▲
 
 window.showLoading = (message = '処理中...') => {
     if (!loadingOverlay) loadingOverlay = document.getElementById('loading-overlay');
@@ -36,6 +44,7 @@ window.showNotification = (message, type = 'success') => {
     }
 };
 
+// ▼▼▼【ここから修正】setActiveView をJS初期化の中心にする ▼▼▼
 function setActiveView(targetId) {
     if (!views) views = document.querySelectorAll('.view');
     views.forEach(view => {
@@ -46,19 +55,60 @@ function setActiveView(targetId) {
         }
     });
 
-    document.dispatchEvent(new CustomEvent('setActiveView', { detail: { viewId: targetId } }));
-
-    if (targetId === 'master-edit-view') {
-        const masterListBody = document.querySelector('#masterListTable tbody');
-        if(masterListBody && masterListBody.children.length <= 1) {
-             document.dispatchEvent(new CustomEvent('showMasterEditView'));
-        }
-    }
-
-    if (targetId === 'inventory-adjustment-view') {
-        document.dispatchEvent(new CustomEvent('loadInventoryAdjustment', { detail: {} }));
+    // --- JSの遅延初期化ロジック ---
+    // 各ビューは、初めて表示されるときに一度だけ初期化(init)され、
+    // 毎回データをロードする関数が呼ばれる
+    switch (targetId) {
+        case 'dat-upload-view':
+            if (!initializedViews.dat) {
+                console.log("Initializing DAT view...");
+                initDatUpload(); // イベントリスナーを登録
+                initializedViews.dat = true;
+            }
+            fetchAndRenderDat(); // データを表示
+            break;
+        case 'usage-upload-view':
+            if (!initializedViews.usage) {
+                console.log("Initializing USAGE view...");
+                initUsageUpload(); // イベントリスナーを登録
+                initializedViews.usage = true;
+            }
+            fetchAndRenderUsage(); // データを表示
+            break;
+        case 'inventory-adjustment-view':
+            if (!initializedViews.inventoryAdjustment) {
+                console.log("Initializing Inventory Adjustment view...");
+                initInventoryAdjustment(); // イベントリスナーを登録
+                initializedViews.inventoryAdjustment = true;
+            }
+            // イベントを発火させて、棚卸調整ビューに「表示されたこと」を通知
+            document.dispatchEvent(new CustomEvent('loadInventoryAdjustment', { detail: {} }));
+            break;
+        case 'master-edit-view':
+            if (!initializedViews.masterEdit) {
+                console.log("Initializing Master Edit view...");
+                initMasterEditView(); // イベントリスナーを登録
+                initializedViews.masterEdit = true;
+            }
+            
+            // マスタ編集ビュー表示時に検索を実行
+            const masterListBody = document.querySelector('#masterListTable tbody');
+            if (masterListBody && masterListBody.children.length <= 1) {
+                 fetchAndRenderMasters(); // 初回検索を実行
+            }
+            break;
+        case 'config-view':
+            if (!initializedViews.config) {
+                console.log("Initializing Config view...");
+                initConfigView(); // イベントリスナーを登録
+                initializedViews.config = true;
+            }
+            // 設定ビュー表示時に設定と卸一覧をロード
+            loadConfigAndWholesalers();
+            break;
     }
 }
+// ▲▲▲【修正ここまで】▲▲▲
 
 document.addEventListener('DOMContentLoaded', () => {
     console.log('TKR App Initialized.');
@@ -73,13 +123,18 @@ document.addEventListener('DOMContentLoaded', () => {
     masterEditViewBtn = document.getElementById('masterEditViewBtn');
     configViewBtn = document.getElementById('configViewBtn'); 
 
-    initDatUpload();
-    initUsageUpload();
-    initMasterEditView();
-    initConfigView(); 
-    initInventoryAdjustment();
-    initSearchModal(); // ▼▼▼【ここに追加】▼▼▼
+    // ▼▼▼【ここから修正】起動時の init 呼び出しを削除 ▼▼▼
+    // initDatUpload(); // -> setActiveView に移動
+    // initUsageUpload(); // -> setActiveView に移動
+    // initMasterEditView(); // -> setActiveView に移動
+    // initConfigView();  // -> setActiveView に移動
+    // initInventoryAdjustment(); // -> setActiveView に移動
 
+    // 検索モーダルだけは共通部品なので、起動時に初期化する
+    initSearchModal();
+    // ▲▲▲【修正ここまで】▲▲▲
+
+    // ヘッダーボタンのイベントリスナー (変更なし)
     if (datViewBtn) {
         datViewBtn.addEventListener('click', () => setActiveView('dat-upload-view'));
     }
@@ -93,13 +148,13 @@ document.addEventListener('DOMContentLoaded', () => {
     {
         masterEditViewBtn.addEventListener('click', () => setActiveView('master-edit-view'));
     }
-    
     if (configViewBtn) {
         configViewBtn.addEventListener('click', () => setActiveView('config-view'));
     }
 
+    // ▼▼▼【修正】デフォルトビューをアクティブにする (これにより dat.js が初期化される) ▼▼▼
     setActiveView('dat-upload-view');
+    // ▲▲▲【修正ここまで】▲▲▲
 });
-document.addEventListener('showMasterEditView', () => {
-    console.log("Event: showMasterEditView received");
-});
+
+// (showMasterEditView イベントリスナーは削除)

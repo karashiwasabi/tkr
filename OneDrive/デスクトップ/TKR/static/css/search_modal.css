@@ -70,3 +70,71 @@
     color: #e60000;
     font-weight: bold;
 }
+/* ▼▼▼【ここから追加】固定検索パネル用スタイル ▼▼▼ */
+#tkr-search-modal-overlay .filter-container {
+    padding: 10px;
+    margin-top: 10px;
+    border: 1px solid #ddd;
+}
+
+#tkr-search-modal-overlay .modal-search-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 10px;
+}
+
+#tkr-search-modal-overlay .form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+#tkr-search-modal-overlay .form-group label {
+    font-size: 10px;
+    font-weight: bold;
+}
+#tkr-search-modal-overlay .form-group input[type="text"] {
+    font-size: 1.0em;
+    padding: 4px;
+    border: 1px solid #ccc;
+}
+#tkr-search-modal-overlay .radio-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+    align-items: center;
+    padding-top: 5px; /* ラベルと高さを合わせる */
+}
+#tkr-search-modal-overlay .radio-group label {
+    font-size: 1.0em;
+    font-weight: normal;
+    display: flex;
+    align-items: center;
+    gap: 2px;
+}
+#tkr-search-modal-overlay .form-actions {
+    text-align: right;
+    border-top: none;
+    margin-top: 10px;
+    padding-top: 0;
+}
+/* ▲▲▲【追加ここまで】▲▲▲ */
+
+
+/* 検索結果テーブル (変更なし) */
+#search-results-table {
+    font-size: 10px;
+}
+#search-results-table th, 
+#search-results-table td {
+    padding: 3px 4px;
+    height: auto;
+    min-height: 18px;
+}
+#search-results-table tr.adopted-item td {
+    color: #e60000;
+    font-weight: bold;
+}
+#search-results-table tr.adopted-item td .select-product-btn {
+    color: #e60000;
+    font-weight: bold;
+}
