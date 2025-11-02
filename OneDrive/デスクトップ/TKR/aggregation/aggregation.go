@@ -230,7 +230,7 @@ func GetStockLedger(conn *sqlx.DB, filters model.AggregationFilters) ([]model.St
 	return result, nil
 }
 
-// ▼▼▼【ここから修正】GetFilteredMastersAndYjCodes に 'generalName' フィルタを追加 ▼▼▼
+// ▼▼▼【ここから修正】GetFilteredMastersAndYjCodes の kanaName フィルタロジックを変更 ▼▼▼
 func GetFilteredMastersAndYjCodes(conn *sqlx.DB, filters model.AggregationFilters) (map[string][]*model.ProductMaster, []string, error) {
 	query := `SELECT * FROM product_master p WHERE 1=1 `
 	var args []interface{}
@@ -239,16 +239,18 @@ func GetFilteredMastersAndYjCodes(conn *sqlx.DB, filters model.AggregationFilter
 		args = append(args, filters.YjCode)
 	}
 	if filters.KanaName != "" {
-		query += " AND (p.kana_name LIKE ? OR p.product_name LIKE ?) "
-		args = append(args, filters.KanaName+"%", "%"+filters.KanaName+"%") // カナ名は前方一致、製品名は部分一致
+		// ▼▼▼【修正】製品名(product_name)でのOR検索を削除 ▼▼▼
+		query += " AND p.kana_name LIKE ? "
+		args = append(args, filters.KanaName+"%") // カナ名は前方一致のみ
+		// ▲▲▲【修正ここまで】▲▲▲
 	}
 	// ★一般名フィルタを追加
 	if filters.GenericName != "" {
-		query += " AND p.generic_name LIKE ? "
+		query += " AND p.generic_name LIKE ?"
 		args = append(args, "%"+filters.GenericName+"%")
 	}
 	if filters.DosageForm != "" && filters.DosageForm != "all" {
-		query += " AND p.usage_classification = ? "
+		query += " AND p.usage_classification = ?"
 		args = append(args, filters.DosageForm)
 	}
 	if filters.ShelfNumber != "" {

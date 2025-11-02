@@ -1,151 +1,124 @@
-// C:\Users\wasab\OneDrive\デスクトップ\TKR\static\js\masteredit.js
-import { hiraganaToKatakana } from './utils.js';
+// C:\Users\wasab\OneDrive\デスケトッフ\TKR\static\js\masteredit.js
+// ▼▼▼【修正】showModal と hiraganaToKatakana をインポート ▼▼▼
+import { showModal } from './search_modal.js';
+import { hiraganaToKatakana, fetchProductMasterByBarcode } from './utils.js';
+// ▲▲▲【修正ここまで】▲▲▲
 
-let viewElement, masterListTable, masterListBody, masterListHead;
-let searchProdNameInput, searchKanaNameInput, searchGenericNameInput, searchShelfNumberInput, searchBtn;
+let viewElement, masterListTable; // 削除: masterListBody, masterListHead
+let searchKanaNameInput, searchGenericNameInput, searchShelfNumberInput, searchBtn;
 let usageClassRadios;
 let editFormContainer;
 
 let saveMasterBtn, cancelEditMasterBtn;
 let editFormFields = {};
-let currentMasters = [];
+// 削除: currentMasters = [];
 
-function renderEmptyMasterTable(statusMessage = '検索条件を指定して「検索」ボタンを押してください。') {
-    if (!masterListTable) return;
-    masterListTable.innerHTML = `
-        <thead>
-            <tr>
-                <th class="col-action"></th>
-                <th class="col-yj">YJコード</th>
-                <th class="col-gs1">GS1コード</th>
-                <th class="col-jan">JANコード</th>
-                <th class="col-product">製品名</th>
-                <th class="col-kana">カナ名</th>
-                <th class="col-maker">メーカー</th>
-                <th class="col-generic">一般名</th>
-                <th class="col-shelf">棚番</th>
-            </tr>
-        </thead>
-        <tbody>
-            <tr><td colspan="9">${statusMessage}</td></tr>
-        </tbody>
-    `;
-    masterListHead = masterListTable.querySelector('thead');
-    masterListBody = masterListTable.querySelector('tbody');
-}
+let gs1Form, gs1Input;
 
-function renderMasterTable(tableHTML) {
-    if (!masterListTable) return;
-    if (tableHTML) {
-        masterListTable.innerHTML = tableHTML;
-    } else {
-        renderEmptyMasterTable('テーブルデータの受信に失敗しました。');
-    }
+// ▼▼▼【ここから削除】一覧表示関連の関数をすべて削除 ▼▼▼
+/*
+function renderEmptyMasterTable(...) { ... }
+function renderMasterTable(...) { ... }
+export async function fetchAndRenderMasters() { ... }
+*/
+// ▲▲▲【削除ここまで】▲▲▲
 
-    masterListHead = masterListTable.querySelector('thead');
-    masterListBody = masterListTable.querySelector('tbody');
-}
-
-
-// ▼▼▼【修正】app.jsから呼び出せるように export を追加 ▼▼▼
-export async function fetchAndRenderMasters() {
-// ▲▲▲【修正ここまで】▲▲▲
-
-    console.log("[DEBUG] fetchAndRenderMasters called!");
-    const selectedUsageRadio = document.querySelector('input[name="usage_class"]:checked');
+// ▼▼▼【ここから追加】品目検索モーダルを開く関数（dat.js などから流用） ▼▼▼
+async function openProductSearchModalForMaster() {
+    const apiUrl = '/api/products/search_filtered';
+    const kanaInput = document.getElementById('master_search-kana');
+    const genericInput = document.getElementById('master_search-generic');
+    const shelfInput = document.getElementById('master_search-shelf');
+    const selectedUsageRadio = document.querySelector('input[name="master_usage_class"]:checked');
+    
+    const kanaName = kanaInput ? hiraganaToKatakana(kanaInput.value.trim()) : '';
+    const genericName = genericInput ? genericInput.value.trim() : '';
+    const shelfNumber = shelfInput ? shelfInput.value.trim() : '';
     const usageClass = selectedUsageRadio ? selectedUsageRadio.value : '';
-
-    const productName = searchProdNameInput ? searchProdNameInput.value.trim() : '';
-    const kanaName = hiraganaToKatakana(searchKanaNameInput ? searchKanaNameInput.value.trim() : '');
-    const genericName = searchGenericNameInput ? searchGenericNameInput.value.trim() : '';
-    const shelfNumber = searchShelfNumberInput ? searchShelfNumberInput.value.trim() : '';
 
     if (!usageClass) {
         window.showNotification('内外注区分を選択してください。', 'warning');
-        renderEmptyMasterTable('内外注区分を選択してください。');
-        currentMasters = [];
         return;
     }
 
-    hideEditModal();
-
-    window.showLoading('マスターデータを検索中...');
-    if (masterListTable) {
-         masterListTable.innerHTML = `
-            <thead>
-                <tr>
-                    <th class="col-action"></th>
-                    <th class="col-yj">YJコード</th>
-                    <th class="col-gs1">GS1コード</th>
-                    <th class="col-jan">JANコード</th>
-                    <th class="col-product">製品名</th>
-                    <th class="col-kana">カナ名</th>
-                    <th class="col-maker">メーカー</th>
-                    <th class="col-generic">一般名</th>
-                    <th class="col-shelf">棚番</th>
-                </tr>
-            </thead>
-            <tbody>
-                <tr><td colspan="9">検索中...</td></tr>
-            </tbody>
-         `;
-    }
-
     const params = new URLSearchParams();
-    params.append('usage_class', usageClass);
-    if (productName.length > 0) params.append('product_name', productName);
-    if (kanaName.length > 0) params.append('kana_name', kanaName);
-    if (genericName.length > 0) params.append('generic_name', genericName);
-    if (shelfNumber.length > 0) params.append('shelf_number', shelfNumber);
-    const apiUrl = `/api/masters?${params.toString()}`;
-    
+    params.append('kanaName', kanaName);
+    params.append('genericName', genericName);
+    params.append('shelfNumber', shelfNumber);
+    params.append('dosageForm', usageClass);
+
+    window.showLoading('品目リストを検索中...');
+    let products = [];
     try {
-        const response = await fetch(apiUrl);
-        const result = await response.json();
-        if (!response.ok) {
-            throw new Error(result.message || `Failed to fetch masters: ${response.statusText}`);
+        const fullUrl = `${apiUrl}?${params.toString()}`;
+        const res = await fetch(fullUrl);
+        if (!res.ok) {
+            throw new Error(`品目リストの取得に失敗しました: ${res.status}`);
         }
-
-        if (result.masters && result.tableHTML != null) {
-            currentMasters = Array.isArray(result.masters) ? result.masters : []; 
-            renderMasterTable(result.tableHTML); 
-            window.showNotification(`${currentMasters.length} 件見つかりました。`, 'info');
-        } else {
-            console.error("Received unexpected data format from API:", result);
-            renderEmptyMasterTable('サーバーから予期しない形式のデータが返されました。');
-            window.showNotification('サーバーから予期しない形式のデータが返されました。', 'error');
-            currentMasters = [];
-        }
-
-    } catch (error) {
-        console.error("Error fetching or rendering masters:", error);
-        window.showNotification(`マスターの検索に失敗しました: ${error.message}`, 'error');
-        renderEmptyMasterTable(`データの検索に失敗しました: ${error.message}`);
-        currentMasters = [];
+        products = await res.json();
+    } catch (err) {
+        window.hideLoading();
+        window.showNotification(err.message, 'error');
+        return;
     } finally {
         window.hideLoading();
     }
-}
 
-function handleEditClick(event) {
-     console.log("Table click detected.");
-     const target = event.target;
-    if (target.classList.contains('edit-master-btn')) {
-        const productCode = target.dataset.code;
-        if (!productCode) return;
-        console.log("Edit button clicked for:", productCode);
-
-        const masterToEdit = currentMasters.find(m => m.productCode === productCode);
-        if (!masterToEdit) {
-            console.error("Master data not found in cache for code:", productCode);
-            window.showNotification('該当するマスターデータが見つかりません。', 'error');
-            return;
+    // モーダルを表示
+    showModal(
+        null, // マスタ編集では特定の行コンテキストは不要
+        (selectedProduct) => { 
+            // モーダルで品目が選択されたときのコールバック
+            // ProductMasterView (selectedProduct) をフォームに投入
+            populateEditForm(selectedProduct); 
+            // 編集モーダルを開く
+            showEditModal();
+        }, 
+        { 
+            initialResults: products, 
         }
+    );
+}
+// ▲▲▲【追加ここまで】▲▲▲
 
-        populateEditForm(masterToEdit);
+
+// GS1スキャン処理（変更なし、ただし currentMasters への保存処理を削除）
+async function handleMasterGs1Scan(event) {
+    event.preventDefault();
+    if (!gs1Input) return;
+    
+    const barcode = gs1Input.value.trim();
+    if (!barcode) {
+        window.showNotification('バーコードが入力されていません。', 'warning');
+        return;
+    }
+
+    window.showLoading('マスターを検索中...');
+    try {
+        const master = await fetchProductMasterByBarcode(barcode);
+        
+        // ▼▼▼【削除】currentMasters へのキャッシュ処理 ▼▼▼
+        // const index = currentMasters.findIndex(m => m.productCode === master.productCode);
+        // ...
+        // ▲▲▲【削除ここまで】▲▲▲
+
+        populateEditForm(master);
         showEditModal();
+        
+    } catch (err) {
+        window.showNotification(`エラー: ${err.message}`, 'error');
+    } finally {
+        window.hideLoading();
+        gs1Input.value = ''; 
     }
 }
+
+// ▼▼▼【削除】handleEditClick (テーブルの一覧表示がなくなったため不要) ▼▼▼
+/*
+function handleEditClick(event) { ... }
+*/
+// ▲▲▲【削除ここまで】▲▲▲
+
 
 function populateEditForm(master) {
      console.log("Populating form for:", master);
@@ -163,10 +136,13 @@ function populateEditForm(master) {
         'flagNarcotic', 'flagPsychotropic', 'flagStimulant', 'flagStimulantRaw',
         'isOrderStopped'
     ];
-
     for (const key in editFormFields) {
         const element = editFormFields[key];
+        // ▼▼▼【修正】 master.ProductMaster[key] ではなく master[key] を参照 ▼▼▼
+        // (showModalが返すのはProductMasterViewであり、fetchProductMasterByBarcodeが返すのもProductMasterView (mappers.go / product/handler.go))
+        // → populateEditForm が期待するのは ProductMaster (または互換性のあるView) なので master[key] で正しい
         const masterValue = master[key];
+        // ▲▲▲【修正ここまで】▲▲▲
 
         if (element) {
             if (typeof masterValue === 'number') {
@@ -200,6 +176,7 @@ function hideEditModal() {
     }
 }
 
+// handleSaveMaster (変更なし)
 async function handleSaveMaster() {
     const inputData = {};
     const floatKeys = [
@@ -209,7 +186,6 @@ async function handleSaveMaster() {
         'janUnitCode', 'flagPoison', 'flagDeleterious', 'flagNarcotic',
         'flagPsychotropic', 'flagStimulant', 'flagStimulantRaw', 'isOrderStopped'
     ];
-
     for (const key in editFormFields) {
         const element = editFormFields[key];
         if (element) {
@@ -262,16 +238,18 @@ export function initMasterEditView() {
     viewElement = document.getElementById('master-edit-view');
     masterListTable = document.getElementById('masterListTable');
 
-    searchProdNameInput = document.getElementById('master-search-prod-name');
-    searchKanaNameInput = document.getElementById('master-search-kana-name');
-    searchGenericNameInput = document.getElementById('master-search-generic-name');
-    searchShelfNumberInput = document.getElementById('master-search-shelf-number');
-    if (searchProdNameInput) searchProdNameInput.disabled = false;
+    searchKanaNameInput = document.getElementById('master_search-kana');
+    searchGenericNameInput = document.getElementById('master_search-generic');
+    searchShelfNumberInput = document.getElementById('master_search-shelf');
+    
+    gs1Form = document.getElementById('master-barcode-form');
+    gs1Input = document.getElementById('master-search-gs1-barcode');
+
     if (searchGenericNameInput) searchGenericNameInput.disabled = false;
 
     searchBtn = document.getElementById('masterSearchBtn');
     editFormContainer = document.getElementById('masterEditModalOverlay');
-    usageClassRadios = document.querySelectorAll('input[name="usage_class"]');
+    usageClassRadios = document.querySelectorAll('input[name="master_usage_class"]');
     if (!viewElement || !masterListTable || !searchBtn || !editFormContainer) {
         console.error("Master edit view elements not found.");
         return;
@@ -298,41 +276,55 @@ export function initMasterEditView() {
         }
         
         const element = document.getElementById(elementId);
-        if (element) {
+        if (element) 
+ 
+{
             editFormFields[id] = element;
         }
     });
-
     if (saveMasterBtn) {
         saveMasterBtn.addEventListener('click', handleSaveMaster);
     }
     if (cancelEditMasterBtn) {
         cancelEditMasterBtn.addEventListener('click', () => {
             console.log("[DEBUG] Cancel button clicked!");
-            hideEditModal();
-            console.log("[DEBUG] Calling fetchAndRenderMasters after cancel...");
-            fetchAndRenderMasters(); 
+            hideEditModal(); 
         });
         console.log("[DEBUG] Cancel button listener attached.");
     } else {
         console.error("Cancel button not found!");
     }
 
-    searchBtn.addEventListener('click', fetchAndRenderMasters);
+    // ▼▼▼【ここから修正】品目検索ボタンのリスナーを変更 ▼▼▼
+    searchBtn.addEventListener('click', openProductSearchModalForMaster);
+    // ▲▲▲【修正ここまで】▲▲▲
+    
+    // GS1スキャンフォームのリスナー
+    if (gs1Form) {
+        gs1Form.addEventListener('submit', handleMasterGs1Scan);
+    } else {
+        console.error("Master edit GS1 scan form not found.");
+    }
+
+    // ▼▼▼【ここから修正】フィルター入力欄のEnterキーリスナーを変更 ▼▼▼
     const handleKeyPress = (event) => {
         if (event.key === 'Enter') {
-            fetchAndRenderMasters();
+            openProductSearchModalForMaster();
         }
     };
-    if (searchProdNameInput) searchProdNameInput.addEventListener('keypress', handleKeyPress);
+    // ▲▲▲【修正ここまで】▲▲▲
     if (searchKanaNameInput) searchKanaNameInput.addEventListener('keypress', handleKeyPress);
     if (searchGenericNameInput) searchGenericNameInput.addEventListener('keypress', handleKeyPress);
     if (searchShelfNumberInput) searchShelfNumberInput.addEventListener('keypress', handleKeyPress);
-
-    if (masterListTable) masterListTable.addEventListener('click', handleEditClick);
     
-    // ▼▼▼【修正】起動時の自動ロードを削除し、空のテーブルを表示するだけにする ▼▼▼
-    renderEmptyMasterTable();
+    // ▼▼▼【削除】テーブルのクリックリスナーは不要 ▼▼▼
+    // if (masterListTable) masterListTable.addEventListener('click', handleEditClick);
+    // ▲▲▲【削除ここまで】▲▲▲
+    
+    // ▼▼▼【修正】テーブルを空にする（一覧表示はしないため）▼▼▼
+    if (masterListTable) {
+        masterListTable.innerHTML = '';
+    }
     // ▲▲▲【修正ここまで】▲▲▲
 
     console.log("Master Edit View Initialized.");

@@ -1,21 +1,14 @@
 <div id="dat-upload-view" class="view">
     <h1>ファイルアップロード (DAT)</h1>
 
-    <div style="margin-bottom: 20px;">
+    <div class="upload-button-container">
         <button id="datUploadBtn" class="btn">DATファイル選択</button>
         <input type="file" id="datFileInput" multiple accept=".dat,.DAT" class="hidden">
     </div>
-
-    <div class="filter-container" style="padding: 10px; margin-bottom: 10px; background-color: #f7f7f7; border: 1px solid #ddd;">
-        <fieldset style="border: 1px solid #ccc; padding: 5px;">
-            <legend>GS1-128 バーコード検索 (DAT)</legend>
-            <div style="display: flex; flex-wrap: wrap; gap: 10px; align-items: center;">
-                <div class="form-group" style="flex-basis: 300px; flex-grow: 1;">
-                    <label for="dat-search-barcode">バーコード入力 (JAN+期限+ロット):</label>
-                    <input type="text" id="dat-search-barcode" style="padding: 3px; font-size: inherit; width: 100%; box-sizing: border-box;" placeholder="0114987..." autofocus autocomplete="off">
-                </div>
-                <button id="datSearchBtn" class="btn" style="padding: 5px 10px; margin-left: auto; align-self: flex-end;">検索</button>
-            </div>
+    <div class="filter-container">
+        <fieldset>
+        <legend>品目検索</legend>
+        {{ template "generic_search_form" . }}
         </fieldset>
     </div>
     

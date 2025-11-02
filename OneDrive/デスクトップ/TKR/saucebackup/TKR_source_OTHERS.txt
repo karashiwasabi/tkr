@@ -231,7 +231,7 @@ func GetStockLedger(conn *sqlx.DB, filters model.AggregationFilters) ([]model.St
 	return result, nil
 }
 
-// ▼▼▼【ここから修正】GetFilteredMastersAndYjCodes に 'generalName' フィルタを追加 ▼▼▼
+// ▼▼▼【ここから修正】GetFilteredMastersAndYjCodes の kanaName フィルタロジックを変更 ▼▼▼
 func GetFilteredMastersAndYjCodes(conn *sqlx.DB, filters model.AggregationFilters) (map[string][]*model.ProductMaster, []string, error) {
 	query := `SELECT * FROM product_master p WHERE 1=1 `
 	var args []interface{}
@@ -240,16 +240,18 @@ func GetFilteredMastersAndYjCodes(conn *sqlx.DB, filters model.AggregationFilter
 		args = append(args, filters.YjCode)
 	}
 	if filters.KanaName != "" {
-		query += " AND (p.kana_name LIKE ? OR p.product_name LIKE ?) "
-		args = append(args, filters.KanaName+"%", "%"+filters.KanaName+"%") // カナ名は前方一致、製品名は部分一致
+		// ▼▼▼【修正】製品名(product_name)でのOR検索を削除 ▼▼▼
+		query += " AND p.kana_name LIKE ? "
+		args = append(args, filters.KanaName+"%") // カナ名は前方一致のみ
+		// ▲▲▲【修正ここまで】▲▲▲
 	}
 	// ★一般名フィルタを追加
 	if filters.GenericName != "" {
-		query += " AND p.generic_name LIKE ? "
+		query += " AND p.generic_name LIKE ?"
 		args = append(args, "%"+filters.GenericName+"%")
 	}
 	if filters.DosageForm != "" && filters.DosageForm != "all" {
-		query += " AND p.usage_classification = ? "
+		query += " AND p.usage_classification = ?"
 		args = append(args, filters.DosageForm)
 	}
 	if filters.ShelfNumber != "" {
@@ -386,6 +388,152 @@ func getTransactionsByProductCodes(conn *sqlx.DB, productCodes []string) (map[st
 }
 
 
+----- C:\Users\wasab\OneDrive\デスクトップ\TKR\barcode\barcode.go -----
+// C:\Users\wasab\OneDrive\デスクトップ\TKR\barcode\barcode.go
+package barcode
+
+import (
+	"fmt"
+	"strings"
+)
+
+// Result はバーコードの解析結果を格納します
+type Result struct {
+	Gtin14     string // (01) GTIN (14桁)
+	ExpiryDate string // (17) 有効期限 (YYMMDD)
+	LotNumber  string // (10) ロット番号
+}
+
+// aiLengths は可変長AIの最大長を定義します (ロット(10)のみ)
+var aiLengths = map[string]int{
+	"10": 20, // ロット番号 (最大20桁)
+}
+
+// Parse はスキャンされた文字列を自動判別して解析します。
+func Parse(code string) (*Result, error) {
+	length := len(code)
+
+	if length == 0 {
+		return nil, fmt.Errorf("バーコードが空です")
+	}
+
+	// 仕様 1: 15桁以上は AI付き文字列
+	if length >= 15 {
+		// 01から始まるかチェック
+		if strings.HasPrefix(code, "01") {
+			return parseAIString(code)
+		}
+		// 01から始まらない15桁以上は不正とみなす
+		return nil, fmt.Errorf("15桁以上ですが、AI(01)で始まっていません")
+	}
+
+	// 仕様 2: 14桁は GTIN-14
+	if length == 14 {
+		return &Result{
+			Gtin14: code,
+		}, nil
+	}
+
+	// 仕様 3: 13桁は JAN-13
+	if length == 13 {
+		return &Result{
+			Gtin14: "0" + code, // 先頭に0を加えて14桁にする
+		}, nil
+	}
+
+	// 仕様 4: 13桁未満は JAN-8 など
+	if length < 13 {
+		return &Result{
+			Gtin14: fmt.Sprintf("%014s", code), // 先頭から0で埋めて14桁にする
+		}, nil
+	}
+
+	// (ここに来ることはないはずだが、念のため)
+	return nil, fmt.Errorf("不明なバーコード形式です")
+}
+
+// parseAIString は 15桁以上のAI付き文字列を解析する内部関数です。
+// (旧 parsers/gs1_parser.go のロジック)
+func parseAIString(code string) (*Result, error) {
+	result := &Result{}
+	i := 0
+	length := len(code)
+
+	for i < length {
+		// (01) GTIN (14桁固定)
+		if strings.HasPrefix(code[i:], "01") {
+			if i+16 > length { // AI(2) + Data(14)
+				return nil, fmt.Errorf("AI(01)のデータが不足しています")
+			}
+			result.Gtin14 = code[i+2 : i+16]
+			i += 16
+			continue
+		}
+
+		// (17) 有効期限 (6桁固定)
+		if strings.HasPrefix(code[i:], "17") {
+			if i+8 > length { // AI(2) + Data(6)
+				return nil, fmt.Errorf("AI(17)のデータが不足しています")
+			}
+			result.ExpiryDate = code[i+2 : i+8] // YYMMDD
+			i += 8
+			continue
+		}
+
+		// (10) ロット番号 (可変長)
+		if strings.HasPrefix(code[i:], "10") {
+			if i+2 > length { // AI(2)
+				return nil, fmt.Errorf("AI(10)のデータが不足しています")
+			}
+
+			dataStart := i + 2
+			dataEnd := dataStart
+			maxLength := aiLengths["10"]
+
+			for dataEnd < length {
+				if (dataEnd - dataStart) >= maxLength { // 最大長
+					break
+				}
+
+				remaining := code[dataEnd:]
+
+				// 次のAIが「完全な形」で存在する場合のみ区切る
+				if len(remaining) >= 2 {
+					nextAI := remaining[:2]
+
+					// 次が AI(01) か？ (01 + 14桁データ)
+					if nextAI == "01" {
+						if len(remaining) >= 16 {
+							break
+						}
+					}
+					// 次が AI(17) か？ (17 + 6桁データ)
+					if nextAI == "17" {
+						if len(remaining) >= 8 {
+							break
+						}
+					}
+				}
+				dataEnd++
+			}
+
+			result.LotNumber = code[dataStart:dataEnd]
+			i = dataEnd
+			continue
+		}
+
+		// 不明なAIまたはデータ部分
+		i++
+	}
+
+	if result.Gtin14 == "" {
+		return nil, fmt.Errorf("バーコードからAI(01)GTINが見つかりませんでした")
+	}
+
+	return result, nil
+}
+
+
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\config\config.go -----
 // C:\Users\wasab\OneDrive\デスクトップ\TKR\config\config.go
 package config
@@ -483,17 +631,19 @@ import (
 	"log"
 	"mime/multipart"
 	"net/http"
+	"tkr/barcode"
 	"tkr/database"
 	"tkr/mastermanager"
 	"tkr/model"
 	"tkr/parsers"
-	"tkr/render" // ▼▼▼【ここに追加】▼▼▼
+	"tkr/render"
 	"tkr/units"
 
 	"github.com/jmoiron/sqlx"
 )
 
-// ▼▼▼【修正】render.RenderTransactionTableHTML を呼び出す ▼▼▼
+// (respondJSONError, UploadDatHandler は変更なし)
+// ...
 func respondJSONError(w http.ResponseWriter, message string, statusCode int) {
 	log.Println("Error response:", message)
 	w.Header().Set("Content-Type", "application/json")
@@ -501,48 +651,41 @@ func respondJSONError(w http.ResponseWriter, message string, statusCode int) {
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"message":   message,
 		"results":   []interface{}{},
-		"tableHTML": render.RenderTransactionTableHTML(nil, nil), // ★ 呼び出し先を変更
+		"tableHTML": render.RenderTransactionTableHTML(nil, nil),
 	})
 }
-
-// ▲▲▲【修正ここまで】▲▲▲
 
 func UploadDatHandler(db *sqlx.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		log.Println("Received DAT upload request...")
-
-		// ★ 先に卸マスターを取得・マップ化
 		wholesalerMap, err := database.GetWholesalerMap(db)
 		if err != nil {
 			respondJSONError(w, "卸マスターの読み込みに失敗しました。", http.StatusInternalServerError)
 			return
 		}
-
 		err = r.ParseMultipartForm(32 << 20)
 		if err != nil {
 			respondJSONError(w, "File upload error: "+err.Error(), http.StatusBadRequest)
 			return
 		}
 		defer r.MultipartForm.RemoveAll()
-
 		var processedFiles []string
 		var successfullyInsertedTransactions []model.TransactionRecord
 		var allResults []map[string]interface{}
-
 		for _, fileHeader := range r.MultipartForm.File["file"] {
 			log.Printf("Processing file: %s", fileHeader.Filename)
 			processedFiles = append(processedFiles, fileHeader.Filename)
 			fileResult := map[string]interface{}{"filename": fileHeader.Filename}
 			var currentFileTransactions []model.TransactionRecord
-
+			// ▼▼▼【ここを修正】`` タグを削除 ▼▼▼
 			file, openErr := fileHeader.Open()
+			// ▲▲▲【修正ここまで】▲▲▲
 			if openErr != nil {
 				log.Printf("Failed to open uploaded file %s: %v", fileHeader.Filename, openErr)
 				fileResult["error"] = fmt.Sprintf("Failed to open file: %v", openErr)
 				allResults = append(allResults, fileResult)
 				continue
 			}
-
 			parsedRecords, parseErr := parsers.ParseDat(file)
 			file.Close()
 			if parseErr != nil {
@@ -553,7 +696,6 @@ func UploadDatHandler(db *sqlx.DB) http.HandlerFunc {
 			}
 			log.Printf("Parsed %d records from %s", len(parsedRecords), fileHeader.Filename)
 			fileResult["records_parsed"] = len(parsedRecords)
-
 			tx, txErr := db.Beginx()
 			if txErr != nil {
 				log.Printf("Failed to start transaction for %s: %v", fileHeader.Filename, txErr)
@@ -561,14 +703,15 @@ func UploadDatHandler(db *sqlx.DB) http.HandlerFunc {
 				allResults = append(allResults, fileResult)
 				continue
 			}
-
 			var insertedCount int = 0
 			for _, rec := range parsedRecords {
 				key := rec.JanCode
-				if key == "" || key == "0000000000000" {
+				if key == "" ||
+					// ▼▼▼【ここを修正】`` タグを削除 ▼▼▼
+					key == "0000000000000" {
+					// ▲▲▲【修正ここまで】▲▲▲
 					key = fmt.Sprintf("9999999999999%s", rec.ProductName)
 				}
-
 				master, err := mastermanager.FindOrCreateMaster(tx, key, rec.ProductName)
 				if err != nil {
 					log.Printf("Failed to find or create master for key %s (Product: %s) in file %s: %v", key, rec.ProductName, fileHeader.Filename, err)
@@ -577,43 +720,37 @@ func UploadDatHandler(db *sqlx.DB) http.HandlerFunc {
 					tx.Rollback()
 					goto nextFileLoop
 				}
-
 				transaction := MapDatToTransaction(rec, master)
+				// ▼▼▼【ここを修正】`` タグを削除 ▼▼▼
 				if err := database.InsertTransactionRecord(tx, transaction); err != nil {
+					// ▲▲▲【修正ここまで】▲▲▲
 					log.Printf("Failed to insert transaction record for key %s (Product: %s) in file %s: %v", key, rec.ProductName, fileHeader.Filename, err)
 					fileResult["error"] = fmt.Sprintf("Transaction insert failed for key %s: %v", key, err)
 					allResults = append(allResults, fileResult)
 					tx.Rollback()
 					goto nextFileLoop
 				}
-
 				currentFileTransactions = append(currentFileTransactions, transaction)
 				insertedCount++
 			}
-
+			// ▼▼▼【ここを修正】`` タグを削除 ▼▼▼
 			if commitErr := tx.Commit(); commitErr != nil {
+				// ▲▲▲【修正ここまで】▲▲▲
 				log.Printf("Failed to commit transaction for %s: %v", fileHeader.Filename, commitErr)
 				fileResult["error"] = fmt.Sprintf("Failed to commit transaction: %v", commitErr)
 				allResults = append(allResults, fileResult)
 				goto nextFileLoop
 			}
-
 			successfullyInsertedTransactions = append(successfullyInsertedTransactions, currentFileTransactions...)
-
 			log.Printf("Successfully inserted %d records from %s", insertedCount, fileHeader.Filename)
 			fileResult["success"] = true
 			fileResult["records_inserted"] = insertedCount
 			allResults = append(allResults, fileResult)
-
 		nextFileLoop:
 			continue
 		}
-
 		w.Header().Set("Content-Type", "application/json")
-		// ▼▼▼【修正】render.RenderTransactionTableHTML を呼び出す ▼▼▼
 		htmlString := render.RenderTransactionTableHTML(successfullyInsertedTransactions, wholesalerMap)
-		// ▲▲▲【修正ここまで】▲▲▲
-
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"message":   fmt.Sprintf("Processed %d DAT file(s). See results for details.", len(processedFiles)),
 			"results":   allResults,
@@ -630,70 +767,69 @@ func SearchDatHandler(db *sqlx.DB) http.HandlerFunc {
 			return
 		}
 
-		// ★ 先に卸マスターを取得・マップ化
 		wholesalerMap, err := database.GetWholesalerMap(db)
 		if err != nil {
 			respondJSONError(w, "卸マスターの読み込みに失敗しました。", http.StatusInternalServerError)
 			return
 		}
 
-		barcode := r.URL.Query().Get("barcode")
-		log.Printf("Received DAT search request... Barcode: [%s]", barcode)
+		// ▼▼▼【ここから修正】DB共通関数 GetProductMasterByBarcode を使用 ▼▼▼
+		barcodeStr := r.URL.Query().Get("barcode")
+		// ▼▼▼【ここを修正】改行と `` タグを削除 ▼▼▼
+		log.Printf("Received DAT search request... Barcode: [%s]", barcodeStr)
+		// ▲▲▲【修正ここまで】▲▲▲
 
-		if barcode == "" {
+		if barcodeStr == "" {
 			respondJSONError(w, "バーコードを入力してください。", http.StatusBadRequest)
 			return
 		}
 
-		gs1Result, parseErr := parsers.ParseGS1_128(barcode)
-		if parseErr != nil {
-			log.Printf("Error parsing GS1-128 barcode [%s]: %v", barcode, parseErr)
-			respondJSONError(w, fmt.Sprintf("バーコード解析エラー: %v", parseErr), http.StatusBadRequest)
-			return
-		}
-
-		gtin14 := gs1Result.JanCode
-		if gtin14 == "" {
-			respondJSONError(w, "バーコードから(01)GTINが抽出できませんでした。", http.StatusBadRequest)
-			return
-		}
-
-		master, err := database.GetProductMasterByGs1Code(db, gtin14)
+		// DB共通関数でマスターを検索
+		master, err := database.GetProductMasterByBarcode(db, barcodeStr)
 		if err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
-				log.Printf("Product master not found for GS1_CODE: %s", gtin14)
-				respondJSONError(w, "GS1コードに対応するマスターが見つかりません。", http.StatusNotFound)
+				log.Printf("Product master not found for Barcode: %s", barcodeStr)
+				respondJSONError(w, "バーコードに対応するマスターが見つかりません。", http.StatusNotFound)
 			} else {
-				log.Printf("Error searching product master by GS1_CODE %s: %v", gtin14, err)
-				respondJSONError(w, "マスター検索中にデータベースエラーが発生しました。", http.StatusInternalServerError)
+				log.Printf("Error searching product master by Barcode %s: %v", barcodeStr, err)
+				respondJSONError(w, fmt.Sprintf("マスター検索エラー: %v", err), http.StatusInternalServerError)
 			}
 			return
 		}
 
 		productCode := master.ProductCode
 
-		expiryYYMMDD := gs1Result.ExpiryDate
-		expiryYYMM := ""
-		if len(expiryYYMMDD) == 6 {
-			expiryYYMM = expiryYYMMDD[:4]
+		// 期限とロットはGS1の場合のみ取得
+		var expiryYYMMDD, expiryYYMM, lotNumber string
+		if len(barcodeStr) > 14 { // 15桁以上の場合のみGS1解析
+			gs1Result, parseErr := barcode.Parse(barcodeStr)
+			if parseErr == nil && gs1Result != nil { // エラーは無視
+				expiryYYMMDD = gs1Result.ExpiryDate
+				if len(expiryYYMMDD) == 6 {
+					expiryYYMM = expiryYYMMDD[:4]
+				}
+				lotNumber = gs1Result.LotNumber
+			}
 		}
 
-		log.Printf("Parsed GS1: GTIN(14)='%s' -> ProductCode(JAN)='%s', Expiry(6)='%s', Expiry(4)='%s', Lot='%s'",
-			gtin14, productCode, expiryYYMMDD, expiryYYMM, gs1Result.LotNumber)
+		log.Printf("Search criteria: ProductCode(JAN)='%s', Expiry(6)='%s', Expiry(4)='%s', Lot='%s'",
+			productCode, expiryYYMMDD, expiryYYMM, lotNumber)
 
-		transactions, err := database.SearchTransactions(db, productCode, expiryYYMMDD, expiryYYMM, gs1Result.LotNumber)
+		// ▼▼▼【ここを修正】`` タグを削除 ▼▼▼
+		transactions, err := database.SearchTransactions(db, productCode, expiryYYMMDD, expiryYYMM, lotNumber)
+		// ▲▲▲【修正ここまで】▲▲▲
 
 		if err != nil {
+			// ▼▼▼【ここを修正】`` タグを削除 ▼▼▼
 			log.Printf("Error searching transactions: %v", err)
+			// ▲▲▲【修正ここまで】▲▲▲
 			respondJSONError(w, "トランザクション検索中にエラーが発生しました。", http.StatusInternalServerError)
 			return
 		}
 
 		log.Printf("Found %d transactions matching criteria.", len(transactions))
 
-		// ▼▼▼【修正】render.RenderTransactionTableHTML を呼び出す ▼▼▼
 		htmlString := render.RenderTransactionTableHTML(transactions, wholesalerMap)
-		// ▲▲▲【修正ここまで】▲▲▲
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]interface{}{
@@ -703,14 +839,13 @@ func SearchDatHandler(db *sqlx.DB) http.HandlerFunc {
 	}
 }
 
+// (MapDatToTransaction, OpenFileHeader は変更なし)
+// ...
 func MapDatToTransaction(dat model.DatRecord, master *model.ProductMaster) model.TransactionRecord {
-	// 1. 製品名と規格を連結
 	productNameWithSpec := master.ProductName
 	if master.Specification != "" {
 		productNameWithSpec = master.ProductName + " " + master.Specification
 	}
-
-	// 2. 数量の計算 (DATの個数から計算)
 	var yjQuantity, janQuantity float64
 	if master.YjPackUnitQty > 0 {
 		yjQuantity = dat.DatQuantity * master.YjPackUnitQty
@@ -718,21 +853,18 @@ func MapDatToTransaction(dat model.DatRecord, master *model.ProductMaster) model
 	if master.JanPackUnitQty > 0 {
 		janQuantity = dat.DatQuantity * master.JanPackUnitQty
 	}
-
-	// 3. 詳細な包装仕様を生成 (units.ResolveName を使用)
 	yjUnitName := units.ResolveName(master.YjUnitName)
 	packageSpec := fmt.Sprintf("%s %g%s", master.PackageForm, master.YjPackUnitQty, yjUnitName)
-
 	janUnitCodeStr := fmt.Sprintf("%d", master.JanUnitCode)
 	var janUnitName string
-
 	if master.JanUnitCode == 0 {
 		janUnitName = yjUnitName
 	} else {
 		janUnitName = units.ResolveName(janUnitCodeStr)
 	}
-
+	// ▼▼▼【ここを修正】if と { を同じ行にする ▼▼▼
 	if master.JanPackInnerQty > 0 && master.JanPackUnitQty > 0 {
+		// ▲▲▲【修正ここまで】▲▲▲
 		packageSpec += fmt.Sprintf(" (%g%s×%g%s)",
 			master.JanPackInnerQty,
 			yjUnitName,
@@ -740,25 +872,26 @@ func MapDatToTransaction(dat model.DatRecord, master *model.ProductMaster) model
 			janUnitName,
 		)
 	}
-
-	// 4. MAフラグの設定
 	var processFlagMA string
+	// ▼▼▼【ここを修正】if と { を同じ行にする ▼▼▼
 	if master.Origin == "JCSHMS" {
-		processFlagMA = "COMPLETE"
+		// ▲▲▲【修正ここまで】▲▲▲
+		processFlagMA = "COM"
 	} else {
-		processFlagMA = "PROVISIONAL"
+		processFlagMA = "PRO"
 	}
-
 	return model.TransactionRecord{
-		TransactionDate:     dat.Date,
-		ClientCode:          dat.ClientCode,
-		ReceiptNumber:       dat.ReceiptNumber,
-		LineNumber:          dat.LineNumber,
-		Flag:                dat.Flag,
-		JanCode:             master.ProductCode,
-		YjCode:              master.YjCode,
-		ProductName:         productNameWithSpec,
-		KanaName:            master.KanaName,
+		TransactionDate: dat.Date,
+		ClientCode:      dat.ClientCode,
+		ReceiptNumber:   dat.ReceiptNumber,
+		LineNumber:      dat.LineNumber,
+		Flag:            dat.Flag,
+		JanCode:         master.ProductCode,
+		YjCode:          master.YjCode,
+		// ▼▼▼【ここを修正】`` タグを削除 ▼▼▼
+		ProductName: productNameWithSpec,
+		KanaName:    master.KanaName,
+		// ▲▲▲【修正ここまで】▲▲▲
 		UsageClassification: master.UsageClassification,
 		PackageForm:         master.PackageForm,
 		PackageSpec:         packageSpec,
@@ -770,33 +903,33 @@ func MapDatToTransaction(dat model.DatRecord, master *model.ProductMaster) model
 		JanUnitName:         janUnitName,
 		JanUnitCode:         janUnitCodeStr,
 		YjQuantity:          yjQuantity,
-		YjPackUnitQty:       master.YjPackUnitQty,
-		YjUnitName:          yjUnitName,
-		UnitPrice:           dat.UnitPrice,
-		PurchasePrice:       master.PurchasePrice,
-		SupplierWholesale:   master.SupplierWholesale,
-		Subtotal:            dat.Subtotal,
-		TaxAmount:           0,
-		TaxRate:             0,
-		ExpiryDate:          dat.ExpiryDate,
-		LotNumber:           dat.LotNumber,
-		FlagPoison:          master.FlagPoison,
-		FlagDeleterious:     master.FlagDeleterious,
-		FlagNarcotic:        master.FlagNarcotic,
-		FlagPsychotropic:    master.FlagPsychotropic,
-		FlagStimulant:       master.FlagStimulant,
-		FlagStimulantRaw:    master.FlagStimulantRaw,
-		ProcessFlagMA:       processFlagMA,
+		// ▼▼▼【ここを修正】`` タグを削除 ▼▼▼
+		YjPackUnitQty: master.YjPackUnitQty,
+		YjUnitName:    yjUnitName,
+		// ▲▲▲【修正ここまで】▲▲▲
+		UnitPrice:         dat.UnitPrice,
+		PurchasePrice:     master.PurchasePrice,
+		SupplierWholesale: master.SupplierWholesale,
+		Subtotal:          dat.Subtotal,
+		TaxAmount:         0,
+		TaxRate:           0,
+		ExpiryDate:        dat.ExpiryDate,
+		LotNumber:         dat.LotNumber,
+		// ▼▼▼【ここを修正】`` タグを削除 ▼▼▼
+		FlagPoison:      master.FlagPoison,
+		FlagDeleterious: master.FlagDeleterious,
+		// ▲▲▲【修正ここまで】▲▲▲
+		FlagNarcotic:     master.FlagNarcotic,
+		FlagPsychotropic: master.FlagPsychotropic,
+		FlagStimulant:    master.FlagStimulant,
+		FlagStimulantRaw: master.FlagStimulantRaw,
+		ProcessFlagMA:    processFlagMA,
 	}
 }
 
 func OpenFileHeader(fh *multipart.FileHeader) (multipart.File, error) {
 	return fh.Open()
 }
-
-// ▼▼▼【削除】RenderTransactionTableHTML 関数を削除 (render パッケージに移動したため) ▼▼▼
-// ( ... 関数の定義 ... )
-// ▲▲▲【削除ここまで】▲▲▲
 
 
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\database\clients.go -----
@@ -1167,25 +1300,23 @@ func GetJcshmsInfoByJan(dbtx DBTX, janCode string) (*model.JcshmsInfo, error) {
 
 
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\database\product_master_query.go -----
-// C:\Users\wasab\OneDrive\デスクトップ\TKR\database\product_master_query.go
 package database
 
 import (
 	"database/sql"
 	"fmt"
 	"strings"
+	"tkr/barcode"
 	"tkr/model"
 )
 
-// DBTX インターフェース (変更なし)
 type DBTX interface {
 	Get(dest interface{}, query string, args ...interface{}) error
 	Select(dest interface{}, query string, args ...interface{}) error
 	NamedExec(query string, arg interface{}) (sql.Result, error)
 }
 
-// GetFilteredProductMasters は指定されたフィルター条件で product_master を検索します。
-func GetFilteredProductMasters(dbtx DBTX, usageClass, productName, kanaName, genericName, shelfNumber string) ([]model.ProductMaster, error) {
+func GetFilteredProductMasters(dbtx DBTX, usageClass, kanaName, genericName, shelfNumber string) ([]model.ProductMaster, error) {
 
 	var masters []model.ProductMaster
 
@@ -1193,7 +1324,6 @@ func GetFilteredProductMasters(dbtx DBTX, usageClass, productName, kanaName, gen
 	mustConditions := []string{}
 	args := []interface{}{}
 
-	// 内外注区分 (必須条件として扱う)
 	if usageClass != "" {
 		mustConditions = append(mustConditions, "usage_classification = ?")
 		args = append(args, usageClass)
@@ -1201,43 +1331,33 @@ func GetFilteredProductMasters(dbtx DBTX, usageClass, productName, kanaName, gen
 		return []model.ProductMaster{}, nil
 	}
 
-	// 製品名は 0文字より大きい場合、条件に追加 (部分一致)
-	if len(productName) > 0 {
-		mustConditions = append(mustConditions, "product_name LIKE ?")
-		args = append(args, "%"+productName+"%")
-	}
-
-	// カナ名は 0文字より大きい場合、条件に追加 (前方一致)
 	if len(kanaName) > 0 {
 		mustConditions = append(mustConditions, "kana_name LIKE ?")
-		args = append(args, kanaName+"%") // 前方一致
+		args = append(args, kanaName+"%")
 	}
 
-	// 一般名は 0文字より大きい場合、条件に追加 (部分一致)
 	if len(genericName) > 0 {
 		mustConditions = append(mustConditions, "generic_name LIKE ?")
 		args = append(args, "%"+genericName+"%")
 	}
 
-	// 棚番は 0文字より大きい場合、条件に追加 (完全一致)
 	if len(shelfNumber) > 0 {
-		mustConditions = append(mustConditions, "shelf_number = ?") // 完全一致
+		mustConditions = append(mustConditions, "shelf_number = ?")
 		args = append(args, shelfNumber)
 	}
 
-	// 最終 WHERE 句の結合
 	if len(mustConditions) > 0 {
 		query += " WHERE " + strings.Join(mustConditions, " AND ")
 	} else {
 		return []model.ProductMaster{}, fmt.Errorf("usage class filter is required")
 	}
 
-	query += " ORDER BY kana_name" // カナ名順
+	query += " ORDER BY kana_name"
 
 	err := dbtx.Select(&masters, query, args...)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return []model.ProductMaster{}, nil // 見つからなくてもエラーではない
+			return []model.ProductMaster{}, nil
 		}
 		return nil, fmt.Errorf("failed to select filtered product masters: %w", err)
 	}
@@ -1249,35 +1369,52 @@ func GetFilteredProductMasters(dbtx DBTX, usageClass, productName, kanaName, gen
 	return masters, nil
 }
 
-// GetProductMasterByCode は product_code をキーにレコードを取得します。(変更なし)
 func GetProductMasterByCode(dbtx DBTX, code string) (*model.ProductMaster, error) {
 	var master model.ProductMaster
 	query := `SELECT * FROM product_master WHERE product_code = ?`
 	err := dbtx.Get(&master, query, code)
 	if err != nil {
-		// sql.ErrNoRows も含め、エラーとして返す
 		return nil, fmt.Errorf("failed to get product master by code %s: %w", code, err)
 	}
 	return &master, nil
 }
 
-// GetProductMasterByGs1Code はGS1コードで product_master を検索する関数 (変更なし)
 func GetProductMasterByGs1Code(dbtx DBTX, gs1Code string) (*model.ProductMaster, error) {
 	var master model.ProductMaster
 	query := `SELECT * FROM product_master WHERE gs1_code = ?`
 	err := dbtx.Get(&master, query, gs1Code)
 	if err != nil {
-		// sql.ErrNoRows も含め、エラーとして返す
 		return nil, fmt.Errorf("failed to get product master by gs1_code %s: %w", gs1Code, err)
 	}
 	return &master, nil
 }
 
-// ▼▼▼【ここから追加】YJコードで product_master を検索する関数 ▼▼▼
-// (WASABI: db/product_master.go  より)
+func GetProductMasterByBarcode(dbtx DBTX, barcodeStr string) (*model.ProductMaster, error) {
+	if barcodeStr == "" {
+		return nil, fmt.Errorf("バーコードが空です")
+	}
+
+	if len(barcodeStr) <= 13 {
+		return GetProductMasterByCode(dbtx, barcodeStr)
+	}
+
+	gs1Result, parseErr := barcode.Parse(barcodeStr)
+	if parseErr != nil {
+		return nil, fmt.Errorf("バーコード解析エラー: %w", parseErr)
+	}
+
+	gtin14 := gs1Result.Gtin14
+	if gtin14 == "" {
+		return nil, fmt.Errorf("バーコードからGTIN(14桁)が抽出できませんでした")
+	}
+
+	return GetProductMasterByGs1Code(dbtx, gtin14)
+}
+
 func GetProductMastersByYjCode(dbtx DBTX, yjCode string) ([]*model.ProductMaster, error) {
 	var masters []*model.ProductMaster
-	query := `SELECT * FROM product_master WHERE yj_code = ? ORDER BY product_code`
+	query := `SELECT * FROM product_master WHERE yj_code = ?
+ORDER BY product_code`
 	err := dbtx.Select(&masters, query, yjCode)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -1290,8 +1427,6 @@ func GetProductMastersByYjCode(dbtx DBTX, yjCode string) ([]*model.ProductMaster
 	}
 	return masters, nil
 }
-
-// ▲▲▲【追加ここまで】▲▲▲
 
 
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\database\sequence.go -----
@@ -2241,12 +2376,10 @@ func ListMastersHandler(db *sqlx.DB) http.HandlerFunc {
 
 		queryParams := r.URL.Query()
 		usageClass := queryParams.Get("usage_class")
-		productName := queryParams.Get("product_name")
 		kanaName := queryParams.Get("kana_name")
 		genericName := queryParams.Get("generic_name")
 		shelfNumber := queryParams.Get("shelf_number")
 
-		// ▼▼▼【修正】内外注区分が指定されていない場合は空のレスポンスを返す ▼▼▼
 		if usageClass == "" {
 			log.Println("ListMastersHandler: usage_class is required, returning empty.")
 			w.Header().Set("Content-Type", "application/json")
@@ -2256,24 +2389,21 @@ func ListMastersHandler(db *sqlx.DB) http.HandlerFunc {
 			})
 			return
 		}
-		// ▲▲▲【修正ここまで】▲▲▲
 
-		masters, err := database.GetFilteredProductMasters(db, usageClass, productName, kanaName, genericName, shelfNumber)
+		masters, err := database.GetFilteredProductMasters(db,
+			usageClass, kanaName, genericName, shelfNumber)
 
 		if err != nil {
 			log.Printf("Error fetching filtered product masters: %v", err)
-			// ▼▼▼【修正】エラー時もJSONで返す ▼▼▼
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusInternalServerError)
 			json.NewEncoder(w).Encode(map[string]interface{}{
 				"tableHTML": renderMasterListHTML(nil, "マスターの検索中にエラーが発生しました。"),
 				"masters":   []model.ProductMaster{},
 			})
-			// ▲▲▲【修正ここまで】▲▲▲
 			return
 		}
 
-		// ▼▼▼【修正】HTML文字列とマスターJSON配列を両方返す ▼▼▼
 		tableHTML := renderMasterListHTML(masters, "")
 
 		w.Header().Set("Content-Type", "application/json")
@@ -2284,11 +2414,9 @@ func ListMastersHandler(db *sqlx.DB) http.HandlerFunc {
 			log.Printf("Error encoding product masters to JSON: %v", err)
 			http.Error(w, "Failed to encode response", http.StatusInternalServerError)
 		}
-		// ▲▲▲【修正ここまで】▲▲▲
 	}
 }
 
-// ▼▼▼【ここから追加】マスター一覧のHTMLテーブル文字列を生成する関数 ▼▼▼
 func renderMasterListHTML(masters []model.ProductMaster, statusMessage string) string {
 	var sb strings.Builder
 
@@ -2299,7 +2427,8 @@ func renderMasterListHTML(masters []model.ProductMaster, statusMessage string) s
             <th class="col-yj">YJコード</th>
             <th class="col-gs1">GS1コード</th>
             <th class="col-jan">JANコード</th>
-            <th class="col-product">製品名</th>
+          
+           <th class="col-product">製品名</th>
             <th class="col-kana">カナ名</th>
             <th class="col-maker">メーカー</th>
             <th class="col-generic">一般名</th>
@@ -2317,7 +2446,8 @@ func renderMasterListHTML(masters []model.ProductMaster, statusMessage string) s
 			sb.WriteString(fmt.Sprintf(`<tr data-product-code="%s">`, master.ProductCode))
 			sb.WriteString(fmt.Sprintf(`<td class="center col-action"><button class="edit-master-btn btn" data-code="%s">編集</button></td>`, master.ProductCode))
 			sb.WriteString(fmt.Sprintf(`<td class="col-yj">%s</td>`, master.YjCode))
-			sb.WriteString(fmt.Sprintf(`<td class="col-gs1">%s</td>`, master.Gs1Code))
+			sb.WriteString(fmt.Sprintf(`<td class="col-gs1">%s</td>`,
+				master.Gs1Code))
 			sb.WriteString(fmt.Sprintf(`<td class="col-jan">%s</td>`, master.ProductCode))
 			sb.WriteString(fmt.Sprintf(`<td class="left col-product">%s</td>`, master.ProductName))
 			sb.WriteString(fmt.Sprintf(`<td class="left col-kana">%s</td>`, master.KanaName))
@@ -2331,8 +2461,6 @@ func renderMasterListHTML(masters []model.ProductMaster, statusMessage string) s
 
 	return sb.String()
 }
-
-// ▲▲▲【追加ここまで】▲▲▲
 
 func UpdateMasterHandler(db *sqlx.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -2960,121 +3088,6 @@ func ParseDat(r io.Reader) ([]model.DatRecord, error) {
 }
 
 
------ C:\Users\wasab\OneDrive\デスクトップ\TKR\parsers\gs1_parser.go -----
-// C:\Users\wasab\OneDrive\デスクトップ\TKR\parsers\gs1_parser.go
-package parsers
-
-import (
-	"fmt"
-	"strings"
-)
-
-// GS1Result はGS1-128バーコードの解析結果を格納します
-type GS1Result struct {
-	JanCode    string // (01) GTIN (14桁)
-	ExpiryDate string // (17) 有効期限 (YYMMDD)
-	LotNumber  string // (10) ロット番号
-}
-
-// aiLengths は可変長AIの最大長を定義します (今回はロット(10)のみ)
-var aiLengths = map[string]int{
-	"10": 20, // ロット番号 (最大20桁)
-}
-
-// ParseGS1_128 はGS1-128形式の文字列を解析します
-func ParseGS1_128(code string) (*GS1Result, error) {
-	result := &GS1Result{}
-	i := 0
-	length := len(code)
-
-	if length == 0 {
-		return nil, fmt.Errorf("バーコードが空です")
-	}
-
-	for i < length {
-		// (01) GTIN (14桁固定)
-		if strings.HasPrefix(code[i:], "01") {
-			if i+16 > length { // AI(2) + Data(14)
-				return nil, fmt.Errorf("AI(01)のデータが不足しています")
-			}
-			result.JanCode = code[i+2 : i+16]
-			i += 16
-			continue
-		}
-
-		// (17) 有効期限 (6桁固定)
-		if strings.HasPrefix(code[i:], "17") {
-			if i+8 > length { // AI(2) + Data(6)
-				return nil, fmt.Errorf("AI(17)のデータが不足しています")
-			}
-			result.ExpiryDate = code[i+2 : i+8] // YYMMDD
-			i += 8
-			continue
-		}
-
-		// (10) ロット番号 (可変長)
-		if strings.HasPrefix(code[i:], "10") {
-			if i+2 > length { // AI(2) + 少なくとも1桁のデータ
-				return nil, fmt.Errorf("AI(10)のデータが不足しています")
-			}
-
-			dataStart := i + 2
-			dataEnd := dataStart
-			maxLength := aiLengths["10"]
-
-			for dataEnd < length {
-				if (dataEnd - dataStart) >= maxLength { // 最大長に達したら終了
-					break
-				}
-
-				remaining := code[dataEnd:]
-
-				// ▼▼▼【修正】次のAIが「完全な形」で存在する場合のみ区切る ▼▼▼
-				if len(remaining) >= 2 {
-					nextAI := remaining[:2]
-
-					// 次が AI(01) か？ (01 + 14桁データ が必要)
-					if nextAI == "01" {
-						if len(remaining) >= 16 { // AI(2) + Data(14) = 16
-							break // データが十分あるので、AI(10)はここまで
-						}
-					}
-
-					// 次が AI(17) か？ (17 + 6桁データ が必要)
-					if nextAI == "17" {
-						if len(remaining) >= 8 { // AI(2) + Data(6) = 8
-							break // データが十分あるので、AI(10)はここまで
-						}
-					}
-					// (注: もし AI(10) が続く場合もFNC1が必要だが、FNC1省略運用ではAI(10)の連続は解析不能)
-				}
-				// ▲▲▲【修正ここまで】▲▲▲
-
-				dataEnd++
-			}
-
-			result.LotNumber = code[dataStart:dataEnd]
-			i = dataEnd
-			continue
-		}
-
-		// 不明なAIまたはデータ部分
-		i++
-	}
-
-	// (01)GTINが見つからなかった場合
-	if result.JanCode == "" {
-		// (17)や(10)だけでも情報があれば良しとする
-		if result.ExpiryDate != "" || result.LotNumber != "" {
-			return result, nil
-		}
-		return nil, fmt.Errorf("バーコードから有効な情報(01, 17, 10)が見つかりませんでした")
-	}
-
-	return result, nil
-}
-
-
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\parsers\usage_parser.go -----
 // C:\Users\wasab\OneDrive\デスクトップ\TKR\parsers\usage_parser.go
 package parsers
@@ -3130,11 +3143,19 @@ func ParseUsage(r io.Reader) ([]model.UnifiedInputRecord, error) {
 package product
 
 import (
+	"database/sql"
+
+	// ▼▼▼【ここに追加】▼▼▼
 	"encoding/json"
+	"errors" // ▼▼▼【ここに追加】▼▼▼
+	"fmt"    // ▼▼▼【ここに追加】▼▼▼
+	"log"    // ▼▼▼【ここに追加】▼▼▼
 	"net/http"
-	"sort" // ▼▼▼【ここに追加】ソート用 ▼▼▼
+	"sort"
 	"strings"
 	"tkr/aggregation" // 集計ロジック
+
+	// ▼▼▼【ここに追加】▼▼▼
 	"tkr/database"
 	"tkr/mappers" // Viewマッパー
 	"tkr/model"
@@ -3170,8 +3191,10 @@ func SearchProductsHandler(conn *sqlx.DB) http.HandlerFunc {
 			mastersInGroup := mastersByYjCode[yjCode]
 			if len(mastersInGroup) > 0 {
 				repMaster := mastersInGroup[0]
+				// ▼▼▼【ここを修正】if と { を同じ行にする ▼▼▼
 				for _, m := range mastersInGroup {
 					if m.Origin == "JCSHMS" {
+						// ▲▲▲【修正ここまで】▲▲▲
 						repMaster = m // JCSHMSを優先
 						break
 					}
@@ -3193,50 +3216,55 @@ func SearchProductsHandler(conn *sqlx.DB) http.HandlerFunc {
 	}
 }
 
-// (GetProductByGS1Handler, GetMasterByCodeHandler は変更なし)
-// ...
-func GetProductByGS1Handler(conn *sqlx.DB) http.HandlerFunc {
+// ▼▼▼【ここから修正】バーコード検索を単一APIに共通化（DB共通関数を使用） ▼▼▼
+func GetProductByBarcodeHandler(conn *sqlx.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		gs1Code := r.URL.Query().Get("gs1_code")
-		if gs1Code == "" {
-			http.Error(w, "gs1_code is required", http.StatusBadRequest)
+		barcodeStr := strings.TrimPrefix(r.URL.Path, "/api/product/by_barcode/")
+		if barcodeStr == "" {
+			http.Error(w, "barcode is required", http.StatusBadRequest)
 			return
 		}
-		master, err := database.GetProductMasterByGs1Code(conn, gs1Code)
+
+		log.Printf("API request received for barcode: %s", barcodeStr)
+
+		// DB共通関数でマスターを検索
+		master, err := database.GetProductMasterByBarcode(conn, barcodeStr)
+
+		// 共通のエラーハンドリング
 		if err != nil {
-			if strings.Contains(err.Error(), "no rows") {
+			if errors.Is(err, sql.ErrNoRows) {
+				log.Printf("Product master not found for barcode: %s", barcodeStr)
 				http.Error(w, "Product not found", http.StatusNotFound)
 			} else {
-				http.Error(w, "Failed to get product by gs1 code: "+err.Error(), http.StatusInternalServerError)
+				log.Printf("Error searching product master by barcode %s: %v", barcodeStr, err)
+				http.Error(w, fmt.Sprintf("マスター検索エラー: %v", err), http.StatusInternalServerError)
 			}
 			return
 		}
+
 		masterView := mappers.ToProductMasterView(master)
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(masterView)
+	}
+}
+
+// ▲▲▲【修正ここまで】▲▲▲
+
+// ▼▼▼【ここから削除】古いハンドラを削除 ▼▼▼
+/*
+func GetProductByGS1Handler(conn *sqlx.DB) http.HandlerFunc
+{
+	return func(w http.ResponseWriter, r *http.Request) {
+// ... (古いコード [cite: 804] 削除) ...
 	}
 }
 func GetMasterByCodeHandler(conn *sqlx.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		productCode := strings.TrimPrefix(r.URL.Path, "/api/master/by_code/")
-		if productCode == "" {
-			http.Error(w, "Product code is required", http.StatusBadRequest)
-			return
-		}
-		master, err := database.GetProductMasterByCode(conn, productCode)
-		if err != nil {
-			if strings.Contains(err.Error(), "no rows") {
-				http.Error(w, "Product not found", http.StatusNotFound)
-			} else {
-				http.Error(w, "Failed to get product by code: "+err.Error(), http.StatusInternalServerError)
-			}
-			return
-		}
-		masterView := mappers.ToProductMasterView(master)
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(masterView)
+// ... (古いコード [cite: 804] 削除) ...
 	}
 }
+*/
+// ▲▲▲【削除ここまで】▲▲▲
 
 
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\render\renderer.go -----
@@ -3899,14 +3927,14 @@ func validateFolderPath(path string) error {
 package main
 
 import (
-	"encoding/json" // ▼▼▼【ここに追加】▼▼▼
-	"html/template" // ▼▼▼【ここに追加】▼▼▼
-	"io/fs"         // ▼▼▼【ここに追加】▼▼▼
+	"encoding/json"
+	"html/template"
+	"io/fs"
 	"log"
 	"net/http"
-	"os" // ▼▼▼【ここに追加】▼▼▼
+	"os"
 	"os/exec"
-	"path/filepath" // ▼▼▼【ここに追加】▼▼▼
+	"path/filepath"
 	"runtime"
 	"strings"
 
@@ -3924,19 +3952,18 @@ import (
 	"tkr/usage"
 )
 
-// ▼▼▼【ここから追加】HTMLテンプレートを保持する変数 ▼▼▼
 var (
-	appTemplate *template.Template
-	viewsFS     fs.FS
+	appTemplate   *template.Template
+	viewsFS       fs.FS
+	searchFormsFS fs.FS
 )
-
-// ▲▲▲【追加ここまで】▲▲▲
 
 func main() {
 	log.Println("Connecting to database...")
 	dbConn, err := sqlx.Open("sqlite3", "./tkr.db?_journal_mode=WAL&_busy_timeout=5000")
 	if err != nil {
-		log.Fatalf("db open error: %v", err)
+		log.Fatalf("db open error: %v",
+			err)
 	}
 	defer dbConn.Close()
 	log.Println("Database connection successful.")
@@ -3956,15 +3983,18 @@ func main() {
 		log.Println("Unit (TANI.CSV) master loaded successfully.")
 	}
 
-	// ▼▼▼【ここから追加】HTMLテンプレートの読み込み処理 ▼▼▼
 	// 'static' フォルダをFSとしてキャプチャ
 	staticFS := os.DirFS("static")
 	// 'static/views' サブディレクトリをFSとしてキャプチャ
 	viewsFS, err = fs.Sub(staticFS, "views")
 	if err != nil {
-		// 'static/views' がなくてもエラーにしない（TKRの構成に合わせて柔軟に）
 		log.Printf("WARN: 'static/views' directory not found. Will only load index.html. %v", err)
-		// viewsFS が nil でも続行
+	}
+
+	// 共通部品 search_form_group.html のための FS を設定
+	searchFormsFS, err = fs.Sub(staticFS, "views")
+	if err != nil {
+		log.Fatalf("Failed to sub views directory for search forms: %v", err)
 	}
 
 	// メインの index.html をパース
@@ -3980,14 +4010,31 @@ func main() {
 			log.Fatalf("Failed to parse views/*.html: %v", err)
 		}
 	}
-	log.Println("HTML templates loaded and parsed.")
+
+	// 共通部品 search_form_group.html をパースに追加
+	if searchFormsFS != nil {
+		appTemplate, err = appTemplate.ParseFS(searchFormsFS, "search_form_group.html")
+		if err != nil {
+			log.Fatalf("Failed to parse views/search_form_group.html: %v", err)
+		}
+	}
+
+	// ▼▼▼【ここから追加】共通部品 common_search_modal.html をパースに追加 ▼▼▼
+	if viewsFS != nil {
+		appTemplate, err = appTemplate.ParseFS(viewsFS, "common_search_modal.html")
+		if err != nil {
+			log.Fatalf("Failed to parse views/common_search_modal.html: %v", err)
+		}
+	}
 	// ▲▲▲【追加ここまで】▲▲▲
+
+	log.Println("HTML templates loaded and parsed.")
 
 	mux := http.NewServeMux()
 
-	mux.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("./static"))))
+	mux.Handle("/static/", http.StripPrefix("/static/",
+		http.FileServer(http.Dir("./static"))))
 
-	// ▼▼▼【修正】ルートハンドラをテンプレートを描画するように変更 ▼▼▼
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/" {
 			http.NotFound(w, r)
@@ -3997,11 +4044,17 @@ func main() {
 		// viewsFS から全ビューのファイル名を取得
 		viewFiles := []string{}
 		if viewsFS != nil {
-			viewFiles, err = fs.Glob(viewsFS, "*.html")
+			// search_form_group.html と common_search_modal.html は部品なので除外する
+			files, err := fs.Glob(viewsFS, "*.html")
 			if err != nil {
 				log.Printf("Error globbing view files: %v", err)
 				http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 				return
+			}
+			for _, file := range files {
+				if file != "search_form_group.html" && file != "common_search_modal.html" {
+					viewFiles = append(viewFiles, file)
+				}
 			}
 		}
 
@@ -4010,9 +4063,42 @@ func main() {
 		for _, file := range viewFiles {
 			// ファイル名 (例: dat_view.html) からキー (dat_view) を作成
 			key := strings.TrimSuffix(file, filepath.Ext(file))
+
+			data := struct {
+				Prefix             string
+				BarcodeFormID      string
+				BarcodeFormInputID string
+				SearchButtonID     string
+				SearchButtonText   string
+			}{}
+
+			// プリフィックスとIDを設定
+			switch key {
+			case "dat_view":
+				data.Prefix = "dat_"
+				data.BarcodeFormID = "dat-barcode-form"
+				data.BarcodeFormInputID = "dat-search-barcode"
+				data.SearchButtonID = "datOpenSearchModalBtn"
+				data.SearchButtonText = "品目検索..."
+			case "inventory_adjustment_view":
+				data.Prefix = "ia_"
+				data.BarcodeFormID = "ia-barcode-form"
+				data.BarcodeFormInputID = "ia-barcode-input"
+				data.SearchButtonID = "ia-search-btn"
+				data.SearchButtonText = "この条件で検索"
+			case "master_edit_view":
+				data.Prefix = "master_"
+				data.BarcodeFormID = "master-barcode-form"
+				data.BarcodeFormInputID = "master-search-gs1-barcode"
+				data.SearchButtonID = "masterSearchBtn"
+				data.SearchButtonText = "品目検索..."
+			default:
+				data.Prefix = ""
+			}
+
 			// バッファにビューを描画
 			var viewContent strings.Builder
-			if err := appTemplate.ExecuteTemplate(&viewContent, file, nil); err != nil {
+			if err := appTemplate.ExecuteTemplate(&viewContent, file, data); err != nil {
 				log.Printf("Error executing view template %s: %v", file, err)
 				http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 				return
@@ -4031,7 +4117,6 @@ func main() {
 			log.Printf("Error executing main template: %v", err)
 		}
 	})
-	// ▲▲▲【修正ここまで】▲▲▲
 
 	// ( ... JCSHMS APIハンドラ ... )
 	mux.HandleFunc("/api/jcshms/", func(w http.ResponseWriter, r *http.Request) {
@@ -4048,8 +4133,10 @@ func main() {
 			return
 		}
 		if info == nil {
-			log.Printf("JCSHMS info not found for JAN: %s", janCode)
-			http.NotFound(w, r)
+			log.Printf("JCSHMS info not found for JAN: %s",
+				janCode)
+			http.NotFound(w,
+				r)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -4071,8 +4158,23 @@ func main() {
 	mux.HandleFunc("/api/inventory/adjust/save", inventoryadjustment.SaveInventoryDataHandler(dbConn))
 
 	mux.HandleFunc("/api/products/search_filtered", product.SearchProductsHandler(dbConn))
-	mux.HandleFunc("/api/product/by_gs1", product.GetProductByGS1Handler(dbConn))
-	mux.HandleFunc("/api/master/by_code/", product.GetMasterByCodeHandler(dbConn))
+
+	mux.HandleFunc("/api/product/by_barcode/", product.GetProductByBarcodeHandler(dbConn))
+	mux.HandleFunc("/api/master/by_code/", func(w http.ResponseWriter, r *http.Request) {
+		janCode := strings.TrimPrefix(r.URL.Path, "/api/master/by_code/")
+		if janCode == "" {
+			http.Error(w, "JAN code is required", http.StatusBadRequest)
+			return
+		}
+		master, err := database.GetProductMasterByCode(dbConn, janCode)
+		if err != nil {
+			log.Printf("Error retrieving master by code %s: %v", janCode, err)
+			http.Error(w, "Master not found or database error", http.StatusNotFound)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(master)
+	})
 
 	mux.HandleFunc("/api/wholesalers/list", ListWholesalersHandler(dbConn))
 	mux.HandleFunc("/api/wholesalers/create", CreateWholesalerHandler(dbConn))
@@ -4101,7 +4203,6 @@ func main() {
 	}
 }
 
-// ( ... openBrowser 関数 ... )
 func openBrowser(url string) {
 	var err error
 	switch runtime.GOOS {

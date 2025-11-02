@@ -33,11 +33,19 @@
 .config-form-container .form-group {
     display: flex;
     flex-direction: column;
-    /* ▼▼▼【修正】最小幅を指定して横並びしやすくする ▼▼▼ */
     flex-basis: 250px; 
     flex-grow: 1;
-    /* ▲▲▲【修正ここまで】▲▲▲ */
 }
+
+/* ▼▼▼【ここから追加】インラインスタイルをクラス化 ▼▼▼ */
+.config-form-container .form-group.flex-150 {
+    flex-basis: 150px;
+}
+.config-form-container .form-group.flex-300 {
+    flex-basis: 300px;
+}
+/* ▲▲▲【追加ここまで】▲▲▲ */
+
 
 .config-form-container .form-group label {
     font-weight: bold;
@@ -46,9 +54,7 @@
 }
 
 .config-form-container .form-group input[type="text"],
-/* ▼▼▼【ここに追加】numberタイプにも適用 ▼▼▼ */
 .config-form-container .form-group input[type="number"] {
-/* ▲▲▲【追加ここまで】▲▲▲ */
     width: 100%;
     padding: 3px;
     border: 1px solid #ccc;
@@ -59,11 +65,18 @@
 }
 
 .config-form-container .form-actions {
-    /* ▼▼▼【修正】margin-topを削除し、form-row内の他の要素と高さを揃える ▼▼▼ */
-    /* margin-top: 15px; */ 
     margin-left: 10px;
-    /* ▲▲▲【修正ここまで】▲▲▲ */
 }
+
+/* ▼▼▼【ここから追加】インラインスタイルをIDセレクタに移動 ▼▼▼ */
+#wholesalerListContainer {
+    max-height: 300px;
+    margin-top: 10px;
+}
+#wholesalerListTable th.col-config-code   { width: 25%; }
+#wholesalerListTable th.col-config-name   { width: 60%; }
+#wholesalerListTable th.col-config-action { width: 15%; }
+/* ▲▲▲【追加ここまで】▲▲▲ */
 
 /* 卸一覧テーブルの削除ボタン */
 #wholesalerListTable .delete-wholesaler-btn {

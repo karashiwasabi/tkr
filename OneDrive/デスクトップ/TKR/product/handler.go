@@ -2,11 +2,19 @@
 package product
 
 import (
+	"database/sql"
+
+	// ▼▼▼【ここに追加】▼▼▼
 	"encoding/json"
+	"errors" // ▼▼▼【ここに追加】▼▼▼
+	"fmt"    // ▼▼▼【ここに追加】▼▼▼
+	"log"    // ▼▼▼【ここに追加】▼▼▼
 	"net/http"
-	"sort" // ▼▼▼【ここに追加】ソート用 ▼▼▼
+	"sort"
 	"strings"
 	"tkr/aggregation" // 集計ロジック
+
+	// ▼▼▼【ここに追加】▼▼▼
 	"tkr/database"
 	"tkr/mappers" // Viewマッパー
 	"tkr/model"
@@ -42,8 +50,10 @@ func SearchProductsHandler(conn *sqlx.DB) http.HandlerFunc {
 			mastersInGroup := mastersByYjCode[yjCode]
 			if len(mastersInGroup) > 0 {
 				repMaster := mastersInGroup[0]
+				// ▼▼▼【ここを修正】if と { を同じ行にする ▼▼▼
 				for _, m := range mastersInGroup {
 					if m.Origin == "JCSHMS" {
+						// ▲▲▲【修正ここまで】▲▲▲
 						repMaster = m // JCSHMSを優先
 						break
 					}
@@ -65,47 +75,52 @@ func SearchProductsHandler(conn *sqlx.DB) http.HandlerFunc {
 	}
 }
 
-// (GetProductByGS1Handler, GetMasterByCodeHandler は変更なし)
-// ...
-func GetProductByGS1Handler(conn *sqlx.DB) http.HandlerFunc {
+// ▼▼▼【ここから修正】バーコード検索を単一APIに共通化（DB共通関数を使用） ▼▼▼
+func GetProductByBarcodeHandler(conn *sqlx.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		gs1Code := r.URL.Query().Get("gs1_code")
-		if gs1Code == "" {
-			http.Error(w, "gs1_code is required", http.StatusBadRequest)
+		barcodeStr := strings.TrimPrefix(r.URL.Path, "/api/product/by_barcode/")
+		if barcodeStr == "" {
+			http.Error(w, "barcode is required", http.StatusBadRequest)
 			return
 		}
-		master, err := database.GetProductMasterByGs1Code(conn, gs1Code)
+
+		log.Printf("API request received for barcode: %s", barcodeStr)
+
+		// DB共通関数でマスターを検索
+		master, err := database.GetProductMasterByBarcode(conn, barcodeStr)
+
+		// 共通のエラーハンドリング
 		if err != nil {
-			if strings.Contains(err.Error(), "no rows") {
+			if errors.Is(err, sql.ErrNoRows) {
+				log.Printf("Product master not found for barcode: %s", barcodeStr)
 				http.Error(w, "Product not found", http.StatusNotFound)
 			} else {
-				http.Error(w, "Failed to get product by gs1 code: "+err.Error(), http.StatusInternalServerError)
+				log.Printf("Error searching product master by barcode %s: %v", barcodeStr, err)
+				http.Error(w, fmt.Sprintf("マスター検索エラー: %v", err), http.StatusInternalServerError)
 			}
 			return
 		}
+
 		masterView := mappers.ToProductMasterView(master)
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(masterView)
+	}
+}
+
+// ▲▲▲【修正ここまで】▲▲▲
+
+// ▼▼▼【ここから削除】古いハンドラを削除 ▼▼▼
+/*
+func GetProductByGS1Handler(conn *sqlx.DB) http.HandlerFunc
+{
+	return func(w http.ResponseWriter, r *http.Request) {
+// ... (古いコード [cite: 804] 削除) ...
 	}
 }
 func GetMasterByCodeHandler(conn *sqlx.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		productCode := strings.TrimPrefix(r.URL.Path, "/api/master/by_code/")
-		if productCode == "" {
-			http.Error(w, "Product code is required", http.StatusBadRequest)
-			return
-		}
-		master, err := database.GetProductMasterByCode(conn, productCode)
-		if err != nil {
-			if strings.Contains(err.Error(), "no rows") {
-				http.Error(w, "Product not found", http.StatusNotFound)
-			} else {
-				http.Error(w, "Failed to get product by code: "+err.Error(), http.StatusInternalServerError)
-			}
-			return
-		}
-		masterView := mappers.ToProductMasterView(master)
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(masterView)
+// ... (古いコード [cite: 804] 削除) ...
 	}
 }
+*/
+// ▲▲▲【削除ここまで】▲▲▲

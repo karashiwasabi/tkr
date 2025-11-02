@@ -1,14 +1,15 @@
 // C:\Users\wasab\OneDrive\デスクトップ\TKR\static\js\app.js
+// ▼▼▼【修正】'./masteredit.js' から fetchAndRenderMasters のインポートを削除 ▼▼▼
 import { initDatUpload, fetchAndRenderDat } from './dat.js';
-import { initMasterEditView, fetchAndRenderMasters } from './masteredit.js';
+import { initMasterEditView } from './masteredit.js';
 import { initConfigView, loadConfigAndWholesalers } from './config.js'; 
 import { initUsageUpload, fetchAndRenderUsage } from './usage.js';
 import { initInventoryAdjustment } from './inventory_adjustment_logic.js';
 import { initSearchModal } from './search_modal.js';
+// ▲▲▲【修正ここまで】▲▲▲
 
 let loadingOverlay, loadingMessage, notificationBox;
 let views, datViewBtn, usageViewBtn, inventoryAdjustmentViewBtn, masterEditViewBtn, configViewBtn;
-
 // ▼▼▼【ここから追加】初期化済みフラグ ▼▼▼
 const initializedViews = {
     dat: false,
@@ -25,12 +26,10 @@ window.showLoading = (message = '処理中...') => {
     if (loadingMessage) loadingMessage.textContent = message;
     if (loadingOverlay) loadingOverlay.classList.remove('hidden');
 };
-
 window.hideLoading = () => {
     if (!loadingOverlay) loadingOverlay = document.getElementById('loading-overlay');
     if (loadingOverlay) loadingOverlay.classList.add('hidden');
 };
-
 window.showNotification = (message, type = 'success') => {
     if (!notificationBox) notificationBox = document.getElementById('notification-box');
     if (notificationBox) {
@@ -54,7 +53,6 @@ function setActiveView(targetId) {
             view.classList.remove('active');
         }
     });
-
     // --- JSの遅延初期化ロジック ---
     // 各ビューは、初めて表示されるときに一度だけ初期化(init)され、
     // 毎回データをロードする関数が呼ばれる
@@ -65,7 +63,8 @@ function setActiveView(targetId) {
                 initDatUpload(); // イベントリスナーを登録
                 initializedViews.dat = true;
             }
-            fetchAndRenderDat(); // データを表示
+            fetchAndRenderDat();
+ // データを表示
             break;
         case 'usage-upload-view':
             if (!initializedViews.usage) {
@@ -73,7 +72,8 @@ function setActiveView(targetId) {
                 initUsageUpload(); // イベントリスナーを登録
                 initializedViews.usage = true;
             }
-            fetchAndRenderUsage(); // データを表示
+            fetchAndRenderUsage();
+ // データを表示
             break;
         case 'inventory-adjustment-view':
             if (!initializedViews.inventoryAdjustment) {
@@ -90,12 +90,9 @@ function setActiveView(targetId) {
                 initMasterEditView(); // イベントリスナーを登録
                 initializedViews.masterEdit = true;
             }
-            
-            // マスタ編集ビュー表示時に検索を実行
-            const masterListBody = document.querySelector('#masterListTable tbody');
-            if (masterListBody && masterListBody.children.length <= 1) {
-                 fetchAndRenderMasters(); // 初回検索を実行
-            }
+            // ▼▼▼【削除】fetchAndRenderMasters() の呼び出しを削除 ▼▼▼
+            // fetchAndRenderMasters(); 
+            // ▲▲▲【削除ここまで】▲▲▲
             break;
         case 'config-view':
             if (!initializedViews.config) {
@@ -156,5 +153,3 @@ document.addEventListener('DOMContentLoaded', () => {
     setActiveView('dat-upload-view');
     // ▲▲▲【修正ここまで】▲▲▲
 });
-
-// (showMasterEditView イベントリスナーは削除)

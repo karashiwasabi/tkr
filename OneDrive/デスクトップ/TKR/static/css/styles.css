@@ -123,6 +123,11 @@ body {
   display: block; /* .active クラスで表示 */
 }
 
+/* dat_view.html のファイル選択ボタンコンテナ */
+#dat-upload-view .upload-button-container {
+    margin-bottom: 20px;
+}
+
 
 /* General Helper Classes */
 .hidden { display: none !important; }
@@ -160,3 +165,24 @@ body {
   }
 
 }
+
+/* ========================================================================== */
+/* 9. Filter Container (Common) */
+/* ========================================================================== */
+
+.filter-container {
+    padding: 10px;
+    margin-bottom: 10px;
+    border: 1px solid #ddd;
+    background-color: #f7f7f7; /* 共通の背景色 */
+}
+
+.filter-container fieldset {
+    border: 1px solid #ccc;
+    padding: 5px;
+}
+
+/* (inventory_adjustment.css と masteredit.css の
+   背景色は、それぞれのファイルに記載されている
+   IDセレクタによって正しく上書きされます) 
+*/

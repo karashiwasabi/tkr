@@ -2,52 +2,12 @@
 
 /*
    検索モーダル用のスタイル
-   masteredit.css の .modal-overlay, .modal-content と
-   IDセレクタで区別するために #tkr-search-modal-overlay を使用
+   (モーダルの基本枠は modal.css で定義)
 */
 
-#tkr-search-modal-overlay .modal-content {
-    background-color: #fcfcfc;
-    border: 1px solid #ddd;
-    padding: 15px;
-    border-radius: 5px;
-    width: 90%;
-    max-width: 1000px;
-    max-height: 90vh;
-    overflow-y: auto;
-    z-index: 901;
-    /* masteredit.css と重複するが、独立性を保つため再定義 */
-    display: flex; 
-    flex-direction: column;
-}
-
-#tkr-search-modal-overlay .modal-content h2 {
-    margin-top: 0;
-    font-size: 1.2em;
-    border-bottom: 1px solid #ccc;
-    padding-bottom: 5px;
-}
-
+/* 検索パネルと検索ボタンを非表示にする (これがこのモーダル固有の動作) */
 #tkr-search-modal-overlay .filter-container {
-    padding: 10px;
-    margin-top: 10px;
-    border: 1px solid #ddd;
-}
-#tkr-search-modal-overlay .filter-container .form-group {
-    display: flex;
-    flex-direction: column;
-    gap: 3px;
-}
-#tkr-search-modal-overlay .filter-container .form-group label {
-    font-size: 10px;
-    font-weight: bold;
-}
-
-#tkr-search-modal-overlay .form-actions {
-    margin-top: 15px;
-    padding-top: 10px;
-    border-top: 1px dashed #ccc;
-    text-align: right;
+    display: none !important; /* 検索パネル全体を非表示 */
 }
 
 /* 検索結果テーブル */
@@ -70,71 +30,56 @@
     color: #e60000;
     font-weight: bold;
 }
-/* ▼▼▼【ここから追加】固定検索パネル用スタイル ▼▼▼ */
-#tkr-search-modal-overlay .filter-container {
+
+/* ▼▼▼ common_search_modal.html のインラインスタイルをクラス化 ▼▼▼ */
+
+/*
+   注：以下のスタイルは、上記の display:none によって現在非表示だが、
+   将来的に検索モーダル内で検索を有効化する場合に備えて定義する
+*/
+#tkr-search-modal-content .filter-container {
+    background-color: #f4f4f4; 
+    border: 1px solid #ccc; 
     padding: 10px;
-    margin-top: 10px;
-    border: 1px solid #ddd;
 }
-
-#tkr-search-modal-overlay .modal-search-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-    gap: 10px;
+#tkr-search-modal-content .filter-container fieldset {
+    border: none; 
+    padding: 0; 
+    margin: 0;
 }
-
-#tkr-search-modal-overlay .form-group {
-    display: flex;
-    flex-direction: column;
-    gap: 3px;
+#tkr-search-modal-content .filter-container legend {
+    font-weight: bold; 
+    font-size: 1.1em; 
+    margin-bottom: 5px;
 }
-#tkr-search-modal-overlay .form-group label {
-    font-size: 10px;
-    font-weight: bold;
+#tkr-search-modal-content #modal-search-gs1-form {
+    margin: 0;
 }
-#tkr-search-modal-overlay .form-group input[type="text"] {
-    font-size: 1.0em;
-    padding: 4px;
-    border: 1px solid #ccc;
-}
-#tkr-search-modal-overlay .radio-group {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 5px;
-    align-items: center;
-    padding-top: 5px; /* ラベルと高さを合わせる */
-}
-#tkr-search-modal-overlay .radio-group label {
-    font-size: 1.0em;
-    font-weight: normal;
-    display: flex;
-    align-items: center;
-    gap: 2px;
-}
-#tkr-search-modal-overlay .form-actions {
-    text-align: right;
-    border-top: none;
-    margin-top: 10px;
+#tkr-search-modal-content .filter-container .form-actions {
+    border-top: none; 
+    margin-top: 10px; 
     padding-top: 0;
 }
-/* ▲▲▲【追加ここまで】▲▲▲ */
+#tkr-search-modal-content #product-search-btn {
+    padding: 5px 10px;
+}
 
+/* 検索結果のコンテナ */
+#search-results-container {
+    max-height: 50vh; 
+    overflow-y: auto; 
+    margin-top: 10px;
+}
 
-/* 検索結果テーブル (変更なし) */
-#search-results-table {
-    font-size: 10px;
-}
-#search-results-table th, 
-#search-results-table td {
-    padding: 3px 4px;
-    height: auto;
-    min-height: 18px;
-}
-#search-results-table tr.adopted-item td {
-    color: #e60000;
-    font-weight: bold;
-}
-#search-results-table tr.adopted-item td .select-product-btn {
-    color: #e60000;
-    font-weight: bold;
+/* 検索結果テーブルの列幅 */
+#search-results-table th.col-modal-product { width: 35%; }
+#search-results-table th.col-modal-maker   { width: 15%; }
+#search-results-table th.col-modal-spec    { width: 20%; }
+#search-results-table th.col-modal-yj      { width: 10%; }
+#search-results-table th.col-modal-jan     { width: 10%; }
+#search-results-table th.col-modal-action  { width: 10%; }
+
+/* モーダル末尾の「閉じる」ボタンのマージン */
+#tkr-search-modal-overlay .form-actions {
+    margin-top: 15px;
 }

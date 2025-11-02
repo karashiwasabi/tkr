@@ -1,22 +1,20 @@
-// C:\Users\wasab\OneDrive\デスクトップ\TKR\database\product_master_query.go
 package database
 
 import (
 	"database/sql"
 	"fmt"
 	"strings"
+	"tkr/barcode"
 	"tkr/model"
 )
 
-// DBTX インターフェース (変更なし)
 type DBTX interface {
 	Get(dest interface{}, query string, args ...interface{}) error
 	Select(dest interface{}, query string, args ...interface{}) error
 	NamedExec(query string, arg interface{}) (sql.Result, error)
 }
 
-// GetFilteredProductMasters は指定されたフィルター条件で product_master を検索します。
-func GetFilteredProductMasters(dbtx DBTX, usageClass, productName, kanaName, genericName, shelfNumber string) ([]model.ProductMaster, error) {
+func GetFilteredProductMasters(dbtx DBTX, usageClass, kanaName, genericName, shelfNumber string) ([]model.ProductMaster, error) {
 
 	var masters []model.ProductMaster
 
@@ -24,7 +22,6 @@ func GetFilteredProductMasters(dbtx DBTX, usageClass, productName, kanaName, gen
 	mustConditions := []string{}
 	args := []interface{}{}
 
-	// 内外注区分 (必須条件として扱う)
 	if usageClass != "" {
 		mustConditions = append(mustConditions, "usage_classification = ?")
 		args = append(args, usageClass)
@@ -32,43 +29,33 @@ func GetFilteredProductMasters(dbtx DBTX, usageClass, productName, kanaName, gen
 		return []model.ProductMaster{}, nil
 	}
 
-	// 製品名は 0文字より大きい場合、条件に追加 (部分一致)
-	if len(productName) > 0 {
-		mustConditions = append(mustConditions, "product_name LIKE ?")
-		args = append(args, "%"+productName+"%")
-	}
-
-	// カナ名は 0文字より大きい場合、条件に追加 (前方一致)
 	if len(kanaName) > 0 {
 		mustConditions = append(mustConditions, "kana_name LIKE ?")
-		args = append(args, kanaName+"%") // 前方一致
+		args = append(args, kanaName+"%")
 	}
 
-	// 一般名は 0文字より大きい場合、条件に追加 (部分一致)
 	if len(genericName) > 0 {
 		mustConditions = append(mustConditions, "generic_name LIKE ?")
 		args = append(args, "%"+genericName+"%")
 	}
 
-	// 棚番は 0文字より大きい場合、条件に追加 (完全一致)
 	if len(shelfNumber) > 0 {
-		mustConditions = append(mustConditions, "shelf_number = ?") // 完全一致
+		mustConditions = append(mustConditions, "shelf_number = ?")
 		args = append(args, shelfNumber)
 	}
 
-	// 最終 WHERE 句の結合
 	if len(mustConditions) > 0 {
 		query += " WHERE " + strings.Join(mustConditions, " AND ")
 	} else {
 		return []model.ProductMaster{}, fmt.Errorf("usage class filter is required")
 	}
 
-	query += " ORDER BY kana_name" // カナ名順
+	query += " ORDER BY kana_name"
 
 	err := dbtx.Select(&masters, query, args...)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return []model.ProductMaster{}, nil // 見つからなくてもエラーではない
+			return []model.ProductMaster{}, nil
 		}
 		return nil, fmt.Errorf("failed to select filtered product masters: %w", err)
 	}
@@ -80,35 +67,52 @@ func GetFilteredProductMasters(dbtx DBTX, usageClass, productName, kanaName, gen
 	return masters, nil
 }
 
-// GetProductMasterByCode は product_code をキーにレコードを取得します。(変更なし)
 func GetProductMasterByCode(dbtx DBTX, code string) (*model.ProductMaster, error) {
 	var master model.ProductMaster
 	query := `SELECT * FROM product_master WHERE product_code = ?`
 	err := dbtx.Get(&master, query, code)
 	if err != nil {
-		// sql.ErrNoRows も含め、エラーとして返す
 		return nil, fmt.Errorf("failed to get product master by code %s: %w", code, err)
 	}
 	return &master, nil
 }
 
-// GetProductMasterByGs1Code はGS1コードで product_master を検索する関数 (変更なし)
 func GetProductMasterByGs1Code(dbtx DBTX, gs1Code string) (*model.ProductMaster, error) {
 	var master model.ProductMaster
 	query := `SELECT * FROM product_master WHERE gs1_code = ?`
 	err := dbtx.Get(&master, query, gs1Code)
 	if err != nil {
-		// sql.ErrNoRows も含め、エラーとして返す
 		return nil, fmt.Errorf("failed to get product master by gs1_code %s: %w", gs1Code, err)
 	}
 	return &master, nil
 }
 
-// ▼▼▼【ここから追加】YJコードで product_master を検索する関数 ▼▼▼
-// (WASABI: db/product_master.go  より)
+func GetProductMasterByBarcode(dbtx DBTX, barcodeStr string) (*model.ProductMaster, error) {
+	if barcodeStr == "" {
+		return nil, fmt.Errorf("バーコードが空です")
+	}
+
+	if len(barcodeStr) <= 13 {
+		return GetProductMasterByCode(dbtx, barcodeStr)
+	}
+
+	gs1Result, parseErr := barcode.Parse(barcodeStr)
+	if parseErr != nil {
+		return nil, fmt.Errorf("バーコード解析エラー: %w", parseErr)
+	}
+
+	gtin14 := gs1Result.Gtin14
+	if gtin14 == "" {
+		return nil, fmt.Errorf("バーコードからGTIN(14桁)が抽出できませんでした")
+	}
+
+	return GetProductMasterByGs1Code(dbtx, gtin14)
+}
+
 func GetProductMastersByYjCode(dbtx DBTX, yjCode string) ([]*model.ProductMaster, error) {
 	var masters []*model.ProductMaster
-	query := `SELECT * FROM product_master WHERE yj_code = ? ORDER BY product_code`
+	query := `SELECT * FROM product_master WHERE yj_code = ?
+ORDER BY product_code`
 	err := dbtx.Select(&masters, query, yjCode)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -121,5 +125,3 @@ func GetProductMastersByYjCode(dbtx DBTX, yjCode string) ([]*model.ProductMaster
 	}
 	return masters, nil
 }
-
-// ▲▲▲【追加ここまで】▲▲▲

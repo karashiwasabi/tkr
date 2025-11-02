@@ -1,19 +1,15 @@
 /* C:\Users\wasab\OneDrive\デスクトップ\TKR\static\css\inventory_adjustment.css */
 
-/* 棚卸調整ビューのフィルターコンテナ */
+/* ▼▼▼【削除】固有の背景色指定を削除 ▼▼▼ */
+/*
 #inventory-adjustment-view .filter-container {
-    background-color: #f0f8ff; /* 薄い青 */
+    background-color: #f0f8ff; 
     border: 1px solid #cce;
 }
-#inventory-adjustment-view .filter-container .form-group {
-    display: flex;
-    flex-direction: column;
-    gap: 3px;
-}
-#inventory-adjustment-view .filter-container .form-group label {
-    font-size: 10px;
-    font-weight: bold;
-}
+*/
+/* ▲▲▲【削除ここまで】▲▲▲ */
+
+/* 共通フォーム内の input/select へのスタイル指定 */
 #inventory-adjustment-view .filter-container .form-group input,
 #inventory-adjustment-view .filter-container .form-group select {
     font-size: inherit;
@@ -81,6 +77,52 @@
     color: #333;
 }
 
+/* --- 棚卸調整ビュー全体 --- */
+.adj-header {
+    text-align: center; 
+    margin-bottom: 15px; 
+    font-size: 1.2em;
+}
+
+/* --- 2. 棚卸入力セクション --- */
+.input-section {
+    margin-top: 20px;
+}
+.adj-date-group {
+    display: flex; 
+    gap: 20px; 
+    align-items: flex-end;
+}
+.adj-date-group #inventory-date {
+    padding: 3px;
+}
+.adj-barcode-form {
+    flex-grow: 1; 
+    margin: 0;
+}
+.adj-barcode-form input {
+    ime-mode: disabled; 
+    font-size: 1.1em; 
+    padding: 3px;
+}
+.package-input-group {
+    margin-bottom: 20px;
+}
+.agg-pkg-header.adj-pkg-margin {
+    margin-top: 10px;
+}
+
+/* --- 3. 参考セクション --- */
+.reference-section-header {
+    font-size: 10px; 
+    margin-bottom: 5px;
+}
+.reference-table th.col-ref-product { width: 40%; }
+.reference-table th.col-ref-qty     { width: 15%; }
+.reference-table th.col-ref-expiry  { width: 20%; }
+.reference-table th.col-ref-lot     { width: 25%; }
+
+
 /* 棚卸入力セクション */
 .inventory-input-area {
     padding: 10px;
@@ -141,12 +183,24 @@
     color: #555;
     margin-left: 10px;
 }
+.info-text.stock-info {
+    color: #dc3545;
+}
+.info-text.align-right {
+    margin-left: auto;
+}
+
 
 /* 最終入力テーブル */
 .final-input-tbody .btn {
     padding: 1px 4px;
     font-size: 9px;
     min-width: 20px;
+}
+.final-input-tbody .action-buttons {
+    display: flex; 
+    flex-direction: column; 
+    gap: 4px;
 }
 .final-input-tbody .register-inventory-btn {
     background-color: #28a745;
@@ -168,4 +222,9 @@
 }
 .final-input-tbody input[type="number"] {
     text-align: right;
+}
+.lot-input-header {
+    font-size: 10px; 
+    font-weight: bold; 
+    margin-bottom: 4px;
 }

@@ -1,22 +1,11 @@
 <div id="inventory-adjustment-view" class="view">
     <h1>棚卸調整 (1品目ごと)</h1>
-    <div class="filter-container" style="padding: 10px; margin-bottom: 10px; background-color: #f0f8ff;">
-        <fieldset style="border: 1px solid #ccc; padding: 5px;">
-            <legend>品目検索</legend>
-            <div style="display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end;">
-                
-                <div class="form-group" style="flex-basis: 300px; flex-grow: 1;">
-                    <label for="ia-barcode-input">GS1バーコードスキャン:</label>
-                    <form id="ia-barcode-form" style="margin: 0;">
-                        <input type="text" id="ia-barcode-input" style="padding: 3px; font-size: inherit;" autocomplete="off" placeholder="GS1-128 (JAN+期限+ロット)">
-                    </form>
-                </div>
+    <div class="filter-container">
+        <fieldset>
+        <legend>品目検索</legend>
+            
+            {{ template "generic_search_form" . }}
 
-                <div class="form-group">
-                    <button id="ia-select-product-btn" class="btn" style="padding: 5px 10px;">品目を選択...</button>
-                </div>
-
-                </div>
         </fieldset>
     </div>
     <div id="inventory-adjustment-output" class="table-container">

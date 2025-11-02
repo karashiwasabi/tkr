@@ -2,14 +2,14 @@
 package main
 
 import (
-	"encoding/json" // ▼▼▼【ここに追加】▼▼▼
-	"html/template" // ▼▼▼【ここに追加】▼▼▼
-	"io/fs"         // ▼▼▼【ここに追加】▼▼▼
+	"encoding/json"
+	"html/template"
+	"io/fs"
 	"log"
 	"net/http"
-	"os" // ▼▼▼【ここに追加】▼▼▼
+	"os"
 	"os/exec"
-	"path/filepath" // ▼▼▼【ここに追加】▼▼▼
+	"path/filepath"
 	"runtime"
 	"strings"
 
@@ -27,19 +27,18 @@ import (
 	"tkr/usage"
 )
 
-// ▼▼▼【ここから追加】HTMLテンプレートを保持する変数 ▼▼▼
 var (
-	appTemplate *template.Template
-	viewsFS     fs.FS
+	appTemplate   *template.Template
+	viewsFS       fs.FS
+	searchFormsFS fs.FS
 )
-
-// ▲▲▲【追加ここまで】▲▲▲
 
 func main() {
 	log.Println("Connecting to database...")
 	dbConn, err := sqlx.Open("sqlite3", "./tkr.db?_journal_mode=WAL&_busy_timeout=5000")
 	if err != nil {
-		log.Fatalf("db open error: %v", err)
+		log.Fatalf("db open error: %v",
+			err)
 	}
 	defer dbConn.Close()
 	log.Println("Database connection successful.")
@@ -59,15 +58,18 @@ func main() {
 		log.Println("Unit (TANI.CSV) master loaded successfully.")
 	}
 
-	// ▼▼▼【ここから追加】HTMLテンプレートの読み込み処理 ▼▼▼
 	// 'static' フォルダをFSとしてキャプチャ
 	staticFS := os.DirFS("static")
 	// 'static/views' サブディレクトリをFSとしてキャプチャ
 	viewsFS, err = fs.Sub(staticFS, "views")
 	if err != nil {
-		// 'static/views' がなくてもエラーにしない（TKRの構成に合わせて柔軟に）
 		log.Printf("WARN: 'static/views' directory not found. Will only load index.html. %v", err)
-		// viewsFS が nil でも続行
+	}
+
+	// 共通部品 search_form_group.html のための FS を設定
+	searchFormsFS, err = fs.Sub(staticFS, "views")
+	if err != nil {
+		log.Fatalf("Failed to sub views directory for search forms: %v", err)
 	}
 
 	// メインの index.html をパース
@@ -83,14 +85,31 @@ func main() {
 			log.Fatalf("Failed to parse views/*.html: %v", err)
 		}
 	}
-	log.Println("HTML templates loaded and parsed.")
+
+	// 共通部品 search_form_group.html をパースに追加
+	if searchFormsFS != nil {
+		appTemplate, err = appTemplate.ParseFS(searchFormsFS, "search_form_group.html")
+		if err != nil {
+			log.Fatalf("Failed to parse views/search_form_group.html: %v", err)
+		}
+	}
+
+	// ▼▼▼【ここから追加】共通部品 common_search_modal.html をパースに追加 ▼▼▼
+	if viewsFS != nil {
+		appTemplate, err = appTemplate.ParseFS(viewsFS, "common_search_modal.html")
+		if err != nil {
+			log.Fatalf("Failed to parse views/common_search_modal.html: %v", err)
+		}
+	}
 	// ▲▲▲【追加ここまで】▲▲▲
+
+	log.Println("HTML templates loaded and parsed.")
 
 	mux := http.NewServeMux()
 
-	mux.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("./static"))))
+	mux.Handle("/static/", http.StripPrefix("/static/",
+		http.FileServer(http.Dir("./static"))))
 
-	// ▼▼▼【修正】ルートハンドラをテンプレートを描画するように変更 ▼▼▼
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/" {
 			http.NotFound(w, r)
@@ -100,11 +119,17 @@ func main() {
 		// viewsFS から全ビューのファイル名を取得
 		viewFiles := []string{}
 		if viewsFS != nil {
-			viewFiles, err = fs.Glob(viewsFS, "*.html")
+			// search_form_group.html と common_search_modal.html は部品なので除外する
+			files, err := fs.Glob(viewsFS, "*.html")
 			if err != nil {
 				log.Printf("Error globbing view files: %v", err)
 				http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 				return
+			}
+			for _, file := range files {
+				if file != "search_form_group.html" && file != "common_search_modal.html" {
+					viewFiles = append(viewFiles, file)
+				}
 			}
 		}
 
@@ -113,9 +138,42 @@ func main() {
 		for _, file := range viewFiles {
 			// ファイル名 (例: dat_view.html) からキー (dat_view) を作成
 			key := strings.TrimSuffix(file, filepath.Ext(file))
+
+			data := struct {
+				Prefix             string
+				BarcodeFormID      string
+				BarcodeFormInputID string
+				SearchButtonID     string
+				SearchButtonText   string
+			}{}
+
+			// プリフィックスとIDを設定
+			switch key {
+			case "dat_view":
+				data.Prefix = "dat_"
+				data.BarcodeFormID = "dat-barcode-form"
+				data.BarcodeFormInputID = "dat-search-barcode"
+				data.SearchButtonID = "datOpenSearchModalBtn"
+				data.SearchButtonText = "品目検索..."
+			case "inventory_adjustment_view":
+				data.Prefix = "ia_"
+				data.BarcodeFormID = "ia-barcode-form"
+				data.BarcodeFormInputID = "ia-barcode-input"
+				data.SearchButtonID = "ia-search-btn"
+				data.SearchButtonText = "この条件で検索"
+			case "master_edit_view":
+				data.Prefix = "master_"
+				data.BarcodeFormID = "master-barcode-form"
+				data.BarcodeFormInputID = "master-search-gs1-barcode"
+				data.SearchButtonID = "masterSearchBtn"
+				data.SearchButtonText = "品目検索..."
+			default:
+				data.Prefix = ""
+			}
+
 			// バッファにビューを描画
 			var viewContent strings.Builder
-			if err := appTemplate.ExecuteTemplate(&viewContent, file, nil); err != nil {
+			if err := appTemplate.ExecuteTemplate(&viewContent, file, data); err != nil {
 				log.Printf("Error executing view template %s: %v", file, err)
 				http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 				return
@@ -134,7 +192,6 @@ func main() {
 			log.Printf("Error executing main template: %v", err)
 		}
 	})
-	// ▲▲▲【修正ここまで】▲▲▲
 
 	// ( ... JCSHMS APIハンドラ ... )
 	mux.HandleFunc("/api/jcshms/", func(w http.ResponseWriter, r *http.Request) {
@@ -151,8 +208,10 @@ func main() {
 			return
 		}
 		if info == nil {
-			log.Printf("JCSHMS info not found for JAN: %s", janCode)
-			http.NotFound(w, r)
+			log.Printf("JCSHMS info not found for JAN: %s",
+				janCode)
+			http.NotFound(w,
+				r)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -174,8 +233,23 @@ func main() {
 	mux.HandleFunc("/api/inventory/adjust/save", inventoryadjustment.SaveInventoryDataHandler(dbConn))
 
 	mux.HandleFunc("/api/products/search_filtered", product.SearchProductsHandler(dbConn))
-	mux.HandleFunc("/api/product/by_gs1", product.GetProductByGS1Handler(dbConn))
-	mux.HandleFunc("/api/master/by_code/", product.GetMasterByCodeHandler(dbConn))
+
+	mux.HandleFunc("/api/product/by_barcode/", product.GetProductByBarcodeHandler(dbConn))
+	mux.HandleFunc("/api/master/by_code/", func(w http.ResponseWriter, r *http.Request) {
+		janCode := strings.TrimPrefix(r.URL.Path, "/api/master/by_code/")
+		if janCode == "" {
+			http.Error(w, "JAN code is required", http.StatusBadRequest)
+			return
+		}
+		master, err := database.GetProductMasterByCode(dbConn, janCode)
+		if err != nil {
+			log.Printf("Error retrieving master by code %s: %v", janCode, err)
+			http.Error(w, "Master not found or database error", http.StatusNotFound)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(master)
+	})
 
 	mux.HandleFunc("/api/wholesalers/list", ListWholesalersHandler(dbConn))
 	mux.HandleFunc("/api/wholesalers/create", CreateWholesalerHandler(dbConn))
@@ -204,7 +278,6 @@ func main() {
 	}
 }
 
-// ( ... openBrowser 関数 ... )
 func openBrowser(url string) {
 	var err error
 	switch runtime.GOOS {

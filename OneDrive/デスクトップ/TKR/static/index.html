@@ -9,7 +9,9 @@
     <link rel="stylesheet" href="/static/css/config.css">
     <link rel="stylesheet" href="/static/css/inventory_adjustment.css">
     <link rel="stylesheet" href="/static/css/search_modal.css">
-</head>
+    <link rel="stylesheet" href="/static/css/search_form_group.css">
+    <link rel="stylesheet" href="/static/css/modal.css">
+    </head>
 <body>
     <header id="main-header">
         <button id="datViewBtn" class="btn">DAT取込</button>
@@ -17,19 +19,23 @@
         <button id="inventoryAdjustmentViewBtn" class="btn">棚卸調整</button>
         <button id="masterEditViewBtn" class="btn">マスタ編集</button>
         <button id="configViewBtn" class="btn">設定</button>
-    </header>
+    
+</header>
 
     <main>
         {{if .Views}}
             {{range .Views}}
-                {{.}}
+                 {{.}}
             {{end}}
         {{else}}
             <div id="dat-upload-view" class="view active">DATビュー</div>
-            <div id="usage-upload-view" class="view">USAGEビュー</div>
-            <div id="inventory-adjustment-view" class="view">棚卸調整ビュー</div>
+         
+           <div id="usage-upload-view" class="view">USAGEビュー</div>
+         
+   <div id="inventory-adjustment-view" class="view">棚卸調整ビュー</div>
             <div id="master-edit-view" class="view">マスタ編集ビュー</div>
-            <div id="config-view" class="view">設定ビュー</div>
+           
+             <div id="config-view" class="view">設定ビュー</div>
         {{end}}
         </main>
 
@@ -39,103 +45,8 @@
     </div>
     <div id="notification-box"></div>
 
-    <div id="masterEditModalOverlay" class="modal-overlay hidden">
-        <div class="modal-content">
-            <h2>製品マスター編集</h2>
-            <form id="masterEditForm" autocomplete="off">
-                <div class="form-row readonly-group">
-                    <div class="form-group" style="flex-basis: 120px;">
-                        <label for="edit-yj-code">YJコード (編集不可: JCSHMS)</label>
-                        <input type="text" id="edit-yj-code" class="readonly-field" readonly>
-                    </div>
-                    <div class="form-group" style="flex-basis: 120px;">
-                        <label for="view-product-code">JANコード (キー)</label>
-                        <input type="text" id="view-product-code" class="readonly-field" readonly>
-                        <input type="hidden" id="edit-product-code">
-                    </div>
-                    <div class="form-group" style="flex-basis: 120px;">
-                        <label for="edit-gs1-code">GS1コード (編集不可: JCSHMS)</label>
-                        <input type="text" id="edit-gs1-code" class="readonly-field" readonly>
-                    </div>
-                    <div class="form-group" style="flex-basis: 100px;">
-                        <label for="edit-origin">由来 (編集不可)</label>
-                        <input type="text" id="edit-origin" class="readonly-field" readonly>
-                    </div>
-                </div>
-                <div class="form-actions">
-                    <button type="button" id="saveMasterBtn" class="btn">保存</button>
-                    <button type="button" id="cancelEditMasterBtn" class="btn">閉じる</button>
-                </div>
-            </form>
-        </div>
-    </div>
     
-    <div id="tkr-search-modal-overlay" class="modal-overlay hidden">
-        <div class="modal-content" id="tkr-search-modal-content">
-            <h2>品目検索</h2>
-            <div class="filter-container" style="background-color: #f4f4f4; border: 1px solid #ccc; padding: 10px;">
-                <fieldset style="border: none; padding: 0; margin: 0;">
-                    <legend style="font-weight: bold; font-size: 1.1em; margin-bottom: 5px;">検索条件</legend>
-                    <div class="modal-search-grid">
-                        <div class="form-group">
-                            <label for="modal-search-gs1">GS1バーコードスキャン:</label>
-                            <form id="modal-search-gs1-form" style="margin: 0;">
-                                <input type="text" id="modal-search-gs1" autocomplete="off" placeholder="GS1-128スキャン...">
-                            </form>
-                        </div>
-                        <div class="form-group">
-                            <label>内外注区分:</label>
-                            <div class="radio-group" id="modal-search-usage-class">
-                                <label><input type="radio" name="modal_usage_class" value="" checked> 全</label>
-                                <label><input type="radio" name="modal_usage_class" value="内"> 内</label>
-                                <label><input type="radio" name="modal_usage_class" value="外"> 外</label>
-                                <label><input type="radio" name="modal_usage_class" value="注"> 注</label>
-                                <label><input type="radio" name="modal_usage_class" value="他"> 他</label>
-                            </div>
-                        </div>
-                        <div class="form-group">
-                            <label for="modal-search-kana">カナ名 (前方一致):</label>
-                            <input type="text" id="modal-search-kana" autocomplete="off">
-                        </div>
-                        <div class="form-group">
-                            <label for="modal-search-generic">一般名 (部分一致):</label>
-                            <input type="text" id="modal-search-generic" autocomplete="off">
-                        </div>
-                        <div class="form-group">
-                            <label for="modal-search-shelf">棚番 (部分一致):</label>
-                            <input type="text" id="modal-search-shelf" autocomplete="off">
-                        </div>
-                    </div>
-                    <div class="form-actions" style="border-top: none; margin-top: 10px; padding-top: 0;">
-                        <button id="product-search-btn" class="btn" style="padding: 5px 10px;">この条件で検索</button>
-                    </div>
-                </fieldset>
-            </div>
-            <div id="search-results-container" class="table-container" style="max-height: 50vh; overflow-y: auto; margin-top: 10px;">
-                <table id="search-results-table" class="data-table">
-                    <thead>
-                        <tr>
-                            <th style="width: 35%;">製品名</th>
-                            <th style="width: 15%;">メーカー</th>
-                            <th style="width: 20%;">包装仕様</th>
-                            <th style="width: 10%;">YJコード</th>
-                            <th style="width: 10%;">JANコード</th>
-                            <th style="width: 10%;">選択</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr>
-                            <td colspan="6" class="center">検索ボタンを押してください。</td>
-                        </tr>
-                    </tbody>
-                </table>
-            </div>
-            <div class="form-actions" style="margin-top: 15px;">
-                <button type="button" id="closeSearchModalBtn" class="btn">閉じる</button>
-            </div>
-        </div>
-    </div>
-    
+ {{ template "common_search_modal" . }}
     <script type="module" src="/static/js/app.js"></script>
 </body>
 </html>

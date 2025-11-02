@@ -1,4 +1,6 @@
-// TKR/static/js/dat.js
+// C:\Users\wasab\OneDrive\デスクトップ\TKR\static\js\dat.js
+import { showModal } from './search_modal.js';
+import { hiraganaToKatakana } from './utils.js';
 
 // ▼▼▼【ここから追加】グローバル変数化 ▼▼▼
 let datUploadBtn, datFileInput, uploadResultContainer, dataTable;
@@ -17,7 +19,8 @@ function renderEmptyTable(dataTable) {
             <th colspan="2" class="col-product">製品名</th>
             <th class="col-count">個数</th>
             <th class="col-yjqty">YJ数量</th>
-            <th class="col-yjpackqty">YJ包装数</th>
+      
+           <th class="col-yjpackqty">YJ包装数</th>
             <th class="col-yjunit">YJ単位</th>
             <th class="col-unitprice">単価</th>
             <th class="col-expiry">期限</th>
@@ -25,7 +28,8 @@ function renderEmptyTable(dataTable) {
             <th class="col-line">行</th>
         </tr>
         <tr>
-            <th class="col-flag">種別</th>
+            
+ <th class="col-flag">種別</th>
             <th class="col-jan">JAN</th>
             <th class="col-package">包装</th>
             <th class="col-maker">メーカー</th>
@@ -33,7 +37,8 @@ function renderEmptyTable(dataTable) {
             <th class="col-janqty">JAN数量</th>
             <th class="col-janpackqty">JAN包装数</th>
             <th class="col-janunit">JAN単位</th>
-            <th class="col-amount">金額</th>
+        
+     <th class="col-amount">金額</th>
             <th class="col-lot">ロット</th>
             <th class="col-receipt">伝票番号</th>
             <th class="col-ma">MA</th>
@@ -77,7 +82,8 @@ async function handleDatUpload(files, datFileInput, uploadResultContainer, dataT
                 const statusText = fileResult.success ? '成功' : 'エラー';
                 const errorDetail = fileResult.error ? `: ${fileResult.error}` : '';
                 const parsed = fileResult.records_parsed || 0;
-                const inserted = fileResult.records_inserted || 0;
+       
+                 const inserted = fileResult.records_inserted || 0;
 
                 summaryHtml += `<li><strong>${fileResult.filename}:</strong> `;
                 summaryHtml += `<span class="${statusClass}">${statusText}</span> (パース: ${parsed}件, 登録: ${inserted}件)${errorDetail}`;
@@ -106,9 +112,11 @@ async function handleDatUpload(files, datFileInput, uploadResultContainer, dataT
     }
 }
 
-async function handleDatSearch(barcodeInput, uploadResultContainer, dataTable) {
+// ▼▼▼【ここから修正】引数を削除し、グローバル変数を参照する ▼▼▼
+async function handleDatSearch() {
     const barcode = barcodeInput ? barcodeInput.value.trim() : '';
     if (!barcode) {
+// ▼▼▼【修正ここまで】▲▲▲
         window.showNotification('バーコードを入力してください。', 'warning');
         return;
     }
@@ -129,7 +137,8 @@ async function handleDatSearch(barcodeInput, uploadResultContainer, dataTable) {
         }
 
         if (uploadResultContainer) {
-            uploadResultContainer.innerHTML = `<p>${result.message || '検索が完了しました。'}</p>`;
+            uploadResultContainer.innerHTML = `<p>${result.message ||
+'検索が完了しました。'}</p>`;
         }
 
         if (dataTable && result.tableHTML != null) {
@@ -148,12 +157,76 @@ async function handleDatSearch(barcodeInput, uploadResultContainer, dataTable) {
         }
     } finally {
         window.hideLoading();
+// ▼▼▼【ここから修正】引数を削除し、グローバル変数を参照する ▼▼▼
         if (barcodeInput) {
             barcodeInput.value = '';
             barcodeInput.focus();
         }
+// ▼▼▼【修正ここまで】▲▲▲
     }
 }
+
+// ▼▼▼【ここから追加】品目検索モーダルを開く関数 ▼▼▼
+async function openProductSearchModal() {
+    const apiUrl = '/api/products/search_filtered';
+// ▼▼▼【修正】IDのハイフン(-)をアンダースコア(_)に変更 ▼▼▼
+    const kanaInput = document.getElementById('dat_search-kana');
+    const genericInput = document.getElementById('dat_search-generic');
+    const shelfInput = document.getElementById('dat_search-shelf');
+    // ▲▲▲【修正ここまで】▲▲▲
+    const selectedUsageRadio = document.querySelector('input[name="dat_usage_class"]:checked');
+    
+    const kanaName = kanaInput ? hiraganaToKatakana(kanaInput.value.trim()) : '';
+    const genericName = genericInput ? genericInput.value.trim() : '';
+    const shelfNumber = shelfInput ? shelfInput.value.trim() : '';
+    const usageClass = selectedUsageRadio ? selectedUsageRadio.value : '';
+
+    if (!usageClass) {
+        window.showNotification('内外注区分を選択してください。', 'warning');
+        return;
+    }
+
+    const params = new URLSearchParams();
+    params.append('kanaName', kanaName);
+    params.append('genericName', genericName);
+    params.append('shelfNumber', shelfNumber);
+    params.append('dosageForm', usageClass);
+
+    window.showLoading('品目リストを検索中...');
+    let products = [];
+    try {
+        const fullUrl = `${apiUrl}?${params.toString()}`;
+        const res = await fetch(fullUrl);
+        if (!res.ok) {
+            throw new Error(`品目リストの取得に失敗しました: ${res.status}`);
+        }
+        products = await res.json();
+    } catch (err) {
+        window.hideLoading();
+        window.showNotification(err.message, 'error');
+        return;
+    } finally {
+        window.hideLoading();
+    }
+
+    // モーダルを表示
+    showModal(
+        null, // DATビューでは特定の行コンテキストは不要
+        (selectedProduct) => { 
+            // モーダルで品目が選択されたときのコールバック
+            if (barcodeInput) {
+                barcodeInput.value = selectedProduct.productCode; // JANコードをGS1入力欄に設定
+            }
+            // GS1入力欄を使って（JANコードのみで）検索を実行
+            handleDatSearch(); // 引数なし
+        }, 
+        { 
+            initialResults: products, 
+        }
+    );
+}
+// ▲▲▲【追加ここまで】▲▲▲
+
 
 // ▼▼▼【ここから追加】app.jsから呼ばれる関数 ▼▼▼
 export function fetchAndRenderDat() {
@@ -164,7 +237,6 @@ export function fetchAndRenderDat() {
     }
     if (barcodeInput) {
         barcodeInput.value = '';
-        // オートフォーカスは app.js の setActiveView に移動
     }
 }
 // ▲▲▲【追加ここまで】▲▲▲
@@ -175,8 +247,11 @@ export function initDatUpload() {
     uploadResultContainer = document.getElementById('datUploadResultContainer');
     dataTable = document.getElementById('datMainDataTable');
 
-    datSearchBtn = document.getElementById('datSearchBtn');
+    datSearchBtn = document.getElementById('datOpenSearchModalBtn');
     barcodeInput = document.getElementById('dat-search-barcode');
+    // ▼▼▼【ここから追加】フォームのDOMを取得 ▼▼▼
+    const barcodeForm = document.getElementById('dat-barcode-form');
+    // ▲▲▲【追加ここまで】▲▲▲
 
     if (datUploadBtn && datFileInput) {
         datUploadBtn.addEventListener('click', () => {
@@ -189,24 +264,30 @@ export function initDatUpload() {
         console.error('DAT Upload button or file input not found.');
     }
 
-    if (datSearchBtn && barcodeInput) {
+    if (datSearchBtn) {
+        // ▼▼▼【修正】品目検索ボタンのリスナー (barcodeInputのチェックを削除) ▼▼▼
         datSearchBtn.addEventListener('click', () => {
-            handleDatSearch(barcodeInput, uploadResultContainer, dataTable);
+            openProductSearchModal(); 
         });
-        const handleKeyPress = (event) => {
-            if (event.key === 'Enter') {
-                handleDatSearch(barcodeInput, uploadResultContainer, dataTable);
-            }
-        };
-        barcodeInput.addEventListener('keypress', handleKeyPress);
+        // ▲▲▲【修正ここまで】▲▲▲
     } else {
-        console.error('DAT Search button or barcode input field not found.');
+        console.error('DAT Search button (open modal) not found.');
     }
-    
-    // ▼▼▼【削除】起動時の描画処理は fetchAndRenderDat に移動 ▼▼▼
-    // renderEmptyTable(dataTable);
-    // if (uploadResultContainer) {
-    //     uploadResultContainer.innerHTML = '<p>「DATファイル選択」ボタンを押してファイルを選んでください。</p>';
-    // }
-    // ▲▲▲【削除ここまで】▲▲▲
+
+    // ▼▼▼【ここから修正】GS1スキャン入力のイベントリスナーを 'submit' に変更 ▼▼▼
+    if (barcodeForm && barcodeInput) {
+        const handleScanSubmit = (event) => {
+            event.preventDefault(); // ページリロードを防ぐ
+            handleDatSearch(); // 検索実行
+        };
+        barcodeForm.addEventListener('submit', handleScanSubmit);
+
+        // 既存の 'keypress' リスナーは削除
+        // const handleKeyPress = (event) => { ... };
+        // barcodeInput.addEventListener('keypress', handleKeyPress);
+
+    } else {
+        console.error('DAT barcode form or input field not found.');
+    }
+    // ▲▲▲【修正ここまで】▲▲▲
 }
