@@ -33,8 +33,10 @@
 .config-form-container .form-group {
     display: flex;
     flex-direction: column;
-    flex-basis: 150px; 
+    /* ▼▼▼【修正】最小幅を指定して横並びしやすくする ▼▼▼ */
+    flex-basis: 250px; 
     flex-grow: 1;
+    /* ▲▲▲【修正ここまで】▲▲▲ */
 }
 
 .config-form-container .form-group label {
@@ -43,7 +45,10 @@
     font-size: 10px;
 }
 
-.config-form-container .form-group input[type="text"] {
+.config-form-container .form-group input[type="text"],
+/* ▼▼▼【ここに追加】numberタイプにも適用 ▼▼▼ */
+.config-form-container .form-group input[type="number"] {
+/* ▲▲▲【追加ここまで】▲▲▲ */
     width: 100%;
     padding: 3px;
     border: 1px solid #ccc;
@@ -54,8 +59,10 @@
 }
 
 .config-form-container .form-actions {
-    margin-top: 15px;
-    margin-left: 10px; /* 入力欄との隙間 */
+    /* ▼▼▼【修正】margin-topを削除し、form-row内の他の要素と高さを揃える ▼▼▼ */
+    /* margin-top: 15px; */ 
+    margin-left: 10px;
+    /* ▲▲▲【修正ここまで】▲▲▲ */
 }
 
 /* 卸一覧テーブルの削除ボタン */

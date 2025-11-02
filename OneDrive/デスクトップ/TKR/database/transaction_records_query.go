@@ -9,6 +9,37 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
+// ▼▼▼【ここから追加】(WASABI: db/transaction_records.go  より) ▼▼▼
+// TransactionColumns は transaction_records の全カラムを定義します。
+const TransactionColumns = `
+    id, transaction_date, client_code, receipt_number, line_number, flag,
+    jan_code, yj_code, product_name, kana_name, usage_classification, package_form, package_spec, maker_name,
+    dat_quantity, jan_pack_inner_qty, jan_quantity, jan_pack_unit_qty, jan_unit_name, jan_unit_code,
+    yj_quantity, yj_pack_unit_qty, yj_unit_name, unit_price, purchase_price, supplier_wholesale,
+    subtotal, tax_amount, tax_rate, expiry_date, lot_number, flag_poison,
+    flag_deleterious, flag_narcotic, flag_psychotropic, flag_stimulant,
+    flag_stimulant_raw, process_flag_ma`
+
+// ScanTransactionRecord は sql.Rows から TransactionRecord をスキャンします。
+func ScanTransactionRecord(row interface{ Scan(...interface{}) error }) (*model.TransactionRecord, error) {
+	var r model.TransactionRecord
+	err := row.Scan(
+		&r.ID, &r.TransactionDate, &r.ClientCode, &r.ReceiptNumber, &r.LineNumber, &r.Flag,
+		&r.JanCode, &r.YjCode, &r.ProductName, &r.KanaName, &r.UsageClassification, &r.PackageForm, &r.PackageSpec, &r.MakerName,
+		&r.DatQuantity, &r.JanPackInnerQty, &r.JanQuantity, &r.JanPackUnitQty, &r.JanUnitName, &r.JanUnitCode,
+		&r.YjQuantity, &r.YjPackUnitQty, &r.YjUnitName, &r.UnitPrice, &r.PurchasePrice, &r.SupplierWholesale,
+		&r.Subtotal, &r.TaxAmount, &r.TaxRate, &r.ExpiryDate, &r.LotNumber, &r.FlagPoison,
+		&r.FlagDeleterious, &r.FlagNarcotic, &r.FlagPsychotropic, &r.FlagStimulant,
+		&r.FlagStimulantRaw, &r.ProcessFlagMA,
+	)
+	if err != nil {
+		return nil, err
+	}
+	return &r, nil
+}
+
+// ▲▲▲【追加ここまで】▲▲▲
+
 const insertTransactionQuery = `
 INSERT INTO transaction_records (
     transaction_date, client_code, receipt_number, line_number, flag,
@@ -37,7 +68,6 @@ func InsertTransactionRecord(tx *sqlx.Tx, record model.TransactionRecord) error 
 	return nil
 }
 
-// ▼▼▼【ここから追加】(WASABI  より移植) ▼▼▼
 func DeleteUsageTransactionsInDateRange(tx *sqlx.Tx, minDate, maxDate string) error {
 	const q = `DELETE FROM transaction_records WHERE flag = 3 AND transaction_date BETWEEN ? AND ?`
 	_, err := tx.Exec(q, minDate, maxDate)
@@ -46,8 +76,6 @@ func DeleteUsageTransactionsInDateRange(tx *sqlx.Tx, minDate, maxDate string) er
 	}
 	return nil
 }
-
-// ▲▲▲【追加ここまで】▲▲▲
 
 func GetTransactionsByProductCodes(db *sqlx.DB, productCodes []string) (map[string][]model.TransactionRecord, error) {
 	transactionsMap := make(map[string][]model.TransactionRecord)
@@ -87,7 +115,6 @@ func GetTransactionsByProductCodes(db *sqlx.DB, productCodes []string) (map[stri
 	return transactionsMap, nil
 }
 
-// ▼▼▼【ここから追加】動的AND検索（期限はOR）の関数 ▼▼▼
 func SearchTransactions(db *sqlx.DB, janCode string, expiryYYMMDD string, expiryYYMM string, lotNumber string) ([]model.TransactionRecord, error) {
 	var transactions []model.TransactionRecord
 
@@ -131,5 +158,3 @@ func SearchTransactions(db *sqlx.DB, janCode string, expiryYYMMDD string, expiry
 
 	return transactions, nil
 }
-
-// ▲▲▲【追加ここまで】▲▲▲

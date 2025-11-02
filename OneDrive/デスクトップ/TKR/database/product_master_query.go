@@ -52,9 +52,7 @@ func GetFilteredProductMasters(dbtx DBTX, usageClass, productName, kanaName, gen
 
 	// 棚番は 0文字より大きい場合、条件に追加 (完全一致)
 	if len(shelfNumber) > 0 {
-		// ▼▼▼【修正】undefined: conditions のバグ修正 ▼▼▼
 		mustConditions = append(mustConditions, "shelf_number = ?") // 完全一致
-		// ▲▲▲【修正ここまで】▲▲▲
 		args = append(args, shelfNumber)
 	}
 
@@ -94,7 +92,7 @@ func GetProductMasterByCode(dbtx DBTX, code string) (*model.ProductMaster, error
 	return &master, nil
 }
 
-// ▼▼▼【ここから追加】GS1コードで product_master を検索する関数 ▼▼▼
+// GetProductMasterByGs1Code はGS1コードで product_master を検索する関数 (変更なし)
 func GetProductMasterByGs1Code(dbtx DBTX, gs1Code string) (*model.ProductMaster, error) {
 	var master model.ProductMaster
 	query := `SELECT * FROM product_master WHERE gs1_code = ?`
@@ -104,6 +102,24 @@ func GetProductMasterByGs1Code(dbtx DBTX, gs1Code string) (*model.ProductMaster,
 		return nil, fmt.Errorf("failed to get product master by gs1_code %s: %w", gs1Code, err)
 	}
 	return &master, nil
+}
+
+// ▼▼▼【ここから追加】YJコードで product_master を検索する関数 ▼▼▼
+// (WASABI: db/product_master.go  より)
+func GetProductMastersByYjCode(dbtx DBTX, yjCode string) ([]*model.ProductMaster, error) {
+	var masters []*model.ProductMaster
+	query := `SELECT * FROM product_master WHERE yj_code = ? ORDER BY product_code`
+	err := dbtx.Select(&masters, query, yjCode)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return []*model.ProductMaster{}, nil
+		}
+		return nil, fmt.Errorf("failed to select product masters by yj_code %s: %w", yjCode, err)
+	}
+	if masters == nil {
+		masters = []*model.ProductMaster{}
+	}
+	return masters, nil
 }
 
 // ▲▲▲【追加ここまで】▲▲▲

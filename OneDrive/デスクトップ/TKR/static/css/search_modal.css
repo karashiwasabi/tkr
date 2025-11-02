@@ -1,0 +1,72 @@
+/* C:\Users\wasab\OneDrive\デスクトップ\TKR\static\css\search_modal.css */
+
+/*
+   検索モーダル用のスタイル
+   masteredit.css の .modal-overlay, .modal-content と
+   IDセレクタで区別するために #tkr-search-modal-overlay を使用
+*/
+
+#tkr-search-modal-overlay .modal-content {
+    background-color: #fcfcfc;
+    border: 1px solid #ddd;
+    padding: 15px;
+    border-radius: 5px;
+    width: 90%;
+    max-width: 1000px;
+    max-height: 90vh;
+    overflow-y: auto;
+    z-index: 901;
+    /* masteredit.css と重複するが、独立性を保つため再定義 */
+    display: flex; 
+    flex-direction: column;
+}
+
+#tkr-search-modal-overlay .modal-content h2 {
+    margin-top: 0;
+    font-size: 1.2em;
+    border-bottom: 1px solid #ccc;
+    padding-bottom: 5px;
+}
+
+#tkr-search-modal-overlay .filter-container {
+    padding: 10px;
+    margin-top: 10px;
+    border: 1px solid #ddd;
+}
+#tkr-search-modal-overlay .filter-container .form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+#tkr-search-modal-overlay .filter-container .form-group label {
+    font-size: 10px;
+    font-weight: bold;
+}
+
+#tkr-search-modal-overlay .form-actions {
+    margin-top: 15px;
+    padding-top: 10px;
+    border-top: 1px dashed #ccc;
+    text-align: right;
+}
+
+/* 検索結果テーブル */
+#search-results-table {
+    font-size: 10px; /* 通常より少し小さく */
+}
+#search-results-table th, 
+#search-results-table td {
+    padding: 3px 4px;
+    height: auto;
+    min-height: 18px;
+}
+
+/* 採用済み（マスターに既に存在する）品目を赤字にする */
+#search-results-table tr.adopted-item td {
+    color: #e60000;
+    font-weight: bold;
+}
+#search-results-table tr.adopted-item td .select-product-btn {
+    color: #e60000;
+    font-weight: bold;
+}

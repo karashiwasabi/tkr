@@ -2,12 +2,14 @@
 import { initDatUpload } from './dat.js';
 import { initMasterEditView } from './masteredit.js';
 import { initConfigView } from './config.js'; 
-import { initUsageUpload } from './usage.js'; // ▼▼▼【変更なし】▼▼▼
+import { initUsageUpload } from './usage.js';
+import { initInventoryAdjustment } from './inventory_adjustment_logic.js';
+// ▼▼▼【ここに追加】▼▼▼
+import { initSearchModal } from './search_modal.js';
+// ▲▲▲【追加ここまで】▲▲▲
 
 let loadingOverlay, loadingMessage, notificationBox;
-// ▼▼▼【修正】usageViewBtn を追加 ▼▼▼
-let views, datViewBtn, usageViewBtn, masterEditViewBtn, configViewBtn;
-// ▲▲▲【修正ここまで】▲▲▲
+let views, datViewBtn, usageViewBtn, inventoryAdjustmentViewBtn, masterEditViewBtn, configViewBtn;
 
 window.showLoading = (message = '処理中...') => {
     if (!loadingOverlay) loadingOverlay = document.getElementById('loading-overlay');
@@ -52,6 +54,10 @@ function setActiveView(targetId) {
              document.dispatchEvent(new CustomEvent('showMasterEditView'));
         }
     }
+
+    if (targetId === 'inventory-adjustment-view') {
+        document.dispatchEvent(new CustomEvent('loadInventoryAdjustment', { detail: {} }));
+    }
 }
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -62,32 +68,35 @@ document.addEventListener('DOMContentLoaded', () => {
     notificationBox = document.getElementById('notification-box');
     views = document.querySelectorAll('.view');
     datViewBtn = document.getElementById('datViewBtn');
-    usageViewBtn = document.getElementById('usageViewBtn'); // ▼▼▼【ここに追加】▼▼▼
+    usageViewBtn = document.getElementById('usageViewBtn');
+    inventoryAdjustmentViewBtn = document.getElementById('inventoryAdjustmentViewBtn');
     masterEditViewBtn = document.getElementById('masterEditViewBtn');
     configViewBtn = document.getElementById('configViewBtn'); 
 
     initDatUpload();
-    initUsageUpload(); // ▼▼▼【変更なし】▼▼▼
+    initUsageUpload();
     initMasterEditView();
     initConfigView(); 
+    initInventoryAdjustment();
+    initSearchModal(); // ▼▼▼【ここに追加】▼▼▼
 
     if (datViewBtn) {
         datViewBtn.addEventListener('click', () => setActiveView('dat-upload-view'));
     }
-    // ▼▼▼【ここに追加】USAGEボタンのリスナー ▼▼▼
     if (usageViewBtn) {
         usageViewBtn.addEventListener('click', () => setActiveView('usage-upload-view'));
     }
-    // ▲▲▲【追加ここまで】▲▲▲
+    if (inventoryAdjustmentViewBtn) {
+        inventoryAdjustmentViewBtn.addEventListener('click', () => setActiveView('inventory-adjustment-view'));
+    }
     if (masterEditViewBtn) 
-  
-  {
+    {
         masterEditViewBtn.addEventListener('click', () => setActiveView('master-edit-view'));
     }
     
     if (configViewBtn) {
         configViewBtn.addEventListener('click', () => setActiveView('config-view'));
-}
+    }
 
     setActiveView('dat-upload-view');
 });

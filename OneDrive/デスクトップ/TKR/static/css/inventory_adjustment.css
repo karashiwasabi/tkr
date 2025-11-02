@@ -1,0 +1,171 @@
+/* C:\Users\wasab\OneDrive\デスクトップ\TKR\static\css\inventory_adjustment.css */
+
+/* 棚卸調整ビューのフィルターコンテナ */
+#inventory-adjustment-view .filter-container {
+    background-color: #f0f8ff; /* 薄い青 */
+    border: 1px solid #cce;
+}
+#inventory-adjustment-view .filter-container .form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+#inventory-adjustment-view .filter-container .form-group label {
+    font-size: 10px;
+    font-weight: bold;
+}
+#inventory-adjustment-view .filter-container .form-group input,
+#inventory-adjustment-view .filter-container .form-group select {
+    font-size: inherit;
+    padding: 3px;
+}
+
+/* 集計・サマリーセクション */
+.summary-section {
+    margin-bottom: 15px;
+}
+
+/* セクションヘッダー (台帳, 予製など) */
+.report-section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid #ccc;
+    padding-bottom: 4px;
+    margin-bottom: 5px;
+}
+.report-section-header h4 {
+    margin: 0;
+    font-size: 1.1em;
+}
+.report-section-header .header-total {
+    font-size: 0.9em;
+    font-weight: bold;
+}
+
+/* YJグループヘッダー */
+.agg-yj-header {
+    background-color: #343a40;
+    color: white;
+    padding: 4px 8px;
+    margin-top: 10px;
+    font-weight: bold;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+.agg-yj-header .product-name {
+    margin-left: 15px;
+    font-weight: normal;
+}
+.agg-yj-header .balance-info {
+    font-size: 0.9em;
+    font-weight: normal;
+    color: #eee;
+}
+
+/* 包装グループヘッダー */
+.agg-pkg-header {
+    background-color: #e9ecef;
+    padding: 4px 8px;
+    border: 1px solid #ccc;
+    border-bottom: none;
+    font-weight: bold;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+.agg-pkg-header .balance-info {
+    font-size: 0.9em;
+    font-weight: normal;
+    color: #333;
+}
+
+/* 棚卸入力セクション */
+.inventory-input-area {
+    padding: 10px;
+    border: 1px solid #cce;
+    background-color: #f8f9fa;
+    margin-bottom: 15px;
+}
+.inventory-input-area .form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+.inventory-input-area .form-group label {
+    font-size: 10px;
+    font-weight: bold;
+}
+.inventory-input-area .form-group input {
+    font-size: inherit;
+    padding: 3px;
+}
+
+/* ユーザー入力エリア (実在庫入力) */
+.user-input-area {
+    font-size: 12px;
+    padding: 10px;
+    background-color: #fffbdd; /* 薄い黄色 */
+    border: 1px solid #e6db55;
+    border-radius: 3px;
+}
+.user-input-area .form-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+.user-input-area .form-group label {
+    font-weight: bold;
+    min-width: 250px;
+}
+.user-input-area .form-group input[type="number"] {
+    width: 100px;
+    padding: 4px;
+    font-size: 1.1em;
+    font-weight: bold;
+    text-align: right;
+}
+.user-input-area .calculated-previous-day-stock {
+    font-weight: bold;
+    color: #dc3545; /* 赤色 */
+    font-size: 1.2em;
+    min-width: 80px;
+    display: inline-block;
+    text-align: right;
+    padding-right: 5px;
+}
+.user-input-area .info-text {
+    font-size: 10px;
+    color: #555;
+    margin-left: 10px;
+}
+
+/* 最終入力テーブル */
+.final-input-tbody .btn {
+    padding: 1px 4px;
+    font-size: 9px;
+    min-width: 20px;
+}
+.final-input-tbody .register-inventory-btn {
+    background-color: #28a745;
+    border-color: #1e7e34;
+    color: white;
+    font-weight: bold;
+}
+.final-input-tbody .delete-deadstock-row-btn {
+    background-color: #fbeeee;
+    border-color: #dc3545;
+    color: #dc3545;
+}
+.final-input-tbody input[type="text"],
+.final-input-tbody input[type="number"] {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 3px;
+    font-size: 10px;
+}
+.final-input-tbody input[type="number"] {
+    text-align: right;
+}

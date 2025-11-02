@@ -1,12 +1,17 @@
 // C:\Users\wasab\OneDrive\デスクトップ\TKR\static\js\config.js
 
 let usageFolderPathInput;
-let datFolderPathInput; // ★【追加】
+let datFolderPathInput;
+// ▼▼▼【ここに追加】▼▼▼
+let calculationDaysInput;
 let savePathBtn;
+let saveDaysBtn; // 集計期間保存ボタン
+// ▲▲▲【追加ここまで】▲▲▲
+
 let wholesalerListTableBody;
 let newWholesalerCodeInput, newWholesalerNameInput, addWholesalerBtn;
 
-// --- 1. パス設定 (旧Usage設定) ---
+// --- 1. 設定 (パス・期間) ---
 
 async function loadConfig() {
     try {
@@ -16,14 +21,17 @@ async function loadConfig() {
         }
         const config = await response.json();
         
-        // ▼▼▼【修正】DatFolderPath も読み込む ▼▼▼
-        if (usageFolderPathInput && config.usageFolderPath) {
-            usageFolderPathInput.value = config.usageFolderPath;
+        if (usageFolderPathInput) {
+            usageFolderPathInput.value = config.usageFolderPath || '';
         }
-        if (datFolderPathInput && config.datFolderPath) {
-            datFolderPathInput.value = config.datFolderPath;
+        if (datFolderPathInput) {
+            datFolderPathInput.value = config.datFolderPath || '';
         }
-        // ▲▲▲【修正ここまで】▲▲▲
+        // ▼▼▼【ここに追加】▼▼▼
+        if (calculationDaysInput) {
+            calculationDaysInput.value = config.calculationPeriodDays || 90;
+        }
+        // ▲▲▲【追加ここまで】▲▲▲
 
     } catch (error) {
         console.error("Error loading config:", error);
@@ -32,21 +40,25 @@ async function loadConfig() {
 }
 
 async function saveConfig() {
-    // ▼▼▼【修正】DatFolderPath も保存する ▼▼▼
     const usagePath = usageFolderPathInput ? usageFolderPathInput.value : '';
     const datPath = datFolderPathInput ? datFolderPathInput.value : '';
+    // ▼▼▼【ここに追加】▼▼▼
+    const calcDays = calculationDaysInput ? parseInt(calculationDaysInput.value, 10) : 90;
+    // ▲▲▲【追加ここまで】▲▲▲
     
     window.showLoading('設定を保存中...');
     try {
         const response = await fetch('/api/config', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
+            // ▼▼▼【修正】CalculationPeriodDays も保存する ▼▼▼
             body: JSON.stringify({ 
                 usageFolderPath: usagePath,
-                datFolderPath: datPath 
+                datFolderPath: datPath,
+                calculationPeriodDays: calcDays 
             }),
+            // ▲▲▲【修正ここまで】▲▲▲
         });
-        // ▲▲▲【修正ここまで】▲▲▲
         
         if (!response.ok) {
             let errorText = `サーバーエラー (HTTP ${response.status})`;
@@ -72,7 +84,6 @@ async function saveConfig() {
 async function loadWholesalers() {
     if (!wholesalerListTableBody) return;
     wholesalerListTableBody.innerHTML = '<tr><td colspan="3">読み込み中...</td></tr>';
-    
     try {
         const response = await fetch('/api/wholesalers/list');
         if (!response.ok) {
@@ -125,7 +136,6 @@ async function handleAddWholesaler() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ code: code, name: name }),
         });
-
         if (!response.ok) {
             let errorText = `サーバーエラー (HTTP ${response.status})`;
             try {
@@ -137,7 +147,6 @@ async function handleAddWholesaler() {
 
         const result = await response.json();
         window.showNotification(result.message || '追加しました。', 'success');
-        
         if (newWholesalerCodeInput) newWholesalerCodeInput.value = '';
         if (newWholesalerNameInput) newWholesalerNameInput.value = '';
         
@@ -153,7 +162,6 @@ async function handleAddWholesaler() {
 
 async function handleDeleteWholesaler(code) {
     if (!code) return;
-    
     if (!confirm(`卸コード「${code}」を削除しますか？`)) {
         return;
     }
@@ -163,7 +171,6 @@ async function handleDeleteWholesaler(code) {
         const response = await fetch(`/api/wholesalers/delete/${code}`, {
             method: 'DELETE',
         });
-
         if (!response.ok) {
             let errorText = `サーバーエラー (HTTP ${response.status})`;
             try {
@@ -188,11 +195,15 @@ async function handleDeleteWholesaler(code) {
 // --- 3. 初期化 ---
 
 export function initConfigView() {
-    // ▼▼▼【修正】DatFolderPath の input を取得 ▼▼▼
+    // パス設定
     usageFolderPathInput = document.getElementById('config-usage-folder-path');
     datFolderPathInput = document.getElementById('config-dat-folder-path');
     savePathBtn = document.getElementById('configSavePathBtn');
-    // ▲▲▲【修正ここまで】▲▲▲
+
+    // ▼▼▼【ここに追加】集計期間 ▼▼▼
+    calculationDaysInput = document.getElementById('config-calculation-days');
+    saveDaysBtn = document.getElementById('configSaveDaysBtn');
+    // ▲▲▲【追加ここまで】▲▲▲
     
     // 卸管理
     const wholesalerListTable = document.getElementById('wholesalerListTable');
@@ -205,6 +216,11 @@ export function initConfigView() {
     if (savePathBtn) {
         savePathBtn.addEventListener('click', saveConfig);
     }
+    // ▼▼▼【ここに追加】▼▼▼
+    if (saveDaysBtn) {
+        saveDaysBtn.addEventListener('click', saveConfig); // 同じ保存関数を呼ぶ
+    }
+    // ▲▲▲【追加ここまで】▲▲▲
     
     if (addWholesalerBtn) {
         addWholesalerBtn.addEventListener('click', handleAddWholesaler);
@@ -225,6 +241,5 @@ export function initConfigView() {
             loadWholesalers();
         }
     });
-    
     console.log("Config View Initialized.");
 }

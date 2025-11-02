@@ -15,10 +15,12 @@ import (
 	"tkr/config"
 	"tkr/dat"
 	"tkr/database"
+	"tkr/inventoryadjustment" // ▼▼▼【ここに追加】▼▼▼
 	"tkr/loader"
 	"tkr/masteredit"
+	"tkr/product" // ▼▼▼【ここに追加】▼▼▼
 	"tkr/units"
-	"tkr/usage" // ▼▼▼【ここに追加】▼▼▼
+	"tkr/usage"
 )
 
 func main() {
@@ -84,13 +86,21 @@ func main() {
 
 	mux.HandleFunc("/api/dat/upload", dat.UploadDatHandler(dbConn))
 	mux.HandleFunc("/api/dat/search", dat.SearchDatHandler(dbConn))
-
-	// ▼▼▼【ここに追加】USAGEハンドラの登録 ▼▼▼
 	mux.HandleFunc("/api/usage/upload", usage.UploadUsageHandler(dbConn))
-	// ▲▲▲【追加ここまで】▲▲▲
 
 	mux.HandleFunc("/api/masters", masteredit.ListMastersHandler(dbConn))
 	mux.HandleFunc("/api/masters/update", masteredit.UpdateMasterHandler(dbConn))
+
+	// ▼▼▼【ここから追加】棚卸調整・集計API ▼▼▼
+	mux.HandleFunc("/api/inventory/adjust/data", inventoryadjustment.GetInventoryDataHandler(dbConn))
+	mux.HandleFunc("/api/inventory/adjust/save", inventoryadjustment.SaveInventoryDataHandler(dbConn))
+	// ▼▼▼【追加ここまで】▲▲▲
+
+	// ▼▼▼【ここから追加】品目検索API ▼▼▼
+	mux.HandleFunc("/api/products/search_filtered", product.SearchProductsHandler(dbConn))
+	mux.HandleFunc("/api/product/by_gs1", product.GetProductByGS1Handler(dbConn))
+	mux.HandleFunc("/api/master/by_code/", product.GetMasterByCodeHandler(dbConn)) // マスタ編集画面でも流用
+	// ▲▲▲【追加ここまで】▲▲▲
 
 	// 卸管理API
 	mux.HandleFunc("/api/wholesalers/list", ListWholesalersHandler(dbConn))

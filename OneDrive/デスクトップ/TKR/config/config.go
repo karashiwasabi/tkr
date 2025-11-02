@@ -8,17 +8,16 @@ import (
 )
 
 type Config struct {
-	// ▼▼▼【ここに追加】▼▼▼
 	UsageFolderPath string `json:"usageFolderPath"`
+	DatFolderPath   string `json:"datFolderPath"`
+	// ▼▼▼【ここに追加】(WASABI: config.go より) ▼▼▼
+	CalculationPeriodDays int `json:"calculationPeriodDays"`
 	// ▲▲▲【追加ここまで】▲▲▲
-	DatFolderPath string `json:"datFolderPath"`
 }
 
 var (
 	cfg Config
-	// ▼▼▼【修正】RWMex -> RWMutex ▼▼▼
-	mu sync.RWMutex
-	// ▲▲▲【修正ここまで】▲▲▲
+	mu  sync.RWMutex
 )
 
 const configFilePath = "./tkr_config.json"
@@ -30,7 +29,11 @@ func LoadConfig() (Config, error) {
 	file, err := os.ReadFile(configFilePath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return Config{}, nil
+			// ▼▼▼【修正】デフォルト値を設定 (WASABI: config.go より) ▼▼▼
+			return Config{
+				CalculationPeriodDays: 90,
+			}, nil
+			// ▲▲▲【修正ここまで】▲▲▲
 		}
 		return Config{}, err
 	}
@@ -40,12 +43,25 @@ func LoadConfig() (Config, error) {
 		return Config{}, err
 	}
 	cfg = tempCfg
+
+	// ▼▼▼【ここに追加】ロード時に0ならデフォルト値を設定 ▼▼▼
+	if cfg.CalculationPeriodDays == 0 {
+		cfg.CalculationPeriodDays = 90
+	}
+	// ▲▲▲【追加ここまで】▲▲▲
+
 	return cfg, nil
 }
 
 func SaveConfig(newCfg Config) error {
 	mu.Lock()
 	defer mu.Unlock()
+
+	// ▼▼▼【ここに追加】保存時にも0ならデフォルト値を設定 ▼▼▼
+	if newCfg.CalculationPeriodDays == 0 {
+		newCfg.CalculationPeriodDays = 90
+	}
+	// ▲▲▲【追加ここまで】▲▲▲
 
 	file, err := json.MarshalIndent(newCfg, "", "  ")
 	if err != nil {

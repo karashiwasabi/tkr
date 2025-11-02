@@ -7,11 +7,14 @@
     <link rel="stylesheet" href="/static/css/table.css">
     <link rel="stylesheet" href="/static/css/masteredit.css">
     <link rel="stylesheet" href="/static/css/config.css">
-</head>
+    <link rel="stylesheet" href="/static/css/inventory_adjustment.css">
+    <link rel="stylesheet" href="/static/css/search_modal.css">
+    </head>
 <body>
     <header id="main-header">
         <button id="datViewBtn" class="btn">DAT取込</button>
         <button id="usageViewBtn" class="btn">USAGE取込</button>
+        <button id="inventoryAdjustmentViewBtn" class="btn">棚卸調整</button>
         <button id="masterEditViewBtn" class="btn">マスタ編集</button>
         <button id="configViewBtn" class="btn">設定</button>
     </header>
@@ -64,9 +67,46 @@
                 </table>
             </div>
         </div>
+        <div id="inventory-adjustment-view" class="view">
+            <h1>棚卸調整 (1品目ごと)</h1>
+            <div class="filter-container" style="padding: 10px; margin-bottom: 10px; background-color: #f0f8ff;">
+                <fieldset style="border: 1px solid #ccc; padding: 5px;">
+                    <legend>品目検索</legend>
+                    <div style="display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end;">
+                        <div class="form-group" style="flex-basis: 250px; flex-grow: 1;">
+                            <label for="ia-barcode-input">GS1バーコードスキャン:</label>
+                            <form id="ia-barcode-form" style="margin: 0;">
+                                <input type="text" id="ia-barcode-input" style="padding: 3px; font-size: inherit;" autocomplete="off" placeholder="GS1-128 (JAN+期限+ロット)">
+                            </form>
+                        </div>
+                        <div class="form-group" style="flex-basis: 100px;">
+                            <label for="ia-dosageForm">内外注区分:</label>
+                            <select id="ia-dosageForm" style="padding: 3px; font-size: inherit;">
+                                <option value="">すべて</option>
+                                <option value="内">内</option>
+                                <option value="外">外</option>
+                                <option value="注">注</option>
+                                <option value="他">他</option>
+                            </select>
+                        </div>
+                        <div class="form-group" style="flex-basis: 200px;">
+                            <label for="ia-kanaName">カナ名 (前方一致):</label>
+                            <input type="text" id="ia-kanaName" style="padding: 3px; font-size: inherit;" autocomplete="off">
+                        </div>
+                        <div class="form-group" style="flex-basis: 100px;">
+                            <label for="ia-shelf-number">棚番 (部分一致):</label>
+                            <input type="text" id="ia-shelf-number" style="padding: 3px; font-size: inherit;" autocomplete="off">
+                        </div>
+                        <button id="ia-select-product-btn" class="btn" style="padding: 5px 10px;">品目を選択...</button>
+                    </div>
+                </fieldset>
+            </div>
+            <div id="inventory-adjustment-output" class="table-container">
+                <p>上記検索条件で品目を指定してください。</p>
+            </div>
+        </div>
         <div id="master-edit-view" class="view">
             <h1>マスタ編集</h1>
-
             <div class="filter-container" style="padding: 10px; margin-bottom: 10px;">
                 <fieldset style="border: 1px solid #ccc; padding: 5px;">
                     <legend>検索条件</legend>
@@ -98,7 +138,6 @@
                     </div>
                 </fieldset>
             </div>
-
             <div id="masterListContainer" class="table-container">
                 <table id="masterListTable" class="data-table">
                     <thead>
@@ -108,32 +147,42 @@
                 </table>
             </div>
         </div>
-
         <div id="config-view" class="view">
             <h1>設定</h1>
-
             <section class="config-section">
                 <h2>パス設定</h2>
                 <div class="config-form-container">
-                    <div class="form-group">
-                        <label for="config-dat-folder-path">伝票取込フォルダパス (DAT):</label>
-                        <input type="text" id="config-dat-folder-path" autocomplete="off">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="config-dat-folder-path">伝票取込フォルダパス (DAT):</label>
+                            <input type="text" id="config-dat-folder-path" autocomplete="off">
+                        </div>
+                        <div class="form-group">
+                            <label for="config-usage-folder-path">処方取込フォルダパス (CSV):</label>
+                            <input type="text" id="config-usage-folder-path" autocomplete="off">
+                        </div>
                     </div>
-
-                    <div class="form-group">
-                        <label for="config-usage-folder-path">処方取込フォルダパス (CSV):</label>
-                        <input type="text" id="config-usage-folder-path" autocomplete="off">
-                    </div>
-
                     <div class="form-actions">
                         <button id="configSavePathBtn" class="btn">パス保存</button>
                     </div>
                 </div>
             </section>
-
+            <section class="config-section">
+                <h2>集計設定</h2>
+                <div class="config-form-container">
+                    <div class="form-row">
+                        <div class="form-group" style="flex-basis: 150px;">
+                            <label for="config-calculation-days">在庫集計期間 (日数):</label>
+                            <input type="number" id="config-calculation-days" autocomplete="off" value="90">
+                        </div>
+                    </div>
+                    <div class="form-actions">
+                        <button id="configSaveDaysBtn" class="btn">集計期間保存</button>
+                    </div>
+                </div>
+            </section>
             <section class="config-section">
                 <h2>卸コード管理</h2>
-                
                 <div class="config-form-container">
                     <fieldset>
                         <legend>新規卸コード追加</legend>
@@ -152,7 +201,6 @@
                         </div>
                     </fieldset>
                 </div>
-                
                 <div id="wholesalerListContainer" class="table-container" style="max-height: 300px; margin-top: 10px;">
                     <table id="wholesalerListTable" class="data-table">
                         <thead>
@@ -168,7 +216,7 @@
                 </div>
             </section>
         </div>
-    </main>
+        </main>
 
     <div id="loading-overlay" class="hidden">
         <div class="spinner"></div>
@@ -223,7 +271,6 @@
                         <input type="text" id="edit-maker-name" class="readonly-field" readonly>
                     </div>
                 </div>
-
                 <div class="form-row readonly-group">
                     <div class="form-group" style="flex-basis: 80px;">
                         <label for="edit-usage-classification">内外注</label>
@@ -254,7 +301,6 @@
                         <input type="number" id="edit-jan-pack-unit-qty" class="readonly-field" readonly>
                     </div>
                 </div>
-
                 <div class="form-row">
                     <div class="form-group" style="flex-basis: 100px;">
                         <label for="edit-nhi-price">薬価 (編集不可: JCSHMS)</label>
@@ -269,7 +315,6 @@
                         <input type="text" id="edit-supplier-wholesale">
                     </div>
                 </div>
-                
                 <div class="form-row">
                      <div class="form-group" style="flex-basis: 100px;">
                         <label for="edit-group-code">薬品分類CD (編集可)</label>
@@ -288,7 +333,6 @@
                         <input type="text" id="edit-user-notes">
                     </div>
                 </div>
-
                 <div class="form-row readonly-group">
                     <div class="form-group" style="flex-basis: 50px;"><label for="edit-flag-poison">毒</label><input type="number" id="edit-flag-poison" class="readonly-field" readonly></div>
                     <div class="form-group" style="flex-basis: 50px;"><label for="edit-flag-deleterious">劇</label><input type="number" id="edit-flag-deleterious" class="readonly-field" readonly></div>
@@ -297,7 +341,6 @@
                     <div class="form-group" style="flex-basis: 50px;"><label for="edit-flag-stimulant">覚</label><input type="number" id="edit-flag-stimulant" class="readonly-field" readonly></div>
                     <div class="form-group" style="flex-basis: 50px;"><label for="edit-flag-stimulant-raw">覚原</label><input type="number" id="edit-flag-stimulant-raw" class="readonly-field" readonly></div>
                 </div>
-                
                  <div class="form-row readonly-group">
                     <div class="form-group" style="flex-basis: 100px;">
                         <label for="edit-is-order-stopped">発注停止</label>
@@ -308,12 +351,47 @@
                         <input type="text" id="edit-specification" class="readonly-field" readonly>
                     </div>
                 </div>
-
                 <div class="form-actions">
                     <button type="button" id="saveMasterBtn" class="btn">保存</button>
                     <button type="button" id="cancelEditMasterBtn" class="btn">閉じる</button>
                 </div>
             </form>
+        </div>
+    </div>
+    <div id="tkr-search-modal-overlay" class="modal-overlay hidden">
+        <div class="modal-content" id="tkr-search-modal-content">
+            <h2>品目検索</h2>
+            <div class="filter-container" style="background-color: #f4f4f4;">
+                <div style="display: flex; gap: 10px; align-items: flex-end;">
+                    <div class="form-group" style="flex-grow: 1;">
+                        <label for="product-search-input">検索 (製品名, カナ名)</label>
+                        <input type="text" id="product-search-input" style="font-size: 1.1em; padding: 4px;" autocomplete="off">
+                    </div>
+                    <button id="product-search-btn" class="btn" style="padding: 5px 10px;">検索</button>
+                </div>
+            </div>
+            <div id="search-results-container" class="table-container" style="max-height: 60vh; overflow-y: auto; margin-top: 10px;">
+                <table id="search-results-table" class="data-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 35%;">製品名</th>
+                            <th style="width: 15%;">メーカー</th>
+                            <th style="width: 20%;">包装仕様</th>
+                            <th style="width: 10%;">YJコード</th>
+                            <th style="width: 10%;">JANコード</th>
+                            <th style="width: 10%;">選択</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td colspan="6" class="center">検索キーワードを入力してください。</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            <div class="form-actions" style="margin-top: 15px;">
+                <button type="button" id="closeSearchModalBtn" class="btn">閉じる</button>
+            </div>
         </div>
     </div>
 

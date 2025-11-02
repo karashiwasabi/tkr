@@ -19,7 +19,7 @@ func GetConfigHandler() http.HandlerFunc {
 	}
 }
 
-// ▼▼▼【修正】SaveConfigHandler で DatFolderPath も検証・保存する ▼▼▼
+// ▼▼▼【修正】SaveConfigHandler で CalculationPeriodDays も保存する ▼▼▼
 func SaveConfigHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var newCfg config.Config
@@ -39,6 +39,8 @@ func SaveConfigHandler() http.HandlerFunc {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
+
+		// CalculationPeriodDays はここでは検証不要 (config.SaveConfigでデフォルト値が設定される)
 
 		if err := config.SaveConfig(newCfg); err != nil {
 			log.Printf("Error saving config: %v", err)

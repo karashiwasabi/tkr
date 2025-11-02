@@ -1,4 +1,4 @@
-// C:\Users\wasab\OneDrive\デスクトップ\TKR\model\types.go (全体)
+// C:\Users\wasab\OneDrive\デスクトップ\TKR\model\types.go
 package model
 
 import "database/sql"
@@ -8,15 +8,11 @@ type JcshmsInfo struct {
 	YjCode      string `db:"JC009" json:"yjCode"`
 	ProductName string `db:"JC018" json:"productName"`
 
-	// ▼▼▼【ここに追加】▼▼▼
 	Specification string `db:"JC020" json:"specification"` // 規格容量
-	// ▲▲▲【追加ここまで】▲▲▲
 
 	KanaNameShort string `db:"JC019" json:"kanaNameShort"`
-
-	KanaName string `db:"JC022" json:"kanaName"`
-
-	GenericName string `db:"JC024" json:"genericName"`
+	KanaName      string `db:"JC022" json:"kanaName"`
+	GenericName   string `db:"JC024" json:"genericName"`
 
 	MakerName           string  `db:"JC030" json:"makerName"`
 	UsageClassification string  `db:"JC013" json:"usageClassification"`
@@ -41,15 +37,13 @@ type JcshmsInfo struct {
 }
 
 type ProductMaster struct {
-	ProductCode string `db:"product_code" json:"productCode"`
-	YjCode      string `db:"yj_code" json:"yjCode"`
-	Gs1Code     string `db:"gs1_code" json:"gs1Code"`
-	ProductName string `db:"product_name" json:"productName"`
-	KanaName    string `db:"kana_name" json:"kanaName"`
-
-	KanaNameShort string `db:"kana_name_short" json:"kanaNameShort"`
-	GenericName   string `db:"generic_name" json:"genericName"`
-
+	ProductCode         string  `db:"product_code" json:"productCode"`
+	YjCode              string  `db:"yj_code" json:"yjCode"`
+	Gs1Code             string  `db:"gs1_code" json:"gs1Code"`
+	ProductName         string  `db:"product_name" json:"productName"`
+	KanaName            string  `db:"kana_name" json:"kanaName"`
+	KanaNameShort       string  `db:"kana_name_short" json:"kanaNameShort"`
+	GenericName         string  `db:"generic_name" json:"genericName"`
 	MakerName           string  `db:"maker_name" json:"makerName"`
 	Specification       string  `db:"specification" json:"specification"`
 	UsageClassification string  `db:"usage_classification" json:"usageClassification"`
@@ -77,15 +71,13 @@ type ProductMaster struct {
 }
 
 type ProductMasterInput struct {
-	ProductCode string `db:"product_code" json:"productCode"`
-	YjCode      string `db:"yj_code" json:"yjCode"`
-	Gs1Code     string `db:"gs1_code" json:"gs1Code"`
-	ProductName string `db:"product_name" json:"productName"`
-	KanaName    string `db:"kana_name" json:"kanaName"`
-
-	KanaNameShort string `db:"kana_name_short" json:"kanaNameShort"`
-	GenericName   string `db:"generic_name" json:"genericName"`
-
+	ProductCode         string  `db:"product_code" json:"productCode"`
+	YjCode              string  `db:"yj_code" json:"yjCode"`
+	Gs1Code             string  `db:"gs1_code" json:"gs1Code"`
+	ProductName         string  `db:"product_name" json:"productName"`
+	KanaName            string  `db:"kana_name" json:"kanaName"`
+	KanaNameShort       string  `db:"kana_name_short" json:"kanaNameShort"`
+	GenericName         string  `db:"generic_name" json:"genericName"`
 	MakerName           string  `db:"maker_name" json:"makerName"`
 	Specification       string  `db:"specification" json:"specification"`
 	UsageClassification string  `db:"usage_classification" json:"usageClassification"`
@@ -168,8 +160,6 @@ type TransactionRecord struct {
 	ProcessFlagMA       string  `db:"process_flag_ma" json:"processFlagMA"`
 }
 
-// ▼▼▼【ここから追加】(WASABI  より移植) ▼▼▼
-
 type Client struct {
 	ClientCode string `db:"client_code" json:"clientCode"`
 	ClientName string `db:"client_name" json:"clientName"`
@@ -180,7 +170,6 @@ type Wholesaler struct {
 	WholesalerName string `db:"wholesaler_name" json:"wholesalerName"`
 }
 
-// usage_parser.go で使用
 type UnifiedInputRecord struct {
 	Date        string
 	YjCode      string
@@ -188,6 +177,71 @@ type UnifiedInputRecord struct {
 	ProductName string
 	YjQuantity  float64
 	YjUnitName  string
+}
+
+// ▼▼▼【ここから追加】(WASABI: model/types.go  より移植・簡略化) ▼▼▼
+
+// ProductMasterView は製品マスターを画面表示用に拡張したものです。
+type ProductMasterView struct {
+	ProductMaster
+	FormattedPackageSpec string `json:"formattedPackageSpec"`
+	JanUnitName          string `json:"janUnitName"`
+	IsAdopted            bool   `json:"isAdopted,omitempty"` // TKRでは未使用
+}
+
+// AggregationFilters は集計時のフィルタ条件です。
+type AggregationFilters struct {
+	StartDate    string
+	EndDate      string
+	KanaName     string
+	DrugTypes    []string
+	DosageForm   string
+	Coefficient  float64
+	YjCode       string
+	MovementOnly bool
+	ShelfNumber  string
+}
+
+// StockLedgerYJGroup はYJコード単位の集計グループです。
+type StockLedgerYJGroup struct {
+	YjCode          string                    `json:"yjCode"`
+	ProductName     string                    `json:"productName"`
+	YjUnitName      string                    `json:"yjUnitName"`
+	PackageLedgers  []StockLedgerPackageGroup `json:"packageLedgers"`
+	StartingBalance interface{}               `json:"startingBalance"`
+	NetChange       float64                   `json:"netChange"`
+	EndingBalance   interface{}               `json:"endingBalance"`
+	IsReorderNeeded bool                      `json:"isReorderNeeded"` // TKRでは未使用
+}
+
+// StockLedgerPackageGroup は包装キー単位の集計グループです。
+type StockLedgerPackageGroup struct {
+	PackageKey      string              `json:"packageKey"`
+	JanUnitName     string              `json:"janUnitName"`
+	StartingBalance interface{}         `json:"startingBalance"`
+	Transactions    []LedgerTransaction `json:"transactions"`
+	NetChange       float64             `json:"netChange"`
+	EndingBalance   interface{}         `json:"endingBalance"`
+	Masters         []*ProductMaster    `json:"masters"`
+}
+
+// LedgerTransaction は台帳表示用の取引記録です。
+type LedgerTransaction struct {
+	TransactionRecord
+	RunningBalance float64 `json:"runningBalance"`
+}
+
+// DeadStockRecord はロット・期限・在庫（JAN単位）の記録です。
+type DeadStockRecord struct {
+	ID               int     `json:"id"`
+	ProductCode      string  `json:"productCode"`
+	YjCode           string  `json:"yjCode"`
+	PackageForm      string  `json:"packageForm"`
+	JanPackInnerQty  float64 `json:"janPackInnerQty"`
+	YjUnitName       string  `json:"yjUnitName"`
+	StockQuantityJan float64 `json:"stockQuantityJan"`
+	ExpiryDate       string  `json:"expiryDate"`
+	LotNumber        string  `json:"lotNumber"`
 }
 
 // ▲▲▲【追加ここまで】▲▲▲
