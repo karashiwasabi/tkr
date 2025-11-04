@@ -89,31 +89,59 @@ func SaveGuidedInventoryData(tx *sqlx.Tx, date string, yjCode string, allPackagi
 	receiptNumber := fmt.Sprintf("%s%05d", prefix, newSeq) // 14桁 (ADJ + 6 + 5)
 	// ▲▲▲【修正ここまで】▲▲▲
 
-	var productCodesWithInventory []string
-	// ▼▼▼【ここから追加】包装キー単位のYJ在庫量を集計するマップ ▼▼▼
-	packageStockTotalsYj := make(map[string]float64) //
-	// ▲▲▲【追加ここまで】▲▲▲
+	// ▼▼▼【削除】productCodesWithInventory (dead_stock_list 用) は不要 ▼▼▼
+	// var productCodesWithInventory []string
+	// ▲▲▲【削除ここまで】▲▲▲
 
-	// 2. 新しい棚卸データを挿入 (flag=0 履歴用)
-	for i, productCode := range allProductCodes {
+	// ▼▼▼【ここから修正】packageStockTotalsYj（在庫起点用）の集計を deadStockData から inventoryData（合計マップ）基準に変更 ▼▼▼
+	packageStockTotalsYj := make(map[string]float64) //
+
+	for productCode, janQty := range inventoryData {
 		master, ok := mastersMap[productCode]
 		if !ok {
+			continue // マスタ情報がない（YJグループ外の）データは無視
+		}
+
+		yjQty := janQty * master.JanPackInnerQty
+
+		// 包装キー単位でYJ在庫量を集計
+		packageKey := fmt.Sprintf("%s|%s|%g|%s", master.YjCode, master.PackageForm, master.JanPackInnerQty, units.ResolveName(master.YjUnitName)) //
+		packageStockTotalsYj[packageKey] += yjQty                                                                                                 //
+	}
+	// ▲▲▲【修正ここまで】▲▲▲
+
+	// ▼▼▼【ここから修正】2. deadStockData (明細) を基準に transaction_records(flag=0) を挿入 ▼▼▼
+	// (JSが0の行も送信するようになったため、0の履歴も保存される)
+	for i, ds := range deadstockData {
+		master, ok := mastersMap[ds.ProductCode]
+		if !ok {
+			// allPackagings に含まれないマスタのデッドストックデータは無視
 			continue
 		}
 
-		janQty := inventoryData[productCode]
+		janQty := ds.StockQuantityJan
 		yjQty := janQty * master.JanPackInnerQty //
 
-		// 在庫が0より大きい（＝入力があった）コードを記録
-		if janQty > 0 {
-			productCodesWithInventory = append(productCodesWithInventory, productCode) //
-		}
+		// ▼▼▼【削除】productCodesWithInventory への追加ロジック (不要) ▼▼▼
+		/*
+			// 在庫が0より大きい（＝入力があった）コードを記録 (dead_stock_list 保存用)
+			if janQty > 0 {
+				// productCodesWithInventory に重複して追加しないようにチェック
+				found := false
+				for _, code := range productCodesWithInventory {
+					if code == ds.ProductCode {
+						found = true
+						break
+					}
+				}
+				if !found {
+					productCodesWithInventory = append(productCodesWithInventory, ds.ProductCode) //
+				}
+			}
+		*/
+		// ▲▲▲【削除ここまで】▲▲▲
 
-		// ▼▼▼【ここから追加】包装キー単位でYJ在庫量を集計 ▼▼▼
-		// (aggregation.go の GetFilteredMastersAndYjCodes と同じキー生成ロジック )
-		packageKey := fmt.Sprintf("%s|%s|%g|%s", master.YjCode, master.PackageForm, master.JanPackInnerQty, units.ResolveName(master.YjUnitName)) //
-		packageStockTotalsYj[packageKey] += yjQty                                                                                                 //
-		// ▲▲▲【追加ここまで】▲▲▲
+		// (packageStockTotalsYj への集計ロジックは上で実施済みなの)
 
 		tr := model.TransactionRecord{
 			TransactionDate: date,
@@ -124,6 +152,9 @@ func SaveGuidedInventoryData(tx *sqlx.Tx, date string, yjCode string, allPackagi
 			YjCode:          master.YjCode,
 			JanQuantity:     janQty,
 			YjQuantity:      yjQty, // YJ単位に換算
+			// ▼▼▼ 明細から期限とロットを設定 ▼▼▼
+			ExpiryDate: ds.ExpiryDate,
+			LotNumber:  ds.LotNumber,
 		}
 
 		// (棚卸の場合は薬価を単価とし、金額を計算)
@@ -134,41 +165,50 @@ func SaveGuidedInventoryData(tx *sqlx.Tx, date string, yjCode string, allPackagi
 		mappers.MapMasterToTransaction(&tr, master)
 
 		if err := InsertTransactionRecord(tx, tr); err != nil { //
-			return fmt.Errorf("failed to insert inventory record for %s: %w", productCode, err)
+			return fmt.Errorf("failed to insert inventory record for %s: %w", ds.ProductCode, err)
 		}
 	}
+	// ▲▲▲【修正ここまで】▲▲▲
 
-	// 3. ロット・期限情報を更新 (入力があったもののみ)
-	if len(productCodesWithInventory) > 0 {
-		var relevantDeadstockData []model.DeadStockRecord
-		for _, ds := range deadstockData {
-			for _, pid := range productCodesWithInventory {
-				if ds.ProductCode == pid {
-					relevantDeadstockData = append(relevantDeadstockData, ds)
-					break
+	// ▼▼▼【削除】3. ロット・期限情報を更新 (dead_stock_list 廃止のため不要) ▼▼▼
+	/*
+		if len(productCodesWithInventory) > 0 {
+			var relevantDeadstockData []model.DeadStockRecord
+			for _, ds := range deadstockData {
+				// ▼▼▼【ここから修正】数量が0より大きいものだけを dead_stock_list に保存する ▼▼▼
+				if ds.StockQuantityJan > 0 {
+				// ▲▲▲【修正ここまで】▲▲▲
+					for _, pid := range productCodesWithInventory {
+						if ds.ProductCode == pid {
+							relevantDeadstockData = append(relevantDeadstockData, ds)
+							break
+						}
+					}
+				}
+			}
+
+			// このYJコードに関連する既存のロット・期限情報を一度すべて削除
+			if err := DeleteDeadStockByProductCodesInTx(tx, allProductCodes); err != nil { //
+				return fmt.Errorf("failed to delete old dead stock records: %w", err)
+			}
+			// 新しいロット・期限情報（在庫>0のもの）を保存
+			if len(relevantDeadstockData) > 0 {
+				if err := SaveDeadStockListInTx(tx, relevantDeadstockData); err != nil { //
+					return fmt.Errorf("failed to upsert new dead stock records: %w", err)
 				}
 			}
 		}
+	*/
+	// ▲▲▲【削除ここまで】▲▲▲
 
-		// このYJコードに関連する既存のロット・期限情報を一度すべて削除
-		if err := DeleteDeadStockByProductCodesInTx(tx, allProductCodes); err != nil { //
-			return fmt.Errorf("failed to delete old dead stock records: %w", err)
-		}
-		// 新しいロット・期限情報（在庫>0のもの）を保存
-		if len(relevantDeadstockData) > 0 {
-			if err := SaveDeadStockListInTx(tx, relevantDeadstockData); err != nil { //
-				return fmt.Errorf("failed to upsert new dead stock records: %w", err)
-			}
-		}
-	}
-
-	// ▼▼▼【ここから追加】4. package_stock テーブルを更新（在庫起点） ▼▼▼
+	// ▼▼▼【ここから修正】4. package_stock テーブルを更新（在庫起点）▼▼▼
+	// (集計済みの packageStockTotalsYj を使う)
 	for key, totalYjQty := range packageStockTotalsYj {
 		if err := UpsertPackageStockInTx(tx, key, yjCode, totalYjQty, date); err != nil { //
 			return fmt.Errorf("failed to upsert package_stock for key %s: %w", key, err)
 		}
 	}
-	// ▲▲▲【追加ここまで】▲▲▲
+	// ▲▲▲【修正ここまで】▲▲▲
 
 	return nil
 }

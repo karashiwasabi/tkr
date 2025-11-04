@@ -2,6 +2,7 @@
 package database
 
 import (
+	"database/sql" // ▼▼▼【追加】sql パッケージをインポート ▼▼▼
 	"fmt"
 	"strings"
 	"tkr/model"
@@ -93,7 +94,7 @@ func GetTransactionsByProductCodes(db *sqlx.DB, productCodes []string) (map[stri
 		return transactionsByProductCode, nil
 	}
 
-	batchSize := 100 
+	batchSize := 100
 
 	for i := 0; i < len(productCodes); i += batchSize {
 		end := i + batchSize
@@ -123,12 +124,12 @@ func GetTransactionsByProductCodes(db *sqlx.DB, productCodes []string) (map[stri
 
 func SearchTransactions(db *sqlx.DB, janCode string, expiryYYMMDD string, expiryYYMM string, lotNumber string) ([]model.TransactionRecord, error) {
 	var records []model.TransactionRecord
-	
+
 	var queryBuilder strings.Builder
 	queryBuilder.WriteString("SELECT ")
 	queryBuilder.WriteString(TransactionColumns)
 	queryBuilder.WriteString(" FROM transaction_records WHERE 1=1")
-	
+
 	args := []interface{}{}
 
 	if janCode != "" {
@@ -198,3 +199,42 @@ func DeleteTransactionsByReceiptNumberInTx(tx *sqlx.Tx, receiptNumber string) er
 	}
 	return nil
 }
+
+// ▼▼▼【ここから追加】最新の棚卸明細を取得する関数 (deadstock.go の代替) ▼▼▼
+// GetLatestInventoryDetailsByYjCode は、指定されたYJコードの最新の棚卸明細(flag=0)を取得します。
+func GetLatestInventoryDetailsByYjCode(dbtx DBTX, yjCode string) ([]model.TransactionRecord, error) {
+	// 1. package_stock から最新の棚卸日を取得
+	var latestInventoryDate sql.NullString
+	err := dbtx.Get(&latestInventoryDate, `
+		SELECT MAX(last_inventory_date) 
+		FROM package_stock 
+		WHERE yj_code = ?`,
+		yjCode)
+
+	if err != nil && err != sql.ErrNoRows {
+		return nil, fmt.Errorf("failed to get latest inventory date from package_stock for %s: %w", yjCode, err)
+	}
+
+	if !latestInventoryDate.Valid || latestInventoryDate.String == "" {
+		// まだ一度も棚卸されていない
+		return []model.TransactionRecord{}, nil
+	}
+
+	// 2. 最新棚卸日の flag=0 の取引明細を取得
+	var records []model.TransactionRecord
+	q := `SELECT ` + TransactionColumns + ` 
+		  FROM transaction_records 
+		  WHERE yj_code = ? 
+		  AND transaction_date = ? 
+		  AND flag = 0 
+		  ORDER BY jan_code, expiry_date, lot_number`
+
+	err = dbtx.Select(&records, q, yjCode, latestInventoryDate.String)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query latest inventory (flag=0) transactions for %s on %s: %w", yjCode, latestInventoryDate.String, err)
+	}
+
+	return records, nil
+}
+
+// ▲▲▲【追加ここまで】▲▲▲

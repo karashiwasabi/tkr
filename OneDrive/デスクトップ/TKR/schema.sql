@@ -161,19 +161,6 @@ CREATE TABLE IF NOT EXISTS backorders (
   jan_unit_code INTEGER
 );
 
-CREATE TABLE IF NOT EXISTS dead_stock_list (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  product_code TEXT NOT NULL,
-  yj_code TEXT,
-  package_form TEXT,
-  jan_pack_inner_qty REAL,
-  yj_unit_name TEXT,
-  stock_quantity_jan REAL NOT NULL,
-  expiry_date TEXT,
-  lot_number TEXT,
-  created_at TEXT NOT NULL,
-  UNIQUE(product_code, expiry_date, lot_number)
-);
 
 CREATE TABLE IF NOT EXISTS precomp_records (
   id INTEGER PRIMARY KEY AUTOINCREMENT,

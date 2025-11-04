@@ -1244,7 +1244,7 @@ export function resetInOutView() {
 }
 
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\js\inventory_adjustment_logic.js -----
-// C:\Users\wasab\OneDrive\デスケトッフ\TKR\static\js\inventory_adjustment_logic.js
+// C:\Users\wasab\OneDrive\デスクトップ\TKR\static\js\inventory_adjustment_logic.js
 import { hiraganaToKatakana, getLocalDateString, parseBarcode, fetchProductMasterByBarcode } from './utils.js';
 import { setUnitMap, generateFullHtml, createFinalInputRow } from './inventory_adjustment_ui.js';
 import { showModal } from './search_modal.js';
@@ -1342,7 +1342,7 @@ async function handleBarcodeScan(e) {
 
 async function onSelectProductClick() {
     const apiUrl = '/api/products/search_filtered';
-// ▼▼▼【修正】IDのハイフン(-)をアンダースコア(_)に変更 ▼▼▼
+    // ▼▼▼【修正】IDのハイフン(-)をアンダースコア(_)に変更 ▼▼▼
     const kanaInput = document.getElementById('ia_search-kana');
     const genericInput = document.getElementById('ia_search-generic');
     const shelfInput = document.getElementById('ia_search-shelf');
@@ -1417,6 +1417,16 @@ async function loadAndRenderDetails(yjCode) {
         if(dateInput) {
             dateInput.value = getLocalDateString();
         }
+        
+        // ▼▼▼【ここに追加】ロード完了後に一度、合計と逆算を実行する ▼▼▼
+        document.querySelectorAll('.final-input-tbody').forEach(tbody => {
+            const productCode = tbody.dataset.productCode;
+            if (productCode) {
+                updateFinalInventoryTotal(productCode);
+            }
+        });
+        // ▲▲▲【追加ここまで】▲▲▲
+
     } catch (err) {
         outputContainer.innerHTML = `<p style="color:red;">エラー: ${err.message}</p>`;
     } finally {
@@ -1435,23 +1445,28 @@ function reverseCalculateStock() {
                     if (pkg.transactions) {
                         pkg.transactions.forEach(tx => {
       
+ 
                             if (tx.transactionDate === todayStr && tx.flag !== 0) {
                                 let janQty = tx.janQuantity || 0;
                            
+ 
                                  if (janQty === 0 && tx.yjQuantity) {
                                     if (tx.janPackInnerQty > 0) {
                      
+ 
                                      janQty = tx.yjQuantity / tx.janPackInnerQty;
      
                                     } else if (tx.yjQuantity !== 0) {
-                              
+            
+                   
                                      calculationErrorByProduct[tx.janCode] = '包装数量(内)未設定';
           
-                                    }
+                                 
+    }
                                 }
           
                                  const signedJanQty = janQty * (tx.flag === 1 ?
-1 : (tx.flag === 3 ? -1 : 0));
+ 1 : (tx.flag === 3 ? -1 : 0));
                                 todayNetChangeByProduct[tx.janCode] = (todayNetChangeByProduct[tx.janCode] || 0) + signedJanQty;
                             }
                         });
@@ -1463,36 +1478,57 @@ function reverseCalculateStock() {
     document.querySelectorAll('.physical-stock-input').forEach(input => {
         const productCode = input.dataset.productCode;
         const displaySpan = document.querySelector(`.calculated-previous-day-stock[data-product-code="${productCode}"]`);
-        const finalInput = document.querySelector(`.final-inventory-input[data-product-code="${productCode}"]`);
+        const finalInput = document.querySelector(`.final-inventory-input[data-product-code="${productCode}"]`); //
         if (calculationErrorByProduct[productCode]) {
-// ▼▼▼【修正】style 属性を削除 ▼▼▼
+            // ▼▼▼【修正】style 属性を削除 ▼▼▼
             if (displaySpan) displaySpan.innerHTML = `<span class="status-error">${calculationErrorByProduct[productCode]}</span>`;
             // ▲▲▲【修正ここまで】▲▲▲
+         
             if (finalInput) finalInput.value = '';
         
+            // ▼▼▼【修正】updateFinalInventoryTotal を呼び出す（readonlyでも実行） ▼▼▼
             updateFinalInventoryTotal(productCode);
+            // ▲▲▲【修正ここまで】▲▲▲
             return;
         }
         const physicalStockToday = parseFloat(input.value) || 0;
         const totalStockToday = physicalStockToday;
         const netChangeToday = todayNetChangeByProduct[productCode] || 0;
         const calculatedPreviousDayStock = totalStockToday - netChangeToday;
-        if (displaySpan) displaySpan.textContent = calculatedPreviousDayStock.toFixed(2);
+        if (displaySpan) displaySpan.textContent = calculatedPreviousDayStock.toFixed(2); //
+
+        // ▼▼▼【ここから削除】目安欄(finalInput)への書き戻し処理を削除 ▼▼▼
+        /*
         if (finalInput) {
             finalInput.value = calculatedPreviousDayStock.toFixed(2);
-            updateFinalInventoryTotal(productCode);
         }
+        */
+        // ▲▲▲【削除ここまで】▲▲▲
     });
 }
 
+// ▼▼▼【ここから修正】明細合計を「① 実在庫」に反映し、逆算(reverseCalculateStock)を呼び出す ▼▼▼
 function updateFinalInventoryTotal(productCode) {
     const tbody = document.querySelector(`.final-input-tbody[data-product-code="${productCode}"]`);
     if (!tbody) return;
     let totalQuantity = 0;
-    tbody.querySelectorAll('.final-inventory-input, .lot-quantity-input').forEach(input => {
+    tbody.querySelectorAll('.final-inventory-input, .lot-quantity-input').forEach(input => { //
         totalQuantity += parseFloat(input.value) || 0;
     });
+    // 1. 明細の合計数量を計算
+
+    // 2. 「① 本日の実在庫数量」欄に反映
+    const physicalStockInput = document.querySelector(`.physical-stock-input[data-product-code="${productCode}"]`);
+    if (physicalStockInput) {
+        physicalStockInput.value = totalQuantity.toFixed(2);
+    }
+
+    // 3. 「①」が更新されたので、「②」を逆算するために reverseCalculateStock を呼び出す
+    // (reverseCalculateStock は .physical-stock-input の値 を読む)
+    reverseCalculateStock();
 }
+// ▲▲▲【修正ここまで】▲▲▲
+
 
 function findMaster(productCode) {
     if (!lastLoadedDataCache || !lastLoadedDataCache.transactionLedger || lastLoadedDataCache.transactionLedger.length === 0) {
@@ -1543,20 +1579,24 @@ i = 0; i < inventoryRows.length; i += 2) {
             const expiry = expiryInput.value.trim();
             const lot = lotInput.value.trim();
             totalInputQuantity += quantity;
-            if (quantity > 0 && (expiry || lot)) {
-                deadStockData.push({ 
-                    productCode: productCode, 
-                    yjCode: master.yjCode, 
-                    packageForm: master.packageForm,
+
+            // ▼▼▼【ここから修正】`if (quantity > 0)` の条件を削除し、0の行も明細に含める ▼▼▼
+            // (数量が 0 の行も、期限やロットが空欄の行も、すべて送信対象とする)
+            deadStockData.push({ 
+                productCode: productCode, 
+                yjCode: master.yjCode, 
+                packageForm: master.packageForm,
        
-                    janPackInnerQty: master.janPackInnerQty, 
-                    yjUnitName: master.yjUnitName,
-                    stockQuantityJan: quantity, 
-                    expiryDate: expiry, 
+ 
+                janPackInnerQty: master.janPackInnerQty, 
+                yjUnitName: master.yjUnitName,
+                stockQuantityJan: quantity, // 0 も許可
+                expiryDate: expiry, // 空欄でもOK
              
-lotNumber: lot 
-                });
-            }
+ 
+lotNumber: lot // 空欄でもOK
+            });
+            // ▲▲▲【修正ここまで】▲▲▲
         }
         inventoryData[productCode] = totalInputQuantity;
     });
@@ -1566,6 +1606,11 @@ lotNumber: lot
         inventoryData: inventoryData,
         deadStockData: deadStockData,
     };
+
+    // ▼▼▼【ここから追加】デバッグログ ▼▼▼
+    console.log("Saving inventory data. Payload:", payload);
+    // ▲▲▲【追加ここまで】▲▲▲
+
     window.showLoading();
     try {
         const res = await fetch('/api/inventory/adjust/save', {
@@ -1578,7 +1623,10 @@ lotNumber: lot
         window.showNotification(resData.message, 'success');
         loadAndRenderDetails(currentYjCode);
     } catch (err) {
+        // ▼▼▼【ここから修正】エラーログを詳細化 ▼▼▼
+        console.error("Failed to save inventory data:", err);
         window.showNotification(err.message, 'error');
+        // ▲▲▲【修正ここまで】▲▲▲
     } finally {
         window.hideLoading();
     }
@@ -1616,12 +1664,18 @@ export async function initInventoryAdjustment() {
 
     outputContainer.addEventListener('input', (e) => {
         const targetClassList = e.target.classList;
+        
+        // ▼▼▼【修正】 .physical-stock-input は readonly になるため、inputイベントは発生しない ▼▼▼
+        /*
         if (targetClassList.contains('physical-stock-input')) {
             reverseCalculateStock();
         }
+        */
+        // ▲▲▲【修正ここまで】▲▲▲
+
         if(targetClassList.contains('lot-quantity-input') || targetClassList.contains('final-inventory-input')){
             const productCode = e.target.dataset.productCode;
-            updateFinalInventoryTotal(productCode);
+            updateFinalInventoryTotal(productCode); // 変更(この関数が reverseCalculateStock を呼ぶ)
         }
     });
     outputContainer.addEventListener('click', (e) => {
@@ -1641,6 +1695,7 @@ newRowHTML = createFinalInputRow(master, null, false);
             const bottomRow = topRow.nextElementSibling;
             const productCode = bottomRow.querySelector('[data-product-code]')?.dataset.productCode;
     
+ 
             topRow.remove();
             bottomRow.remove();
             if(productCode) updateFinalInventoryTotal(productCode);
@@ -1665,8 +1720,7 @@ newRowHTML = createFinalInputRow(master, null, false);
 // C:\Users\wasab\OneDrive\デスクトップ\TKR\static\js\inventory_adjustment_ui.js
 import { getLocalDateString } from './utils.js';
 import { renderTransactionTableHTML } from './common_table.js';
-
-let unitMap = {};
+ let unitMap = {};
 
 /**
  * 単位マップを外部から設定する
@@ -1676,13 +1730,13 @@ export function setUnitMap(map) {
 }
 
 /**
- * 「1. 全体サマリー」セクションのHTMLを生成する
+ * 「1.  全体サマリー」セクションのHTMLを生成する
  */
 function generateSummaryLedgerHtml(yjGroup, yesterdaysTotal) {
     const endDate = getLocalDateString();
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - 30);
-    const startDateStr = startDate.toISOString().slice(0, 10);
+ const startDateStr = startDate.toISOString().slice(0, 10);
     let packageLedgerHtml = (yjGroup.packageLedgers || []).map(pkg => {
         const sortedTxs = (pkg.transactions || []).sort((a, b) => 
             (a.transactionDate + a.id).toString().localeCompare(b.transactionDate + b.id)
@@ -1690,7 +1744,8 @@ function generateSummaryLedgerHtml(yjGroup, yesterdaysTotal) {
         const pkgHeader = `
             <div class="agg-pkg-header adj-pkg-margin">
                  <span>包装: ${pkg.packageKey}</span>
-                <span class="balance-info">
+     
+            <span class="balance-info">
                     本日理論在庫(包装計): ${(pkg.endingBalance || 0).toFixed(2)} ${yjGroup.yjUnitName}
                 </span>
             </div>
@@ -1698,49 +1753,53 @@ function generateSummaryLedgerHtml(yjGroup, yesterdaysTotal) {
         const txTable = renderTransactionTableHTML(sortedTxs);
         return pkgHeader + txTable;
     }).join('');
-    return `<div class="summary-section">
-        <h3 class="view-subtitle">1. 全体サマリー</h3>
+ return `<div class="summary-section">
+        <h3 class="view-subtitle">1.  全体サマリー</h3>
         <div class="report-section-header">
             <h4>在庫元帳 (期間: ${startDateStr} ～ ${endDate})</h4>
             <span class="header-total">【参考】前日理論在庫合計: ${yesterdaysTotal.toFixed(2)} ${yjGroup.yjUnitName}</span>
         </div>
         ${packageLedgerHtml}
     </div>`;
-}
+ }
 
 /**
  * 「2. 棚卸入力」セクションの入力行のHTMLを生成する
  */
 export function createFinalInputRow(master, deadStockRecord = null, isPrimary = false) {
     const actionButtons = isPrimary ?
-`
+ `
         <button type="button" class="btn add-deadstock-row-btn" data-product-code="${master.productCode}">＋</button>
         <button type="button" class="btn register-inventory-btn">登録</button>
     ` : `<button type="button" class="btn delete-deadstock-row-btn">－</button>`;
-    const quantityInputClass = isPrimary ? 'final-inventory-input' : 'lot-quantity-input';
+ const quantityInputClass = isPrimary ? 'final-inventory-input' : 'lot-quantity-input';
     const quantityPlaceholder = isPrimary ? '目安をここに転記' : 'ロット数量';
-    const quantity = deadStockRecord ? deadStockRecord.stockQuantityJan : '';
+ const quantity = deadStockRecord ? deadStockRecord.stockQuantityJan : '';
     const expiry = deadStockRecord ? deadStockRecord.expiryDate : '';
-    const lot = deadStockRecord ? deadStockRecord.lotNumber : '';
+ const lot = deadStockRecord ? deadStockRecord.lotNumber : '';
 
     // ▼▼▼【修正】単価(col-unitprice)をYJ単位薬価に、金額(col-amount)を空欄に変更 ▼▼▼
     const topRow = `<tr class="inventory-row"><td rowspan="2" class="col-action"><div class="action-buttons">${actionButtons}</div></td>
         <td class="col-date">(棚卸日)</td><td class="yj-jan-code col-yj">${master.yjCode}</td><td class="left col-product" colspan="2">${master.productName}</td>
-        <td class="col-count"></td><td class="right col-yjqty"></td><td class="right col-yjpackqty">${master.yjPackUnitQty || ''}</td><td class="col-yjunit">${master.yjUnitName || ''}</td>
-        <td class="right col-unitprice">${master.nhiPrice?.toFixed(4) || ''}</td><td class="col-expiry"><input type="text" class="expiry-input" placeholder="YYYYMM" value="${expiry}"></td><td class="col-wholesaler"></td><td class="col-line"></td></tr>`;
+        <td class="col-count"></td><td class="right col-yjqty"></td><td class="right col-yjpackqty">${master.yjPackUnitQty ||
+ ''}</td><td class="col-yjunit">${master.yjUnitName || ''}</td>
+        <td class="right col-unitprice">${master.nhiPrice?.toFixed(4) ||
+ ''}</td><td class="col-expiry"><input type="text" class="expiry-input" placeholder="YYYYMM" value="${expiry}"></td><td class="col-wholesaler"></td><td class="col-line"></td></tr>`;
     
     const bottomRow = `<tr class="inventory-row"><td class="col-flag">棚卸</td><td class="yj-jan-code col-jan">${master.productCode}</td>
-        <td class="col-package">${master.formattedPackageSpec || ''}</td><td class="col-maker">${master.makerName || ''}</td><td class="col-form">${master.usageClassification || ''}</td>
+        <td class="col-package">${master.formattedPackageSpec ||
+ ''}</td><td class="col-maker">${master.makerName || ''}</td><td class="col-form">${master.usageClassification || ''}</td>
         <td class="right col-janqty"><input type="number" class="${quantityInputClass}" data-product-code="${master.productCode}" placeholder="${quantityPlaceholder}" value="${quantity}" step="any"></td>
-        <td class="right col-janpackqty">${master.janPackUnitQty || ''}</td><td class="col-janunit">${master.janUnitName || ''}</td>
+        <td class="right col-janpackqty">${master.janPackUnitQty ||
+ ''}</td><td class="col-janunit">${master.janUnitName || ''}</td>
         <td class="right col-amount"></td><td class="col-lot"><input type="text" class="lot-input" placeholder="ロット番号" value="${lot}"></td><td class="col-receipt"></td><td class="col-ma"></td></tr>`;
-    // ▲▲▲【修正ここまで】▲▲▲
+ // ▲▲▲【修正ここまで】▲▲▲
     
     return topRow + bottomRow;
 }
 
 /**
- * 「2. 棚卸入力」セクション全体のHTMLを生成する
+ * 「2.  棚卸入力」セクション全体のHTMLを生成する
  */
 function generateInputSectionsHtml(packageLedgers, yjUnitName = '単位', cache, yesterdaysTotal) {
     const packageGroupsHtml = (packageLedgers || []).map(pkgLedger => {
@@ -1749,7 +1808,8 @@ function generateInputSectionsHtml(packageLedgers, yjUnitName = '単位', cache,
             const prevPkg = cache.yesterdaysStock.packageLedgers.find(p => p.packageKey === pkgLedger.packageKey);
             if(prevPkg) {
                 yesterdaysPkgStock = prevPkg.endingBalance || 0;
-            }
+        
+     }
         }
         
         let totalStockDisplay = `${(pkgLedger.endingBalance || 0).toFixed(2)} ${yjUnitName}`;
@@ -1758,87 +1818,97 @@ function generateInputSectionsHtml(packageLedgers, yjUnitName = '単位', cache,
         if (pkgLedger.masters && pkgLedger.masters.length > 0) {
             const firstMaster = pkgLedger.masters[0];
             const janPackInnerQty = firstMaster.janPackInnerQty;
-            const janUnitName = firstMaster.janUnitName;
+          
+   const janUnitName = firstMaster.janUnitName;
             
             if (janPackInnerQty > 0) {
-                const totalJanStock = (pkgLedger.endingBalance || 0) / janPackInnerQty;
+                const totalJanStock = (pkgLedger.endingBalance ||
+ 0) / janPackInnerQty;
                 totalStockDisplay = `${totalJanStock.toFixed(2)} ${janUnitName}`;
                 
                 const yesterdaysTotalJanStock = yesterdaysPkgStock / janPackInnerQty;
                 yesterdaysTotalStockDisplay = `${yesterdaysTotalJanStock.toFixed(2)} ${janUnitName}`;
-            }
+ }
         }
         let html = `
         <div class="package-input-group">
             <div class="agg-pkg-header">
                 <span>包装: ${pkgLedger.packageKey}</span>
             </div>`;
-        html += (pkgLedger.masters || []).map(master => {
+ html += (pkgLedger.masters || []).map(master => {
             if (!master) return '';
             
             const janUnitName = master.janUnitName;
             
+            // ▼▼▼【ここから修正】「① 本日の実在庫数量」に readonly 属性を追加 ▼▼▼
             const userInputArea = `
                 <div class="user-input-area">
-                    <div class="form-group">
+        
+             <div class="form-group">
                         <label>① 本日の実在庫数量（予製除く）:</label>
-                        <input type="number" class="physical-stock-input" data-product-code="${master.productCode}" step="any">
+                        <input type="number" class="physical-stock-input" data-product-code="${master.productCode}" step="any" readonly>
                         <span>(${janUnitName})</span>
-                        <span class="info-text">本日理論在庫(包装計): ${totalStockDisplay}</span>
+          
+               <span class="info-text">本日理論在庫(包装計): ${totalStockDisplay}</span>
                     </div>
+            // ▲▲▲【修正ここまで】▲▲▲
                     <div class="form-group">
                         <label>② 前日在庫(逆算値):</label>
-                        <span class="calculated-previous-day-stock" data-product-code="${master.productCode}">0.00</span>
+                  
+       <span class="calculated-previous-day-stock" data-product-code="${master.productCode}">0.00</span>
                         <span>(${janUnitName})</span>
                         <span class="info-text stock-info">(この数値が棚卸データとして登録されます)</span>
                         <span class="info-text align-right">前日理論在庫(包装計): ${yesterdaysTotalStockDisplay}</span>
-                    </div>
+               
+      </div>
                 </div>`;
-            const relevantDeadStock = (cache.deadStockDetails || []).filter(ds => ds.productCode === master.productCode);
+ const relevantDeadStock = (cache.deadStockDetails || []).filter(ds => ds.productCode === master.productCode);
             let finalInputTbodyHtml;
-            if (relevantDeadStock.length > 0) {
+ if (relevantDeadStock.length > 0) {
                 finalInputTbodyHtml = relevantDeadStock.map((rec, index) => createFinalInputRow(master, rec, index === 0)).join('');
-            } else {
+ } else {
                 finalInputTbodyHtml = createFinalInputRow(master, null, true);
-            }
+ }
             
             const finalInputTable = renderTransactionTableHTML(
                 [], // データは customBody で渡す
                 `<tbody class="final-input-tbody" data-product-code="${master.productCode}">${finalInputTbodyHtml}</tbody>`
             );
-
-            return `<div class="product-input-group">
+ return `<div class="product-input-group">
                         ${userInputArea}
                         <div>
                             <p class="lot-input-header">ロット・期限を個別入力</p>
-                            ${finalInputTable}
+                     
+        ${finalInputTable}
                         </div>
                     </div>`;
-        }).join('');
+ }).join('');
 
         html += `</div>`;
         return html;
     }).join('');
     
     return `<div class="input-section">
-        <h3 class="view-subtitle">2. 棚卸入力</h3>
+        <h3 class="view-subtitle">2.  棚卸入力</h3>
         <div class="inventory-input-area">
             <div class="adj-date-group">
                 <div class="form-group">
                     <label for="inventory-date">棚卸日:</label>
                     <input type="date" id="inventory-date">
                  </div>
+ 
                 <form id="adjustment-barcode-form" class="adj-barcode-form">
                     <div class="form-group">
                         <label for="adjustment-barcode-input">バーコードでロット・期限入力</label>
                         <input type="text" id="adjustment-barcode-input" inputmode="latin" placeholder="GS1-128バーコードをスキャンしてEnter">
-                    </div>
+         
+            </div>
                 </form>
             </div>
         </div>
         ${packageGroupsHtml}
     </div>`;
-}
+ }
 
 /**
  * 「3. 参考」セクションのHTMLを生成する
@@ -1846,18 +1916,18 @@ function generateInputSectionsHtml(packageLedgers, yjUnitName = '単位', cache,
 function generateDeadStockReferenceHtml(deadStockRecords, cache) {
     if (!deadStockRecords || deadStockRecords.length === 0) {
         return '';
-    }
+ }
 
     const getProductName = (productCode) => {
         if (!cache || !cache.transactionLedger) return productCode;
-        for (const yjGroup of cache.transactionLedger) {
+ for (const yjGroup of cache.transactionLedger) {
             for (const pkg of yjGroup.packageLedgers) {
                 const master = (pkg.masters || []).find(m => m.productCode === productCode);
-                if (master) return master.productName;
+ if (master) return master.productName;
             }
         }
         return productCode;
-    };
+ };
 
     const rowsHtml = deadStockRecords.map(rec => `
         <tr>
@@ -1867,26 +1937,27 @@ function generateDeadStockReferenceHtml(deadStockRecords, cache) {
             <td class="left">${rec.lotNumber || ''}</td>
         </tr>
     `).join('');
-    return `
+ return `
         <div class="summary-section input-section">
-            <h3 class="view-subtitle">3. 参考：現在登録済みのロット・期限情報</h3>
-            <p class="reference-section-header">※このリストは参照用です。棚卸情報を保存するには、上の「2. 棚卸入力」の欄に改めて入力してください。</p>
+            <h3 class="view-subtitle">3.  参考：現在登録済みのロット・期限情報</h3>
+            <p class="reference-section-header">※このリストは参照用です。棚卸情報を保存するには、上の「2.  棚卸入力」の欄に改めて入力してください。</p>
             <table class="data-table reference-table">
                 <thead>
                     <tr>
                         <th class="col-ref-product">製品名</th>
-                        <th class="col-ref-qty">在庫数量(JAN)</th>
+                        <th  class="col-ref-qty">在庫数量(JAN)</th>
                         <th class="col-ref-expiry">使用期限</th>
                         <th class="col-ref-lot">ロット番号</th>
                     </tr>
                 </thead>
-                 <tbody>
+              
+    <tbody>
                     ${rowsHtml}
                 </tbody>
             </table>
         </div>
     `;
-}
+ }
 
 /**
  * 棚卸調整画面の全HTMLを生成する
@@ -1894,19 +1965,20 @@ function generateDeadStockReferenceHtml(deadStockRecords, cache) {
 export function generateFullHtml(data, cache) {
     if (!data.transactionLedger || data.transactionLedger.length === 0) {
         return '<p>対象の製品データが見つかりませんでした。</p>';
-    }
+ }
     const yjGroup = data.transactionLedger[0];
     const productName = yjGroup.productName;
-    const yesterdaysTotal = data.yesterdaysStock ? (data.yesterdaysStock.endingBalance || 0) : 0;
+    const yesterdaysTotal = data.yesterdaysStock ?
+ (data.yesterdaysStock.endingBalance || 0) : 0;
     
     const summaryLedgerHtml = generateSummaryLedgerHtml(yjGroup, yesterdaysTotal);
     const inputSectionsHtml = generateInputSectionsHtml(yjGroup.packageLedgers, yjGroup.yjUnitName, cache, yesterdaysTotal);
-    const deadStockReferenceHtml = generateDeadStockReferenceHtml(data.deadStockDetails, cache);
+ const deadStockReferenceHtml = generateDeadStockReferenceHtml(data.deadStockDetails, cache);
     return `<h2 class="adj-header">【棚卸調整】 ${productName} (YJ: ${yjGroup.yjCode})</h2>
         ${summaryLedgerHtml}
         ${inputSectionsHtml}
         ${deadStockReferenceHtml}`;
-}
+ }
 
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\js\master_data.js -----
 // C:\Users\wasab\OneDrive\デスクトップ\TKR\static\js\master_data.js
