@@ -6,18 +6,24 @@ import { initConfigView, loadConfigAndWholesalers } from './config.js';
 import { initUsageUpload, fetchAndRenderUsage } from './usage.js';
 import { initInventoryAdjustment } from './inventory_adjustment_logic.js';
 import { initSearchModal } from './search_modal.js';
-// ▼▼▼【ここに追加】▼▼▼
 import { loadMasterData } from './master_data.js';
+// ▼▼▼【ここに追加】▼▼▼
+import { initInOut, resetInOutView } from './inout.js';
 // ▲▲▲【追加ここまで】▲▲▲
 
 let loadingOverlay, loadingMessage, notificationBox;
-let views, datViewBtn, usageViewBtn, inventoryAdjustmentViewBtn, masterEditViewBtn, configViewBtn;
+// ▼▼▼【ここに追加】▼▼▼
+let views, datViewBtn, usageViewBtn, inventoryAdjustmentViewBtn, masterEditViewBtn, configViewBtn, inoutViewBtn;
+// ▲▲▲【追加ここまで】▲▲▲
 const initializedViews = {
     dat: false,
     usage: false,
     inventoryAdjustment: false,
     masterEdit: false,
     config: false,
+    // ▼▼▼【ここに追加】▼▼▼
+    inout: false,
+    // ▲▲▲【追加ここまで】▲▲▲
 };
 
 window.showLoading = (message = '処理中...') => {
@@ -92,10 +98,19 @@ function setActiveView(targetId) {
             }
             loadConfigAndWholesalers();
             break;
+        // ▼▼▼【ここに追加】▼▼▼
+        case 'inout-view':
+            if (!initializedViews.inout) {
+                console.log("Initializing In/Out view...");
+                initInOut();
+                initializedViews.inout = true;
+            }
+            resetInOutView();
+            break;
+        // ▲▲▲【追加ここまで】▲▲▲
     }
 }
 
-// ▼▼▼【修正】DOMContentLoaded を async に変更 ▼▼▼
 document.addEventListener('DOMContentLoaded', async () => {
     console.log('TKR App Initialized.');
 
@@ -108,12 +123,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     inventoryAdjustmentViewBtn = document.getElementById('inventoryAdjustmentViewBtn');
     masterEditViewBtn = document.getElementById('masterEditViewBtn');
     configViewBtn = document.getElementById('configViewBtn'); 
-
-    // ▼▼▼【ここに追加】マスターデータを起動時に読み込む ▼▼▼
-    await loadMasterData();
+    // ▼▼▼【ここに追加】▼▼▼
+    inoutViewBtn = document.getElementById('inOutViewBtn');
     // ▲▲▲【追加ここまで】▲▲▲
 
-    // 検索モーダルだけは共通部品なので、起動時に初期化する
+    await loadMasterData();
+
     initSearchModal();
 
     if (datViewBtn) {
@@ -132,9 +147,72 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (configViewBtn) {
         configViewBtn.addEventListener('click', () => setActiveView('config-view'));
     }
+    // ▼▼▼【ここに追加】▼▼▼
+    if (inoutViewBtn) {
+        inoutViewBtn.addEventListener('click', () => setActiveView('inout-view'));
+    }
+    // ▲▲▲【追加ここまで】▲▲▲
 
     setActiveView('dat-upload-view');
 });
+
+
+----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\js\common_modal.js -----
+let modalOverlay, modalTitle, modalInput, okButton, cancelButton;
+let currentResolve = null;
+
+function init() {
+    modalOverlay = document.getElementById('input-modal-overlay');
+    modalTitle = document.getElementById('input-modal-title');
+    modalInput = document.getElementById('input-modal-input');
+    okButton = document.getElementById('input-modal-ok');
+    cancelButton = document.getElementById('input-modal-cancel');
+
+    if (!modalOverlay) {
+        console.error('Input modal not found in DOM');
+        return;
+    }
+
+    okButton.addEventListener('click', () => {
+        if (currentResolve) {
+            currentResolve(modalInput.value);
+            currentResolve = null;
+        }
+        hide();
+    });
+
+    cancelButton.addEventListener('click', () => {
+        if (currentResolve) {
+            currentResolve(null); // Resolve with null on cancel
+            currentResolve = null;
+        }
+        hide();
+    });
+
+    modalInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+            okButton.click();
+        }
+    });
+}
+
+function hide() {
+    modalOverlay.classList.add('hidden');
+}
+
+export function showInputModal(title) {
+    return new Promise((resolve) => {
+        currentResolve = resolve;
+        modalTitle.textContent = title;
+        modalInput.value = '';
+        modalOverlay.classList.remove('hidden');
+        setTimeout(() => modalInput.focus(), 50);
+    });
+}
+
+// Initialize on script load
+init();
+
 
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\js\common_table.js -----
 // C:\Users\wasab\OneDrive\デスクトップ\TKR\static\js\common_table.js
@@ -143,6 +221,7 @@ import { wholesalerMap } from './master_data.js';
 // (WASABI: inventory_adjustment_ui.js より)
 const transactionTypeMap = {
 	0: "棚卸", 1: "納品", 2: "返品", 3: "処方",
+    11: "入庫", 12: "出庫"
 };
 
 /**
@@ -688,6 +767,7 @@ function createInoutRowsHTML(record = {}) {
     const yjQuantity = janQuantity * janPackInnerQty;
     const subtotal = yjQuantity * nhiPrice;
     const transactionType = record.flag ? (transactionTypeMap[record.flag] || '') : '';
+    console.log('Record flag:', record.flag, 'Type:', typeof record.flag, 'Mapped type:', transactionType); // デバッグ用ログ
 
     // ▼▼▼【修正】TKRのテーブル定義 (  ) に合わせる (空白列を削除し、col-* クラスを付与) ▼▼▼
     const upperRow = `
@@ -748,7 +828,7 @@ export function populateDetailsTable(records) {
 
 export function clearDetailsTable() {
     if (tableBody) {
-        tableBody.innerHTML = `<tr><td colspan="14">ヘッダーで情報を選択後、「明細を追加」ボタンを押してください。</td></tr>`;
+        tableBody.innerHTML = `<tr id="inout-placeholder-row"><td colspan="13">ヘッダーで情報を選択後、「明細を追加」ボタンを押してください。</td></tr>`;
     }
 }
 
@@ -820,8 +900,9 @@ export function initDetailsTable() {
     clearDetailsTable();
 
     addRowBtn.addEventListener('click', () => {
-        if (tableBody.querySelector('td[colspan="14"]')) {
-            tableBody.innerHTML = '';
+        const placeholderRow = document.getElementById('inout-placeholder-row');
+        if (placeholderRow) {
+            placeholderRow.remove();
         }
         tableBody.insertAdjacentHTML('beforeend', createInoutRowsHTML());
     });
@@ -864,7 +945,7 @@ export function initDetailsTable() {
                 quantityInput.select();
                 recalculateRow(targetRow);
             }, {
-                // TKRではモーダルは検索機能を持たないので、API指定や検索オプションは不要
+                searchMode: 'inout' // JCSHMS統合検索モードを指定
             });
             // ▲▲▲【修正ここまで】▲▲▲
         }
@@ -880,9 +961,8 @@ export function initDetailsTable() {
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\js\inout_header.js -----
 // C:\Users\wasab\OneDrive\デスクトップ\TKR\static\js\inout_header.js
 import { getLocalDateString } from './utils.js';
-// ▼▼▼【修正】TKR の master_data.js を参照 ▼▼▼
 import { clientMap, refreshClientMap } from './master_data.js';
-// ▲▲▲【修正ここまで】▲▲▲
+import { showInputModal } from './common_modal.js';
 
 const NEW_ENTRY_VALUE = '--new--';
 let clientSelect, receiptSelect, saveBtn, deleteBtn, headerDateInput, headerTypeSelect;
@@ -936,6 +1016,7 @@ export function resetHeader() {
 	newClientName = null;
 	currentLoadedReceipt = null;
 	deleteBtn.disabled = true;
+	clientSelect.value = ''; // デフォルトを「選択してください」に設定
 	headerDateInput.dispatchEvent(new Event('change'));
 }
 
@@ -949,16 +1030,28 @@ export async function initHeader(getDetailsData, clearDetailsTable, populateDeta
 
 	if (!clientSelect || !receiptSelect || !saveBtn || !deleteBtn) return;
 
-	headerDateInput.addEventListener('change', async () => {
-		const date = headerDateInput.value.replace(/-/g, '');
-		if (!date) return;
-		try {
-            // ▼▼▼【修正】TKRのAPIエンドポイント /api/receipts/by_date を使用 ▼▼▼
-			const res = await fetch(`/api/receipts/by_date?date=${date}`);
-			if (!res.ok) throw new Error('伝票の取得に失敗');
-			const receiptNumbers = await res.json();
-			
-			receiptSelect.innerHTML = `
+	// --- Refactored Receipt Fetching ---
+    async function fetchReceipts() {
+        const date = headerDateInput.value.replace(/-/g, '');
+        const clientCode = clientSelect.value;
+
+        if (!date) return;
+
+        // Don't fetch if the client is a pending new client
+        if (clientCode.startsWith('new:')) return;
+
+        const params = new URLSearchParams({ date });
+        if (clientCode) {
+            params.append('client', clientCode);
+        }
+
+        try {
+            const res = await fetch(`/api/receipts/by_date?${params.toString()}`);
+            if (!res.ok) throw new Error('伝票の取得に失敗');
+            const receiptNumbers = await res.json();
+            
+            const currentReceipt = receiptSelect.value;
+            receiptSelect.innerHTML = `
 				<option value="">選択してください</option>
 				<option value="${NEW_ENTRY_VALUE}">--- 新規作成 ---</option>
 			`;
@@ -967,29 +1060,50 @@ export async function initHeader(getDetailsData, clearDetailsTable, populateDeta
 					const opt = document.createElement('option');
 					opt.value = num;
 					opt.textContent = num;
+                    if (num === currentReceipt) {
+                        opt.selected = true;
+                    }
 					receiptSelect.appendChild(opt);
 				});
 			}
-		} catch (err) { console.error(err); }
-	});
+        } catch (err) { 
+            console.error(err);
+            receiptSelect.innerHTML = `
+				<option value="">日付を選択してください</option>
+				<option value="${NEW_ENTRY_VALUE}">--- 新規作成 ---</n>
+			`;
+        }
+    }
 
-	clientSelect.addEventListener('change', () => {
-		const selectedValue = clientSelect.value;
-		if (selectedValue === NEW_ENTRY_VALUE) {
-			const name = prompt('新しい得意先名を入力してください:');
-			if (name && name.trim()) {
-				newClientName = name.trim();
-				const opt = document.createElement('option');
-				opt.value = `new:${newClientName}`;
-				opt.textContent = `[新規] ${newClientName}`;
-				opt.selected = true;
-				clientSelect.appendChild(opt);
-			} else {
-				clientSelect.value = '';
-			}
-		} else if (!selectedValue.startsWith('new:')) {
-			newClientName = null;
-		}
+    headerDateInput.addEventListener('change', fetchReceipts);
+
+	clientSelect.addEventListener('change', async (e) => {
+        const selectedValue = e.target.value;
+
+        if (selectedValue === NEW_ENTRY_VALUE) {
+            const name = await showInputModal('新しい得意先名を入力してください');
+            if (name && name.trim()) {
+                newClientName = name.trim();
+                const opt = document.createElement('option');
+                opt.value = `new:${newClientName}`;
+                opt.textContent = `[新規] ${newClientName}`;
+                opt.selected = true;
+                clientSelect.appendChild(opt);
+                // 新規クライアントの場合、伝票リストはクリアする
+                receiptSelect.innerHTML = `
+				    <option value="">選択してください</option>
+				    <option value="${NEW_ENTRY_VALUE}">--- 新規作成 ---</option>
+			    `;
+            } else {
+                clientSelect.value = '';
+                fetchReceipts(); // キャンセルされたら、得意先未選択の状態で再取得
+            }
+        } else {
+            if (!selectedValue.startsWith('new:')) {
+                newClientName = null;
+            }
+            fetchReceipts(); // 既存の得意先が選択されたら、伝票を再取得
+        }
 	});
 
 	receiptSelect.addEventListener('change', async () => {
@@ -1050,6 +1164,7 @@ export async function initHeader(getDetailsData, clearDetailsTable, populateDeta
 			records: records,
 			originalReceiptNumber: currentLoadedReceipt
 		};
+        console.log('Saving payload:', payload); // デバッグ用ログ
 		window.showLoading();
 		try {
             // ▼▼▼【修正】TKRのAPIエンドポイント /api/inout/save を使用 ▼▼▼
@@ -2228,35 +2343,66 @@ export function initMasterEditView() {
 }
 
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\js\search_modal.js -----
-// C:\Users\wasab\OneDrive\デスクトップ\TKR\static\js\search_modal.js
-import { hiraganaToKatakana, parseBarcode, fetchProductMasterByBarcode } from './utils.js';
+import { hiraganaToKatakana } from './utils.js';
+
 let activeCallback = null;
 let activeRowElement = null;
 
 let modal, closeModalBtn, searchResultsBody;
-// 検索UI関連の変数は削除
-// let modalGs1Input, modalUsageClassRadios, modalKanaInput, modalGenericInput, modalShelfInput;
-// let modalGs1Form;
+let searchBtn;
+let modalGs1Input, modalUsageClassRadios, modalKanaInput, modalGenericInput, modalShelfInput;
+let modalGs1Form;
 
 function hideModal() {
   if (modal) {
-        modal.classList.add('hidden');
+    modal.classList.add('hidden');
     document.body.classList.remove('modal-open');
   }
 }
 
 function handleResultClick(event) {
-  if (event.target && event.target.classList.contains('select-product-btn')) {
-    const product = JSON.parse(event.target.dataset.product);
+  if (!event.target.classList.contains('select-product-btn')) return;
+
+  const product = JSON.parse(event.target.dataset.product);
+
+  if (product.isAdopted) {
+    // 既に採用済みの場合は、そのままコールバックを呼ぶ
     if (typeof activeCallback === 'function') {
       activeCallback(product, activeRowElement);
     }
     hideModal();
+  } else {
+    // 未採用の場合は、バックエンドで採用処理を行う
+    if (!confirm(`「${product.productName}」をマスターに新規採用します。よろしいですか？`)) {
+        return;
+    }
+    window.showLoading('マスターに採用中...');
+    fetch('/api/master/adopt', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ gs1Code: product.gs1Code })
+    })
+    .then(res => {
+        if (!res.ok) {
+            return res.text().then(text => { throw new Error(text || '採用処理に失敗しました') });
+        }
+        return res.json();
+    })
+    .then(adoptedMaster => {
+        window.hideLoading();
+        window.showNotification(`「${adoptedMaster.productName}」をマスターに採用しました。`, 'success');
+        if (typeof activeCallback === 'function') {
+            // 新しく採用されたマスター情報をコールバックに渡す
+            activeCallback(adoptedMaster, activeRowElement);
+        }
+        hideModal();
+    })
+    .catch(err => {
+        window.hideLoading();
+        window.showNotification(`エラー: ${err.message}`, 'error');
+    });
   }
 }
-
-// performSearch 関数を削除
-// handleGs1Search 関数を削除
 
 function renderSearchResults(products) {
   if (!products || products.length === 0) {
@@ -2266,38 +2412,105 @@ function renderSearchResults(products) {
   let html = '';
   products.forEach(p => {
     const productData = JSON.stringify(p);
+    const spec = p.formattedPackageSpec || `${p.packageForm || ''} ${p.specification || ''}`;
     html += `
       <tr class="${p.isAdopted ? 'adopted-item' : ''}">
         <td class="left">${p.productName || ''}</td>
         <td class="left">${p.makerName || ''}</td>
-        <td class="left">${p.formattedPackageSpec}</td>
+        <td class="left">${spec}</td>
         <td>${p.yjCode || ''}</td>
         <td>${p.productCode || ''}</td>
-        <td><button typebutton" class="select-product-btn btn" data-product='${productData.replace(/'/g, "&apos;")}'>選択</button></td>
+        <td><button type="button" class="select-product-btn btn" data-product='${productData.replace(/'/g, "&apos;")}'>選択</button></td>
       </tr>
-  
- 
     `;
   });
   searchResultsBody.innerHTML = html;
 }
+
+async function performSearch() {
+    const kanaName = modalKanaInput ? hiraganaToKatakana(modalKanaInput.value.trim()) : '';
+    const genericName = modalGenericInput ? modalGenericInput.value.trim() : '';
+    const shelfNumber = modalShelfInput ? modalShelfInput.value.trim() : '';
+    const selectedUsageRadio = modalUsageClassRadios ? document.querySelector('input[name="modal_usage_class"]:checked') : null;
+    const usageClass = selectedUsageRadio ? selectedUsageRadio.value : '';
+
+    const params = new URLSearchParams();
+    params.append('kanaName', kanaName);
+    params.append('genericName', genericName);
+    params.append('shelfNumber', shelfNumber);
+    params.append('dosageForm', usageClass);
+    if (modal.dataset.searchMode) {
+        params.append('searchMode', modal.dataset.searchMode);
+    }
+
+    window.showLoading('品目リストを検索中...');
+    try {
+        const fullUrl = `/api/products/search_filtered?${params.toString()}`;
+        const res = await fetch(fullUrl);
+        if (!res.ok) {
+            throw new Error(`品目リストの取得に失敗しました: ${res.status}`);
+        }
+        const products = await res.json();
+        renderSearchResults(products);
+    } catch (err) {
+        searchResultsBody.innerHTML = '<tr><td colspan="6" class="center" style="color:red;">検索エラー: ' + err.message + '</td></tr>';
+        window.showNotification(err.message, 'error');
+    } finally {
+        window.hideLoading();
+    }
+}
+
+async function handleGs1Search(event) {
+    event.preventDefault();
+    if (!modalGs1Input) return;
+    const barcode = modalGs1Input.value.trim();
+    if (!barcode) return;
+
+    window.showLoading('マスターを検索中...');
+    try {
+        const res = await fetch(`/api/product/by_barcode/${barcode}`);
+        if (!res.ok) {
+             const errText = await res.text();
+             throw new Error(errText || '製品の検索に失敗しました。');
+        }
+        const master = await res.json();
+        if (typeof activeCallback === 'function') {
+            activeCallback(master, activeRowElement);
+        }
+        hideModal();
+    } catch (err) {
+        window.showNotification(`エラー: ${err.message}`, 'error');
+    } finally {
+        window.hideLoading();
+        modalGs1Input.value = '';
+    }
+}
+
+
 export function initSearchModal() {
   modal = document.getElementById('tkr-search-modal-overlay');
   closeModalBtn = document.getElementById('closeSearchModalBtn');
-  // searchBtn = document.getElementById('product-search-btn'); // 削除
   const searchResultsTable = document.getElementById('search-results-table');
   searchResultsBody = searchResultsTable ? searchResultsTable.querySelector('tbody') : null;
-  // modalGs1Form = document.getElementById('modal-search-gs1-form'); // 削除
-  // modalGs1Input = document.getElementById('modal-search-gs1'); // 削除
-  // ... (他の検索UI要素の取得も削除)
+  
+  searchBtn = document.getElementById('product-search-btn');
+  modalGs1Form = document.getElementById('modal-search-gs1-form');
+  modalGs1Input = document.getElementById('modal-search-gs1');
+  modalUsageClassRadios = document.getElementById('modal-search-usage-class');
+  modalKanaInput = document.getElementById('modal-search-kana');
+  modalGenericInput = document.getElementById('modal-search-generic');
+  modalShelfInput = document.getElementById('modal-search-shelf');
 
-  if (!modal || !closeModalBtn || !searchResultsBody) {
+  if (!modal || !closeModalBtn || !searchResultsBody || !searchBtn) {
     console.error("品目検索モーダルの必須要素が見つかりません。");
     return;
   }
   
   closeModalBtn.addEventListener('click', hideModal);
-  // 検索ボタン、GS1フォーム、キープレスイベントリスナーを削除
+  searchBtn.addEventListener('click', performSearch);
+  if (modalGs1Form) {
+    modalGs1Form.addEventListener('submit', handleGs1Search);
+  }
   searchResultsBody.addEventListener('click', handleResultClick);
 }
 
@@ -2309,15 +2522,17 @@ export function showModal(rowElement, callback, options = {}) {
   document.body.classList.add('modal-open');
   activeRowElement = rowElement;
   activeCallback = callback; 
+  modal.dataset.searchMode = options.searchMode || ''; // searchModeを保存
   
   modal.classList.remove('hidden');
     
   if (options.initialResults) {
       renderSearchResults(options.initialResults);
   } else {
-      searchResultsBody.innerHTML = '<tr><td colspan="6" class="center">メイン画面で検索を実行してください。</td></tr>';
+      searchResultsBody.innerHTML = '<tr><td colspan="6" class="center">検索条件を入力して検索してください。</td></tr>';
   }
 }
+
 
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\js\usage.js -----
 // C:\Users\wasab\OneDrive\デスクトップ\TKR\static\js\usage.js

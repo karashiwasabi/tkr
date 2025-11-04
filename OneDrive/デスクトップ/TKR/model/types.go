@@ -243,3 +243,14 @@ type DeadStockRecord struct {
 	ExpiryDate       string  `json:"expiryDate"`
 	LotNumber        string  `json:"lotNumber"`
 }
+
+// ▼▼▼【ここから追加】▼▼▼
+// PackageStock は package_stock テーブルのレコードです。
+type PackageStock struct {
+	PackageKey        string  `db:"package_key"`
+	YjCode            string  `db:"yj_code"`
+	StockQuantityYj   float64 `db:"stock_quantity_yj"`
+	LastInventoryDate string  `db:"last_inventory_date"`
+}
+
+// ▲▲▲【追加ここまで】▲▲▲

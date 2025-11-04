@@ -13,8 +13,8 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
-// ... (signedYjQty, GetStockLedger 関数は変更なし) ...
-func signedYjQty(flag int, yjQty float64) float64 {
+// ... (signedYjQty 関数は変更なし) ...
+func signedYjQty(flag int, yjQty float64) float64 { //
 	switch flag {
 	case 1: // 納品
 		return yjQty
@@ -24,6 +24,8 @@ func signedYjQty(flag int, yjQty float64) float64 {
 		return 0
 	}
 }
+
+// ▼▼▼【ここから修正】GetStockLedger の在庫計算ロジックを変更 ▼▼▼
 func GetStockLedger(conn *sqlx.DB, filters model.AggregationFilters) ([]model.StockLedgerYJGroup, error) {
 	mastersByYjCode, yjCodes, err := GetFilteredMastersAndYjCodes(conn, filters)
 	if err != nil {
@@ -36,18 +38,22 @@ func GetStockLedger(conn *sqlx.DB, filters model.AggregationFilters) ([]model.St
 	if err != nil {
 		return nil, fmt.Errorf("failed to get all product codes for yj codes: %w", err)
 	}
-	allMasters, err := getMastersByProductCodes(conn, allProductCodes)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get all masters for product codes: %w", err)
-	}
 	transactionsByProductCode, err := getTransactionsByProductCodes(conn, allProductCodes)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get all transactions for product codes: %w", err)
 	}
+
+	// ▼▼▼【ここから追加】YJコードに紐づく包装在庫の起点マップを取得 ▼▼▼
+	packageStockMap, err := database.GetPackageStockByYjCode(conn, filters.YjCode) //
+	if err != nil {
+		return nil, fmt.Errorf("failed to get package stock map: %w", err)
+	}
+	// ▲▲▲【追加ここまで】▲▲▲
+
 	var result []model.StockLedgerYJGroup
 	for _, yjCode := range yjCodes {
 		mastersInYjGroup, ok := mastersByYjCode[yjCode]
-		if !ok || len(mastersInYjGroup) == 0 {
+		if !ok || len(mastersInYjGroup) == 0 { //
 			continue
 		}
 		var representativeProductName, representativeYjUnitName string
@@ -65,81 +71,52 @@ func GetStockLedger(conn *sqlx.DB, filters model.AggregationFilters) ([]model.St
 			ProductName: representativeProductName,
 			YjUnitName:  units.ResolveName(representativeYjUnitName),
 		}
-		var allTxsForYjGroup []*model.TransactionRecord
-		for _, m := range allMasters {
-			if m.YjCode == yjCode {
-				txs, ok := transactionsByProductCode[m.ProductCode]
-				if ok {
-					for i := range txs {
-						allTxsForYjGroup = append(allTxsForYjGroup, &txs[i])
-					}
-				}
-			}
-		}
-		sort.Slice(allTxsForYjGroup, func(i, j int) bool {
-			if allTxsForYjGroup[i].TransactionDate != allTxsForYjGroup[j].TransactionDate {
-				return allTxsForYjGroup[i].TransactionDate < allTxsForYjGroup[j].TransactionDate
-			}
-			return allTxsForYjGroup[i].ID < allTxsForYjGroup[j].ID
-		})
-		latestInventoryDateForGroup := ""
-		for _, t := range allTxsForYjGroup {
-			if t.Flag == 0 && t.TransactionDate > latestInventoryDateForGroup {
-				latestInventoryDateForGroup = t.TransactionDate
-			}
-		}
+
 		mastersByPackageKey := make(map[string][]*model.ProductMaster)
-		for _, m := range mastersInYjGroup {
-			key := fmt.Sprintf("%s|%s|%g|%s", m.YjCode, m.PackageForm, m.JanPackInnerQty, m.YjUnitName)
+		for _, m := range mastersInYjGroup { //
+			// ▼▼▼【修正】units.ResolveName を使ってキーを生成 ▼▼▼
+			key := fmt.Sprintf("%s|%s|%g|%s", m.YjCode, m.PackageForm, m.JanPackInnerQty, units.ResolveName(m.YjUnitName)) //
+			// ▲▲▲【修正ここまで】▲▲▲
 			mastersByPackageKey[key] = append(mastersByPackageKey[key], m)
 		}
 		var allPackageLedgers []model.StockLedgerPackageGroup
 		for key, mastersInPackageGroup := range mastersByPackageKey {
+
+			// ▼▼▼【ここから修正】在庫起点を package_stock テーブルから取得 ▼▼▼
 			var startingBalance float64
-			if latestInventoryDateForGroup != "" {
-				baseStockOnDate := 0.0
-				for _, m := range mastersInPackageGroup {
-					txs, ok := transactionsByProductCode[m.ProductCode]
-					if !ok {
-						continue
-					}
-					for _, t := range txs {
-						if t.Flag == 0 && t.TransactionDate == latestInventoryDateForGroup {
-							baseStockOnDate += t.YjQuantity
-						}
-					}
-				}
-				netChangeAfterInv := 0.0
-				for _, m := range mastersInPackageGroup {
-					txs, ok := transactionsByProductCode[m.ProductCode]
-					if !ok {
-						continue
-					}
-					for _, t := range txs {
-						if t.TransactionDate > latestInventoryDateForGroup && t.TransactionDate < filters.StartDate {
-							netChangeAfterInv += signedYjQty(t.Flag, t.YjQuantity)
-						}
-					}
-				}
-				startingBalance = baseStockOnDate + netChangeAfterInv
+			var stockStartDate string // 在庫計算の開始日 (この日を含まない)
+
+			if stockInfo, ok := packageStockMap[key]; ok { //
+				// 1. package_stock に記録がある場合
+				startingBalance = stockInfo.StockQuantityYj  //
+				stockStartDate = stockInfo.LastInventoryDate //
 			} else {
-				netChangeBeforePeriod := 0.0
-				for _, m := range mastersInPackageGroup {
-					txs, ok := transactionsByProductCode[m.ProductCode]
-					if !ok {
-						continue
-					}
-					for _, t := range txs {
-						if t.TransactionDate < filters.StartDate {
-							netChangeBeforePeriod += signedYjQty(t.Flag, t.YjQuantity)
-						}
-					}
-				}
-				startingBalance = netChangeBeforePeriod
+				// 2. package_stock に記録がない場合 (初回起動時など)
+				startingBalance = 0.0       //
+				stockStartDate = "00000000" // 全期間を集計対象とする //
 			}
-			var transactionsInPeriod []model.LedgerTransaction
-			var netChange float64
-			runningBalance := startingBalance
+
+			// 3. 起点日(stockStartDate)の *翌日* から、フィルタの終了日(EndDate)までの増減(flag=1, 3)を計算
+			netChangeAfterStockDate := 0.0
+			for _, m := range mastersInPackageGroup {
+				txs, ok := transactionsByProductCode[m.ProductCode]
+				if !ok {
+					continue
+				}
+				for _, t := range txs {
+					// ▼▼▼【修正】stockStartDate より後 (>)、かつ EndDate 以前 (<=) の取引を集計 ▼▼▼
+					if t.TransactionDate > stockStartDate && t.TransactionDate <= filters.EndDate { //
+						netChangeAfterStockDate += signedYjQty(t.Flag, t.YjQuantity) //
+					}
+					// ▲▲▲【修正ここまで】▲▲▲
+				}
+			}
+
+			// 4. 現在の理論在庫 = 起点在庫 + 起点日以降の増減
+			currentTheoreticalStock := startingBalance + netChangeAfterStockDate //
+
+			// 5. フィルタの開始日(StartDate)時点の期首在庫を逆算
+			netChangeInPeriod := 0.0
 			var txsForPackageInPeriod []*model.TransactionRecord
 			for _, m := range mastersInPackageGroup {
 				txs, ok := transactionsByProductCode[m.ProductCode]
@@ -148,58 +125,81 @@ func GetStockLedger(conn *sqlx.DB, filters model.AggregationFilters) ([]model.St
 				}
 				for _, t := range txs {
 					if t.TransactionDate >= filters.StartDate && t.TransactionDate <= filters.EndDate {
+						// 期間内の取引 (flag=1, 3) の増減
+						netChangeInPeriod += signedYjQty(t.Flag, t.YjQuantity) //
+						// 期間内の全取引 (flag=0 も含む) を台帳表示用にコピー
 						txCopy := t
-						txsForPackageInPeriod = append(txsForPackageInPeriod, &txCopy)
+						txsForPackageInPeriod = append(txsForPackageInPeriod, &txCopy) //
 					}
 				}
 			}
-			sort.Slice(txsForPackageInPeriod, func(i, j int) bool {
+
+			// 期首在庫 = 現在の理論在庫 - 期間内の増減
+			periodStartingBalance := currentTheoreticalStock - netChangeInPeriod //
+
+			// ▲▲▲【修正ここまで】在庫起点の計算 ▲▲▲
+
+			// ▼▼▼【ここから修正】台帳表示ロジック (期首在庫を起点にする) ▼▼▼
+			var transactionsInPeriod []model.LedgerTransaction
+			runningBalance := periodStartingBalance // 起点を periodStartingBalance に変更 //
+
+			sort.Slice(txsForPackageInPeriod, func(i, j int) bool { //
 				if txsForPackageInPeriod[i].TransactionDate != txsForPackageInPeriod[j].TransactionDate {
 					return txsForPackageInPeriod[i].TransactionDate < txsForPackageInPeriod[j].TransactionDate
 				}
 				return txsForPackageInPeriod[i].ID < txsForPackageInPeriod[j].ID
 			})
-			periodInventorySums := make(map[string]float64)
+
+			// 期間内の棚卸合計 (flag=0) を日付ごとに集計
+			periodInventorySums := make(map[string]float64) //
 			for _, t := range txsForPackageInPeriod {
 				if t.Flag == 0 {
-					periodInventorySums[t.TransactionDate] += t.YjQuantity
+					periodInventorySums[t.TransactionDate] += t.YjQuantity //
 				}
 			}
+
 			lastProcessedDate := ""
 			for _, t := range txsForPackageInPeriod {
-				if t.TransactionDate != lastProcessedDate && lastProcessedDate != "" {
-					if inventorySum, ok := periodInventorySums[lastProcessedDate]; ok {
-						runningBalance = inventorySum
+				// 日付が変わる瞬間に、前日の棚卸(flag=0)を反映させる
+				if t.TransactionDate != lastProcessedDate && lastProcessedDate != "" { //
+					if inventorySum, ok := periodInventorySums[lastProcessedDate]; ok { //
+						runningBalance = inventorySum // 在庫を棚卸値で上書き //
 					}
 				}
+
 				if t.Flag == 0 {
-					if inventorySum, ok := periodInventorySums[t.TransactionDate]; ok {
-						runningBalance = inventorySum
-					}
+					// 棚卸当日。この時点ではまだ増減させない（次の日付の処理で上書きされる）
 				} else {
-					runningBalance += signedYjQty(t.Flag, t.YjQuantity)
+					runningBalance += signedYjQty(t.Flag, t.YjQuantity) // 納品・処方を加算 //
 				}
-				transactionsInPeriod = append(transactionsInPeriod, model.LedgerTransaction{TransactionRecord: *t, RunningBalance: runningBalance})
-				netChange += signedYjQty(t.Flag, t.YjQuantity)
-				lastProcessedDate = t.TransactionDate
+
+				transactionsInPeriod = append(transactionsInPeriod, model.LedgerTransaction{TransactionRecord: *t, RunningBalance: runningBalance}) //
+				lastProcessedDate = t.TransactionDate                                                                                               //
 			}
+
+			// 最終日の棚卸(flag=0)を反映
+			if inventorySum, ok := periodInventorySums[lastProcessedDate]; ok { //
+				runningBalance = inventorySum //
+			}
+			// ▲▲▲【修正ここまで】台帳表示ロジック ▲▲▲
+
 			pkg := model.StockLedgerPackageGroup{
 				PackageKey:      key,
-				StartingBalance: startingBalance,
-				EndingBalance:   runningBalance,
+				StartingBalance: periodStartingBalance, // 期間の期首在庫 //
+				EndingBalance:   runningBalance,        // 期間の期末在庫 //
 				Transactions:    transactionsInPeriod,
-				NetChange:       netChange,
+				NetChange:       netChangeInPeriod, // 期間内の増減 //
 				Masters:         mastersInPackageGroup,
 			}
 			allPackageLedgers = append(allPackageLedgers, pkg)
 		}
-		if len(allPackageLedgers) > 0 {
+		if len(allPackageLedgers) > 0 { //
 			var yjTotalEnding, yjTotalNetChange, yjTotalStarting float64
 			for _, pkg := range allPackageLedgers {
-				if start, ok := pkg.StartingBalance.(float64); ok {
+				if start, ok := pkg.StartingBalance.(float64); ok { //
 					yjTotalStarting += start
 				}
-				if end, ok := pkg.EndingBalance.(float64); ok {
+				if end, ok := pkg.EndingBalance.(float64); ok { //
 					yjTotalEnding += end
 				}
 				yjTotalNetChange += pkg.NetChange
@@ -211,7 +211,7 @@ func GetStockLedger(conn *sqlx.DB, filters model.AggregationFilters) ([]model.St
 			result = append(result, yjGroup)
 		}
 	}
-	sort.Slice(result, func(i, j int) bool {
+	sort.Slice(result, func(i, j int) bool { //
 		prio := map[string]int{"内": 1, "外": 2, "注": 3, "他": 4}
 		masterI := mastersByYjCode[result[i].YjCode][0]
 		masterJ := mastersByYjCode[result[j].YjCode][0]
@@ -231,36 +231,38 @@ func GetStockLedger(conn *sqlx.DB, filters model.AggregationFilters) ([]model.St
 	return result, nil
 }
 
+// ▲▲▲【修正ここまで】▲▲▲
+
 // ▼▼▼【ここから修正】GetFilteredMastersAndYjCodes の kanaName フィルタロジックを変更 ▼▼▼
 func GetFilteredMastersAndYjCodes(conn *sqlx.DB, filters model.AggregationFilters) (map[string][]*model.ProductMaster, []string, error) {
-	query := `SELECT * FROM product_master p WHERE 1=1 `
+	query := `SELECT * FROM product_master p WHERE 1=1 ` //
 	var args []interface{}
 	if filters.YjCode != "" {
-		query += " AND p.yj_code = ? "
+		query += " AND p.yj_code = ? " //
 		args = append(args, filters.YjCode)
 	}
 	if filters.KanaName != "" {
 		// ▼▼▼【修正】製品名(product_name)でのOR検索を削除 ▼▼▼
-		query += " AND p.kana_name LIKE ? "
-		args = append(args, filters.KanaName+"%") // カナ名は前方一致のみ
+		query += " AND p.kana_name LIKE ? "       //
+		args = append(args, filters.KanaName+"%") // カナ名は前方一致のみ //
 		// ▲▲▲【修正ここまで】▲▲▲
 	}
 	// ★一般名フィルタを追加
 	if filters.GenericName != "" {
-		query += " AND p.generic_name LIKE ?"
+		query += " AND p.generic_name LIKE ?" //
 		args = append(args, "%"+filters.GenericName+"%")
 	}
 	if filters.DosageForm != "" && filters.DosageForm != "all" {
-		query += " AND p.usage_classification = ?"
+		query += " AND p.usage_classification = ?" //
 		args = append(args, filters.DosageForm)
 	}
 	if filters.ShelfNumber != "" {
-		query += " AND p.shelf_number LIKE ? "
+		query += " AND p.shelf_number LIKE ? " //
 		args = append(args, "%"+filters.ShelfNumber+"%")
 	}
 
 	// ★ソート順を kana_name に変更
-	query += " ORDER BY p.kana_name "
+	query += " ORDER BY p.kana_name " //
 
 	rows, err := conn.Queryx(query, args...)
 	if err != nil {
@@ -278,7 +280,7 @@ func GetFilteredMastersAndYjCodes(conn *sqlx.DB, filters model.AggregationFilter
 			return nil, nil, err
 		}
 		if m.YjCode != "" {
-			mastersByYjCode[m.YjCode] = append(mastersByYjCode[m.YjCode], &m)
+			mastersByYjCode[m.YjCode] = append(mastersByYjCode[m.YjCode], &m) //
 			if !yjCodeMap[m.YjCode] {
 				yjCodeMap[m.YjCode] = true
 				yjCodes = append(yjCodes, m.YjCode) // 検索結果のソート順でYJコードを追加
@@ -292,20 +294,20 @@ func GetFilteredMastersAndYjCodes(conn *sqlx.DB, filters model.AggregationFilter
 // ▲▲▲【修正ここまで】▲▲▲
 
 // ... (getAllProductCodesForYjCodes, getMastersByProductCodes, getTransactionsByProductCodes 関数は変更なし) ...
-func getAllProductCodesForYjCodes(conn *sqlx.DB, yjCodes []string) ([]string, error) {
+func getAllProductCodesForYjCodes(conn *sqlx.DB, yjCodes []string) ([]string, error) { //
 	if len(yjCodes) == 0 {
 		return []string{}, nil
 	}
 	query, args, err := sqlx.In(`
 		SELECT DISTINCT product_code FROM product_master WHERE yj_code IN (?)
 		UNION
-		SELECT DISTINCT jan_code FROM transaction_records WHERE yj_code IN (?)`, yjCodes, yjCodes)
+		SELECT DISTINCT jan_code FROM transaction_records WHERE yj_code IN (?)`, yjCodes, yjCodes) //
 	if err != nil {
 		return nil, fmt.Errorf("failed to create IN query for all product codes: %w", err)
 	}
 	query = conn.Rebind(query)
 	var codes []string
-	if err := conn.Select(&codes, query, args...); err != nil {
+	if err := conn.Select(&codes, query, args...); err != nil { //
 		return nil, err
 	}
 	var validCodes []string
@@ -316,13 +318,13 @@ func getAllProductCodesForYjCodes(conn *sqlx.DB, yjCodes []string) ([]string, er
 	}
 	return validCodes, nil
 }
-func getMastersByProductCodes(conn *sqlx.DB, productCodes []string) (map[string]*model.ProductMaster, error) {
+func getMastersByProductCodes(conn *sqlx.DB, productCodes []string) (map[string]*model.ProductMaster, error) { //
 	mastersMap := make(map[string]*model.ProductMaster)
 	if len(productCodes) == 0 {
 		return mastersMap, nil
 	}
 	const batchSize = 500
-	for i := 0; i < len(productCodes); i += batchSize {
+	for i := 0; i < len(productCodes); i += batchSize { //
 		end := i + batchSize
 		if end > len(productCodes) {
 			end = len(productCodes)
@@ -340,7 +342,7 @@ func getMastersByProductCodes(conn *sqlx.DB, productCodes []string) (map[string]
 			}
 			for rows.Next() {
 				var m model.ProductMaster
-				if err := rows.StructScan(&m); err != nil {
+				if err := rows.StructScan(&m); err != nil { //
 					rows.Close()
 					return nil, err
 				}
@@ -351,20 +353,20 @@ func getMastersByProductCodes(conn *sqlx.DB, productCodes []string) (map[string]
 	}
 	return mastersMap, nil
 }
-func getTransactionsByProductCodes(conn *sqlx.DB, productCodes []string) (map[string][]model.TransactionRecord, error) {
+func getTransactionsByProductCodes(conn *sqlx.DB, productCodes []string) (map[string][]model.TransactionRecord, error) { //
 	transactionsMap := make(map[string][]model.TransactionRecord)
 	if len(productCodes) == 0 {
 		return transactionsMap, nil
 	}
 	const batchSize = 500
-	for i := 0; i < len(productCodes); i += batchSize {
+	for i := 0; i < len(productCodes); i += batchSize { //
 		end := i + batchSize
 		if end > len(productCodes) {
 			end = len(productCodes)
 		}
 		batch := productCodes[i:end]
 		if len(batch) > 0 {
-			query, args, err := sqlx.In("SELECT "+database.TransactionColumns+" FROM transaction_records WHERE jan_code IN (?) ORDER BY transaction_date, id", batch)
+			query, args, err := sqlx.In("SELECT "+database.TransactionColumns+" FROM transaction_records WHERE jan_code IN (?) ORDER BY transaction_date, id", batch) //
 			if err != nil {
 				return nil, err
 			}
@@ -992,13 +994,12 @@ func SaveDeadStockListInTx(tx *sqlx.Tx, records []model.DeadStockRecord) error {
 package database
 
 import (
-	"database/sql" // ▼▼▼【ここに追加】▼▼▼
+	"database/sql"
 	"fmt"
-	"strconv"     // ▼▼▼【ここに追加】▼▼▼
-	"tkr/mappers" // ▼▼▼【ここに追加】▼▼▼
+	"strconv"
+	"tkr/mappers"
 	"tkr/model"
-
-	// "tkr/units" // 削除 (mappers が担当)
+	"tkr/units" //
 
 	"github.com/jmoiron/sqlx"
 )
@@ -1010,7 +1011,7 @@ func DeleteTransactionsByFlagAndDateAndCodes(tx *sqlx.Tx, flag int, date string,
 		return nil
 	}
 
-	query, args, err := sqlx.In(`DELETE FROM transaction_records WHERE flag = ? AND transaction_date = ? AND jan_code IN (?)`, flag, date, productCodes)
+	query, args, err := sqlx.In(`DELETE FROM transaction_records WHERE flag = ? AND transaction_date = ? AND jan_code IN (?)`, flag, date, productCodes) //
 	if err != nil {
 		return fmt.Errorf("failed to create IN query for deleting transactions: %w", err)
 	}
@@ -1036,7 +1037,7 @@ func SaveGuidedInventoryData(tx *sqlx.Tx, date string, yjCode string, allPackagi
 
 	// 1. 同日の既存棚卸データ(flag=0)を削除
 	if len(allProductCodes) > 0 {
-		if err := DeleteTransactionsByFlagAndDateAndCodes(tx, 0, date, allProductCodes); err != nil {
+		if err := DeleteTransactionsByFlagAndDateAndCodes(tx, 0, date, allProductCodes); err != nil { //
 			return fmt.Errorf("failed to delete old inventory records for the same day: %w", err)
 		}
 	}
@@ -1059,10 +1060,9 @@ func SaveGuidedInventoryData(tx *sqlx.Tx, date string, yjCode string, allPackagi
 
 	// データベースから 'ADJ251031' で始まる最大の伝票番号を取得
 	q := `SELECT receipt_number FROM transaction_records 
-		  WHERE receipt_number LIKE ? 
-		  ORDER BY receipt_number DESC LIMIT 1`
+		  WHERE receipt_number LIKE ? ORDER BY receipt_number DESC LIMIT 1` //
 	var lastReceiptNumber string
-	err := tx.Get(&lastReceiptNumber, q, prefix+"%")
+	err := tx.Get(&lastReceiptNumber, q, prefix+"%") //
 
 	if err != nil && err != sql.ErrNoRows {
 		return fmt.Errorf("failed to get last receipt number sequence for prefix %s: %w", prefix, err)
@@ -1082,8 +1082,11 @@ func SaveGuidedInventoryData(tx *sqlx.Tx, date string, yjCode string, allPackagi
 	// ▲▲▲【修正ここまで】▲▲▲
 
 	var productCodesWithInventory []string
+	// ▼▼▼【ここから追加】包装キー単位のYJ在庫量を集計するマップ ▼▼▼
+	packageStockTotalsYj := make(map[string]float64) //
+	// ▲▲▲【追加ここまで】▲▲▲
 
-	// 2. 新しい棚卸データを挿入
+	// 2. 新しい棚卸データを挿入 (flag=0 履歴用)
 	for i, productCode := range allProductCodes {
 		master, ok := mastersMap[productCode]
 		if !ok {
@@ -1091,10 +1094,18 @@ func SaveGuidedInventoryData(tx *sqlx.Tx, date string, yjCode string, allPackagi
 		}
 
 		janQty := inventoryData[productCode]
+		yjQty := janQty * master.JanPackInnerQty //
+
 		// 在庫が0より大きい（＝入力があった）コードを記録
 		if janQty > 0 {
-			productCodesWithInventory = append(productCodesWithInventory, productCode)
+			productCodesWithInventory = append(productCodesWithInventory, productCode) //
 		}
+
+		// ▼▼▼【ここから追加】包装キー単位でYJ在庫量を集計 ▼▼▼
+		// (aggregation.go の GetFilteredMastersAndYjCodes と同じキー生成ロジック )
+		packageKey := fmt.Sprintf("%s|%s|%g|%s", master.YjCode, master.PackageForm, master.JanPackInnerQty, units.ResolveName(master.YjUnitName)) //
+		packageStockTotalsYj[packageKey] += yjQty                                                                                                 //
+		// ▲▲▲【追加ここまで】▲▲▲
 
 		tr := model.TransactionRecord{
 			TransactionDate: date,
@@ -1104,7 +1115,7 @@ func SaveGuidedInventoryData(tx *sqlx.Tx, date string, yjCode string, allPackagi
 			JanCode:         master.ProductCode,
 			YjCode:          master.YjCode,
 			JanQuantity:     janQty,
-			YjQuantity:      janQty * master.JanPackInnerQty,
+			YjQuantity:      yjQty, // YJ単位に換算
 		}
 
 		// (棚卸の場合は薬価を単価とし、金額を計算)
@@ -1114,7 +1125,7 @@ func SaveGuidedInventoryData(tx *sqlx.Tx, date string, yjCode string, allPackagi
 		// 共通マッパー呼び出し
 		mappers.MapMasterToTransaction(&tr, master)
 
-		if err := InsertTransactionRecord(tx, tr); err != nil {
+		if err := InsertTransactionRecord(tx, tr); err != nil { //
 			return fmt.Errorf("failed to insert inventory record for %s: %w", productCode, err)
 		}
 	}
@@ -1132,16 +1143,24 @@ func SaveGuidedInventoryData(tx *sqlx.Tx, date string, yjCode string, allPackagi
 		}
 
 		// このYJコードに関連する既存のロット・期限情報を一度すべて削除
-		if err := DeleteDeadStockByProductCodesInTx(tx, allProductCodes); err != nil {
+		if err := DeleteDeadStockByProductCodesInTx(tx, allProductCodes); err != nil { //
 			return fmt.Errorf("failed to delete old dead stock records: %w", err)
 		}
 		// 新しいロット・期限情報（在庫>0のもの）を保存
 		if len(relevantDeadstockData) > 0 {
-			if err := SaveDeadStockListInTx(tx, relevantDeadstockData); err != nil {
+			if err := SaveDeadStockListInTx(tx, relevantDeadstockData); err != nil { //
 				return fmt.Errorf("failed to upsert new dead stock records: %w", err)
 			}
 		}
 	}
+
+	// ▼▼▼【ここから追加】4. package_stock テーブルを更新（在庫起点） ▼▼▼
+	for key, totalYjQty := range packageStockTotalsYj {
+		if err := UpsertPackageStockInTx(tx, key, yjCode, totalYjQty, date); err != nil { //
+			return fmt.Errorf("failed to upsert package_stock for key %s: %w", key, err)
+		}
+	}
+	// ▲▲▲【追加ここまで】▲▲▲
 
 	return nil
 }
@@ -1154,6 +1173,7 @@ package database
 import (
 	"database/sql"
 	"fmt"
+	"strings"
 
 	// sqlx は Get で必要なので残す
 	"tkr/model"
@@ -1194,6 +1214,120 @@ func GetJcshmsInfoByJan(dbtx DBTX, janCode string) (*model.JcshmsInfo, error) {
 	}
 
 	return &info, nil
+}
+
+func GetJcshmsInfoByGs1Code(dbtx DBTX, gs1Code string) (*model.JcshmsInfo, error) {
+	var info model.JcshmsInfo
+	query := `
+		SELECT
+			j.JC000, j.JC009, j.JC018, j.JC019, j.JC020, j.JC022, j.JC024, j.JC030, j.JC013, j.JC037, j.JC039,
+			j.JC044, j.JC049, j.JC050, j.JC122, j.JC124,
+			j.JC061, j.JC062, j.JC063, j.JC064, j.JC065, j.JC066,
+			ja.JA006, ja.JA007, ja.JA008
+		FROM jcshms AS j
+		LEFT JOIN jancode AS ja ON j.JC000 = ja.JA001
+		WHERE j.JC122 = ?`
+
+	err := dbtx.Get(&info, query, gs1Code)
+
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("GetJcshmsInfoByGs1Code failed for gs1_code %s: %w", gs1Code, err)
+	}
+
+	return &info, nil
+}
+
+func GetFilteredJcshmsInfo(dbtx DBTX, usageClass, kanaName, genericName string) ([]*model.JcshmsInfo, error) {
+    var jcshmsList []*model.JcshmsInfo
+    query := `
+        SELECT
+            j.JC000, j.JC009, j.JC018, j.JC019, j.JC020, j.JC022, j.JC024, j.JC030, j.JC013, j.JC037, j.JC039,
+            j.JC044, j.JC049, j.JC050, j.JC122, j.JC124,
+            j.JC061, j.JC062, j.JC063, j.JC064, j.JC065, j.JC066,
+            ja.JA006, ja.JA007, ja.JA008
+        FROM jcshms AS j
+		LEFT JOIN jancode AS ja ON j.JC000 = ja.JA001`
+
+    var conditions []string
+    var args []interface{}
+
+    if usageClass != "" {
+        conditions = append(conditions, "j.JC013 = ?")
+        args = append(args, usageClass)
+    }
+    if kanaName != "" {
+        conditions = append(conditions, "j.JC022 LIKE ?")
+        args = append(args, kanaName+"%")
+    }
+    if genericName != "" {
+        conditions = append(conditions, "j.JC024 LIKE ?")
+        args = append(args, "%"+genericName+"%")
+    }
+
+    if len(conditions) > 0 {
+        query += " WHERE " + strings.Join(conditions, " AND ")
+    }
+
+    query += " ORDER BY j.JC022 LIMIT 500" // Add a reasonable limit
+
+    err := dbtx.Select(&jcshmsList, query, args...)
+    if err != nil {
+        return nil, fmt.Errorf("failed to select filtered jcshms info: %w", err)
+    }
+
+    return jcshmsList, nil
+}
+
+
+----- C:\Users\wasab\OneDrive\デスクトップ\TKR\database\package_stock.go -----
+// C:\Users\wasab\OneDrive\デスクトップ\TKR\database\package_stock.go
+package database
+
+import (
+	"fmt"
+	"tkr/model"
+
+	"github.com/jmoiron/sqlx"
+)
+
+// UpsertPackageStockInTx は、包装キー単位の在庫データを挿入または更新します。
+func UpsertPackageStockInTx(tx *sqlx.Tx, packageKey string, yjCode string, quantityYj float64, inventoryDate string) error {
+	const q = `
+		INSERT INTO package_stock (package_key, yj_code, stock_quantity_yj, last_inventory_date)
+		VALUES (?, ?, ?, ?)
+		ON CONFLICT(package_key) DO UPDATE SET
+			stock_quantity_yj = excluded.stock_quantity_yj,
+			last_inventory_date = excluded.last_inventory_date,
+			yj_code = excluded.yj_code
+	`
+	_, err := tx.Exec(q, packageKey, yjCode, quantityYj, inventoryDate)
+	if err != nil {
+		return fmt.Errorf("failed to upsert package_stock for key %s: %w", packageKey, err)
+	}
+	return nil
+}
+
+// GetPackageStockByYjCode は、YJコードに紐づく全ての包装在庫レコードを取得します。
+func GetPackageStockByYjCode(dbtx DBTX, yjCode string) (map[string]model.PackageStock, error) {
+	var stocks []model.PackageStock
+	const q = `
+		SELECT package_key, yj_code, stock_quantity_yj, last_inventory_date
+		FROM package_stock
+		WHERE yj_code = ?
+	`
+	err := dbtx.Select(&stocks, q, yjCode)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get package_stock by yj_code %s: %w", yjCode, err)
+	}
+
+	stockMap := make(map[string]model.PackageStock)
+	for _, s := range stocks {
+		stockMap[s.PackageKey] = s
+	}
+	return stockMap, nil
 }
 
 
@@ -1324,6 +1458,31 @@ ORDER BY product_code`
 		masters = []*model.ProductMaster{}
 	}
 	return masters, nil
+}
+
+const insertProductMasterQuery = `
+INSERT INTO product_master (
+    product_code, yj_code, gs1_code, product_name, kana_name, kana_name_short, 
+    generic_name, maker_name, specification, usage_classification, package_form, 
+    yj_unit_name, yj_pack_unit_qty, jan_pack_inner_qty, jan_unit_code, jan_pack_unit_qty, 
+    origin, nhi_price, purchase_price, flag_poison, flag_deleterious, flag_narcotic, 
+    flag_psychotropic, flag_stimulant, flag_stimulant_raw, is_order_stopped, 
+    supplier_wholesale, group_code, shelf_number, category, user_notes
+) VALUES (
+    :product_code, :yj_code, :gs1_code, :product_name, :kana_name, :kana_name_short, 
+    :generic_name, :maker_name, :specification, :usage_classification, :package_form, 
+    :yj_unit_name, :yj_pack_unit_qty, :jan_pack_inner_qty, :jan_unit_code, :jan_pack_unit_qty, 
+    :origin, :nhi_price, :purchase_price, :flag_poison, :flag_deleterious, :flag_narcotic, 
+    :flag_psychotropic, :flag_stimulant, :flag_stimulant_raw, :is_order_stopped, 
+    :supplier_wholesale, :group_code, :shelf_number, :category, :user_notes
+)`
+
+func InsertProductMaster(dbtx DBTX, master *model.ProductMaster) error {
+	_, err := dbtx.NamedExec(insertProductMasterQuery, master)
+	if err != nil {
+		return fmt.Errorf("failed to insert product master: %w", err)
+	}
+	return nil
 }
 
 
@@ -1582,14 +1741,12 @@ package database
 
 import (
 	"fmt"
-	"strings" // ★ strings をインポート
+	"strings"
 	"tkr/model"
 
 	"github.com/jmoiron/sqlx"
 )
 
-// ▼▼▼【ここから追加】(WASABI: db/transaction_records.go  より) ▼▼▼
-// TransactionColumns は transaction_records の全カラムを定義します。
 const TransactionColumns = `
     id, transaction_date, client_code, receipt_number, line_number, flag,
     jan_code, yj_code, product_name, kana_name, usage_classification, package_form, package_spec, maker_name,
@@ -1599,7 +1756,6 @@ const TransactionColumns = `
     flag_deleterious, flag_narcotic, flag_psychotropic, flag_stimulant,
     flag_stimulant_raw, process_flag_ma`
 
-// ScanTransactionRecord は sql.Rows から TransactionRecord をスキャンします。
 func ScanTransactionRecord(row interface{ Scan(...interface{}) error }) (*model.TransactionRecord, error) {
 	var r model.TransactionRecord
 	err := row.Scan(
@@ -1616,8 +1772,6 @@ func ScanTransactionRecord(row interface{ Scan(...interface{}) error }) (*model.
 	}
 	return &r, nil
 }
-
-// ▲▲▲【追加ここまで】▲▲▲
 
 const insertTransactionQuery = `
 INSERT INTO transaction_records (
@@ -1639,7 +1793,6 @@ INSERT INTO transaction_records (
 )`
 
 func InsertTransactionRecord(tx *sqlx.Tx, record model.TransactionRecord) error {
-
 	_, err := tx.NamedExec(insertTransactionQuery, record)
 	if err != nil {
 		return fmt.Errorf("failed to insert transaction record: %w", err)
@@ -1647,22 +1800,39 @@ func InsertTransactionRecord(tx *sqlx.Tx, record model.TransactionRecord) error 
 	return nil
 }
 
+func PersistTransactionRecordsInTx(tx *sqlx.Tx, records []model.TransactionRecord) error {
+	stmt, err := tx.PrepareNamed(insertTransactionQuery)
+	if err != nil {
+		return fmt.Errorf("failed to prepare statement for transaction_records: %w", err)
+	}
+	defer stmt.Close()
+
+	for _, rec := range records {
+		_, err = stmt.Exec(rec)
+		if err != nil {
+			return fmt.Errorf("failed to exec statement for transaction_records (JAN: %s): %w", rec.JanCode, err)
+		}
+	}
+	return nil
+}
+
 func DeleteUsageTransactionsInDateRange(tx *sqlx.Tx, minDate, maxDate string) error {
-	const q = `DELETE FROM transaction_records WHERE flag = 3 AND transaction_date BETWEEN ? AND ?`
+	q := `DELETE FROM transaction_records WHERE flag = '2' AND transaction_date BETWEEN ? AND ?`
 	_, err := tx.Exec(q, minDate, maxDate)
 	if err != nil {
-		return fmt.Errorf("failed to delete usage transactions: %w", err)
+		return fmt.Errorf("failed to delete usage transactions in date range: %w", err)
 	}
 	return nil
 }
 
 func GetTransactionsByProductCodes(db *sqlx.DB, productCodes []string) (map[string][]model.TransactionRecord, error) {
-	transactionsMap := make(map[string][]model.TransactionRecord)
+	transactionsByProductCode := make(map[string][]model.TransactionRecord)
 	if len(productCodes) == 0 {
-		return transactionsMap, nil
+		return transactionsByProductCode, nil
 	}
 
-	const batchSize = 500
+	batchSize := 100 
+
 	for i := 0; i < len(productCodes); i += batchSize {
 		end := i + batchSize
 		if end > len(productCodes) {
@@ -1670,74 +1840,102 @@ func GetTransactionsByProductCodes(db *sqlx.DB, productCodes []string) (map[stri
 		}
 		batch := productCodes[i:end]
 
-		if len(batch) > 0 {
-			query, args, err := sqlx.In(`
-				SELECT * FROM transaction_records 
-				WHERE jan_code IN (?) 
-				ORDER BY transaction_date, id`, batch)
-			if err != nil {
-				return nil, fmt.Errorf("failed to create IN query: %w", err)
-			}
-			query = db.Rebind(query)
+		var records []model.TransactionRecord
+		query, args, err := sqlx.In(`SELECT `+TransactionColumns+` FROM transaction_records WHERE jan_code IN (?)`, batch)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create IN query for batch: %w", err)
+		}
+		query = db.Rebind(query)
+		err = db.Select(&records, query, args...)
+		if err != nil {
+			return nil, fmt.Errorf("failed to select transactions for batch: %w", err)
+		}
 
-			var transactions []model.TransactionRecord
-			err = db.Select(&transactions, query, args...)
-			if err != nil {
-				return nil, fmt.Errorf("failed to select transactions: %w", err)
-			}
-
-			for _, t := range transactions {
-				transactionsMap[t.JanCode] = append(transactionsMap[t.JanCode], t)
-			}
+		for _, r := range records {
+			transactionsByProductCode[r.JanCode] = append(transactionsByProductCode[r.JanCode], r)
 		}
 	}
-	return transactionsMap, nil
+
+	return transactionsByProductCode, nil
 }
 
 func SearchTransactions(db *sqlx.DB, janCode string, expiryYYMMDD string, expiryYYMM string, lotNumber string) ([]model.TransactionRecord, error) {
-	var transactions []model.TransactionRecord
-
-	conditions := []string{}
+	var records []model.TransactionRecord
+	
+	var queryBuilder strings.Builder
+	queryBuilder.WriteString("SELECT ")
+	queryBuilder.WriteString(TransactionColumns)
+	queryBuilder.WriteString(" FROM transaction_records WHERE 1=1")
+	
 	args := []interface{}{}
 
 	if janCode != "" {
-		conditions = append(conditions, "jan_code = ?")
+		queryBuilder.WriteString(" AND jan_code = ?")
 		args = append(args, janCode)
 	}
-
-	if expiryYYMMDD != "" && expiryYYMM != "" {
-		conditions = append(conditions, "(expiry_date = ? OR expiry_date = ?)")
-		args = append(args, expiryYYMM)   // 4桁
-		args = append(args, expiryYYMMDD) // 6桁
-	} else if expiryYYMMDD != "" {
-		conditions = append(conditions, "expiry_date = ?")
+	if expiryYYMMDD != "" {
+		queryBuilder.WriteString(" AND expiry_date = ?")
 		args = append(args, expiryYYMMDD)
-	} else if expiryYYMM != "" {
-		conditions = append(conditions, "expiry_date = ?")
+	}
+	if expiryYYMM != "" {
+		queryBuilder.WriteString(" AND SUBSTR(expiry_date, 1, 6) = ?")
 		args = append(args, expiryYYMM)
 	}
-
 	if lotNumber != "" {
-		conditions = append(conditions, "lot_number = ?")
+		queryBuilder.WriteString(" AND lot_number = ?")
 		args = append(args, lotNumber)
 	}
 
-	if len(conditions) == 0 {
-		return transactions, nil
-	}
+	queryBuilder.WriteString(" ORDER BY transaction_date DESC, id DESC")
 
-	query := `SELECT * FROM transaction_records WHERE `
-	query += strings.Join(conditions, " AND ")
-	query += ` ORDER BY transaction_date, id`
-
-	err := db.Select(&transactions, query, args...)
+	err := db.Select(&records, queryBuilder.String(), args...)
 	if err != nil {
-		return nil, fmt.Errorf("failed to select transactions by dynamic criteria: %w", err)
+		return nil, fmt.Errorf("failed to search transactions: %w", err)
 	}
-
-	return transactions, nil
+	return records, nil
 }
 
+func GetReceiptNumbersByDate(db *sqlx.DB, date string, prefix string, clientCode string) ([]string, error) {
+	var numbers []string
+
+	query := "SELECT DISTINCT receipt_number FROM transaction_records"
+	conditions := []string{"transaction_date = ?", "receipt_number LIKE ?"}
+	args := []interface{}{date, prefix + "%"}
+
+	if clientCode != "" {
+		conditions = append(conditions, "client_code = ?")
+		args = append(args, clientCode)
+	}
+
+	query += " WHERE " + strings.Join(conditions, " AND ")
+	query += " ORDER BY receipt_number"
+
+	err := db.Select(&numbers, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get receipt numbers by date: %w", err)
+	}
+	return numbers, nil
+}
+
+func GetTransactionsByReceiptNumber(db *sqlx.DB, receiptNumber string) ([]model.TransactionRecord, error) {
+	var records []model.TransactionRecord
+	q := `SELECT ` + TransactionColumns + ` FROM transaction_records WHERE receipt_number = ? ORDER BY line_number`
+
+	err := db.Select(&records, q, receiptNumber)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get transactions by receipt number: %w", err)
+	}
+	return records, nil
+}
+
+func DeleteTransactionsByReceiptNumberInTx(tx *sqlx.Tx, receiptNumber string) error {
+	const q = `DELETE FROM transaction_records WHERE receipt_number = ?`
+	_, err := tx.Exec(q, receiptNumber)
+	if err != nil {
+		return fmt.Errorf("failed to delete transactions for receipt %s: %w", receiptNumber, err)
+	}
+	return nil
+}
 
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\database\transaction.go -----
 package database
@@ -1828,7 +2026,7 @@ type SaveRecordInput struct {
 	ProductCode string  `json:"productCode"`
 	ProductName string  `json:"productName"` // 仮マスター作成用
 	JanQuantity float64 `json:"janQuantity"`
-	DatQuantity float64 `json:"datQuantity"` // (TKRでは使わないがWASABI [cite: 846] に合わせて残す)
+	DatQuantity float64 `json:"datQuantity"` // (TKRでは使わないがWASABI に合わせて残す)
 	ExpiryDate  string  `json:"expiryDate"`
 	LotNumber   string  `json:"lotNumber"`
 }
@@ -1891,12 +2089,13 @@ func SaveInOutHandler(db *sqlx.DB) http.HandlerFunc {
 
 		if payload.OriginalReceiptNumber != "" {
 			receiptNumber = payload.OriginalReceiptNumber
+			// ▼▼▼【修正】関数呼び出しを修正 ▼▼▼
 			if err := database.DeleteTransactionsByReceiptNumberInTx(tx, receiptNumber); err != nil {
+				// ▲▲▲【修正ここまで】▲▲▲
 				http.Error(w, "Failed to delete old items from slip", http.StatusInternalServerError)
 				return
 			}
 		} else {
-			// (WASABI: inout/handler.go [cite: 896-897] の採番ロジック)
 			var lastSeq int
 			prefix := "IO" + dateStr[2:8] // "IO" + YYMMDD
 			q := `SELECT receipt_number FROM transaction_records 
@@ -1910,7 +2109,7 @@ func SaveInOutHandler(db *sqlx.DB) http.HandlerFunc {
 			}
 			lastSeq = 0
 			if lastReceiptNumber != "" && len(lastReceiptNumber) == 13 { // IO + 6 + 5 = 13
-				seqStr := lastReceiptNumber[8:] // 8文字目以降
+				seqStr := lastReceiptNumber[8:]
 				lastSeq, _ = strconv.Atoi(seqStr)
 			}
 			newSeq := lastSeq + 1
@@ -1931,7 +2130,7 @@ func SaveInOutHandler(db *sqlx.DB) http.HandlerFunc {
 			}
 
 			yjQuantity := rec.JanQuantity * master.JanPackInnerQty
-			unitPrice := master.NhiPrice // 入出庫は薬価を単価とする
+			unitPrice := master.NhiPrice
 			subtotal := yjQuantity * unitPrice
 
 			tr := model.TransactionRecord{
@@ -1953,16 +2152,17 @@ func SaveInOutHandler(db *sqlx.DB) http.HandlerFunc {
 			finalRecords = append(finalRecords, tr)
 		}
 
-		if len(finalRecords) > 0 {
-			if err := database.InsertTransactionRecords(tx, finalRecords); err != nil {
-				log.Printf("Failed to persist records: %v", err)
-				http.Error(w, "Failed to save records to database.", http.StatusInternalServerError)
-				return
-			}
-		}
-
-		if err := tx.Commit(); err != nil {
-			http.Error(w, "Failed to commit transaction", http.StatusInternalServerError)
+		        if len(finalRecords) > 0 {
+		            // ▼▼▼【修正】関数名を PersistTransactionRecordsInTx に変更 ▼▼▼
+		            if err := database.PersistTransactionRecordsInTx(tx, finalRecords); err != nil {
+		                // ▲▲▲【修正ここまで】▲▲▲
+		                log.Printf("Failed to persist records: %v", err)
+		                http.Error(w, "Failed to save records to database.", http.StatusInternalServerError)
+		                return
+		            }
+		        }
+		
+		        		if err := tx.Commit(); err != nil {			http.Error(w, "Failed to commit transaction", http.StatusInternalServerError)
 			return
 		}
 
@@ -1989,7 +2189,9 @@ func GetTransactionsByReceiptNumberHandler(db *sqlx.DB) http.HandlerFunc {
 			http.Error(w, "Receipt number is required", http.StatusBadRequest)
 			return
 		}
+		// ▼▼▼【修正】関数呼び出しを修正 ▼▼▼
 		records, err := database.GetTransactionsByReceiptNumber(db, receiptNumber)
+		// ▲▲▲【修正ここまで】▲▲▲
 		if err != nil {
 			http.Error(w, "Failed to get transaction details", http.StatusInternalServerError)
 			return
@@ -2007,8 +2209,13 @@ func GetReceiptNumbersByDateHandler(db *sqlx.DB) http.HandlerFunc {
 			http.Error(w, "Date parameter is required", http.StatusBadRequest)
 			return
 		}
-		// "IO"で始まる伝票のみ検索
-		receipts, err := database.GetReceiptNumbersByDate(db, date, "IO%")
+    if len(date) != 8 {
+        http.Error(w, "Date must be in YYYYMMDD format", http.StatusBadRequest)
+        return
+    }
+    clientCode := r.URL.Query().Get("client")
+    prefix := "IO" + date[2:] // "IO" + YYMMDD
+	receipts, err := database.GetReceiptNumbersByDate(db, date, prefix, clientCode)
 		if err != nil {
 			http.Error(w, "Failed to get receipt numbers", http.StatusInternalServerError)
 			return
@@ -2033,7 +2240,9 @@ func DeleteTransactionHandler(db *sqlx.DB) http.HandlerFunc {
 		}
 		defer tx.Rollback()
 
+		// ▼▼▼【修正】関数呼び出しを修正 ▼▼▼
 		if err := database.DeleteTransactionsByReceiptNumberInTx(tx, receiptNumber); err != nil {
+			// ▲▲▲【修正ここまで】▲▲▲
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -3275,6 +3484,17 @@ type DeadStockRecord struct {
 	LotNumber        string  `json:"lotNumber"`
 }
 
+// ▼▼▼【ここから追加】▼▼▼
+// PackageStock は package_stock テーブルのレコードです。
+type PackageStock struct {
+	PackageKey        string  `db:"package_key"`
+	YjCode            string  `db:"yj_code"`
+	StockQuantityYj   float64 `db:"stock_quantity_yj"`
+	LastInventoryDate string  `db:"last_inventory_date"`
+}
+
+// ▲▲▲【追加ここまで】▲▲▲
+
 
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\parsers\dat_parser.go -----
 package parsers
@@ -3431,127 +3651,302 @@ package product
 
 import (
 	"database/sql"
-
-	// ▼▼▼【ここに追加】▼▼▼
 	"encoding/json"
-	"errors" // ▼▼▼【ここに追加】▼▼▼
-	"fmt"    // ▼▼▼【ここに追加】▼▼▼
-	"log"    // ▼▼▼【ここに追加】▼▼▼
+	"errors"
+	"fmt"
+	"log"
 	"net/http"
 	"sort"
 	"strings"
-	"tkr/aggregation" // 集計ロジック
-
-	// ▼▼▼【ここに追加】▼▼▼
+	"tkr/barcode"
 	"tkr/database"
-	"tkr/mappers" // Viewマッパー
+	"tkr/mappers"       // Viewマッパー
+	"tkr/mastermanager" // ▼▼▼【ここに追加】▼▼▼
 	"tkr/model"
 
 	"github.com/jmoiron/sqlx"
 )
 
-// SearchProductsHandler は棚卸調整画面での品目検索（YJコード単位）を行います。
+// ▼▼▼【ここに追加】JcshmsToProductMasterInput の結果を ProductMaster (View用) に変換するヘルパー ▼▼▼
+// (SearchProductsHandler が DB に挿入せずに View を生成するために使用)
+func inputToMaster(input model.ProductMasterInput) *model.ProductMaster {
+	return &model.ProductMaster{
+		ProductCode:         input.ProductCode,
+		YjCode:              input.YjCode,
+		Gs1Code:             input.Gs1Code,
+		ProductName:         input.ProductName,
+		KanaName:            input.KanaName,
+		KanaNameShort:       input.KanaNameShort,
+		GenericName:         input.GenericName,
+		MakerName:           input.MakerName,
+		Specification:       input.Specification,
+		UsageClassification: input.UsageClassification,
+		PackageForm:         input.PackageForm,
+		YjUnitName:          input.YjUnitName,
+		YjPackUnitQty:       input.YjPackUnitQty,
+		JanPackInnerQty:     input.JanPackInnerQty,
+		JanUnitCode:         input.JanUnitCode,
+		JanPackUnitQty:      input.JanPackUnitQty,
+		Origin:              input.Origin,
+		NhiPrice:            input.NhiPrice,
+		PurchasePrice:       input.PurchasePrice,
+		FlagPoison:          input.FlagPoison,
+		FlagDeleterious:     input.FlagDeleterious,
+		FlagNarcotic:        input.FlagNarcotic,
+		FlagPsychotropic:    input.FlagPsychotropic,
+		FlagStimulant:       input.FlagStimulant,
+		FlagStimulantRaw:    input.FlagStimulantRaw,
+		IsOrderStopped:      input.IsOrderStopped,
+		SupplierWholesale:   input.SupplierWholesale,
+		GroupCode:           input.GroupCode,
+		ShelfNumber:         input.ShelfNumber,
+		Category:            input.Category,
+		UserNotes:           input.UserNotes,
+	}
+}
+
+// ▲▲▲【追加ここまで】▲▲▲
+
 func SearchProductsHandler(conn *sqlx.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		q := r.URL.Query()
-		filters := model.AggregationFilters{
-			KanaName:    q.Get("kanaName"),
-			DosageForm:  q.Get("dosageForm"),
-			ShelfNumber: q.Get("shelfNumber"),
-			GenericName: q.Get("genericName"), // ▼▼▼【ここに追加】一般名 ▼▼▼
-		}
+		kanaName := q.Get("kanaName")
+		dosageForm := q.Get("dosageForm")
+		genericName := q.Get("genericName")
+		shelfNumber := q.Get("shelfNumber")
+		searchMode := q.Get("searchMode")
 
-		var results []model.ProductMasterView
-
-		mastersByYjCode, yjCodes, err := aggregation.GetFilteredMastersAndYjCodes(conn, filters)
-		if err != nil {
-			http.Error(w, "Failed to search products: "+err.Error(), http.StatusInternalServerError)
-			return
-		}
-
-		// YJコードごとに代表マスターを1つだけ選んで返す
-		seenYjCodes := make(map[string]bool)
-		for _, yjCode := range yjCodes { // yjCodes は aggregation でソート済みの順序
-			if seenYjCodes[yjCode] {
-				continue
+		// searchModeが'inout'の場合のみ、JCSHMSを含めた統合検索を行う
+		if searchMode == "inout" {
+			// 1. product_master から検索 (採用済み)
+			adoptedMasters, err := database.GetFilteredProductMasters(conn, dosageForm, kanaName, genericName, shelfNumber)
+			if err != nil {
+				http.Error(w, "Failed to search product_master: "+err.Error(), http.StatusInternalServerError)
+				return
 			}
-			mastersInGroup := mastersByYjCode[yjCode]
-			if len(mastersInGroup) > 0 {
-				repMaster := mastersInGroup[0]
-				// ▼▼▼【ここを修正】if と { を同じ行にする ▼▼▼
-				for _, m := range mastersInGroup {
-					if m.Origin == "JCSHMS" {
-						// ▲▲▲【修正ここまで】▲▲▲
-						repMaster = m // JCSHMSを優先
-						break
-					}
+
+			mergedResults := []model.ProductMasterView{}
+			seenCodes := make(map[string]bool)
+
+			for _, master := range adoptedMasters {
+				view := mappers.ToProductMasterView(&master)
+				view.IsAdopted = true
+				mergedResults = append(mergedResults, view)
+				seenCodes[master.ProductCode] = true
+			}
+
+			// 2. jcshms_master から検索 (未採用候補)
+			jcshmsResults, err := database.GetFilteredJcshmsInfo(conn, dosageForm, kanaName, genericName)
+			if err != nil {
+				http.Error(w, "Failed to search jcshms_master: "+err.Error(), http.StatusInternalServerError)
+
+				return
+			}
+
+			for _, jcshmsInfo := range jcshmsResults {
+				if seenCodes[jcshmsInfo.ProductCode] {
+					continue // 既に採用済みのものはスキップ
 				}
-				view := mappers.ToProductMasterView(repMaster)
-				results = append(results, view)
-				seenYjCodes[yjCode] = true
+				// ▼▼▼【ここから修正】mappers.FromJcshmsToProductMaster -> mastermanager.JcshmsToProductMasterInput ▼▼▼
+				input := mastermanager.JcshmsToProductMasterInput(jcshmsInfo)
+				tempMaster := inputToMaster(input) // View生成のために *model.ProductMaster に変換
+				// ▲▲▲【修正ここまで】▲▲▲
+				view := mappers.ToProductMasterView(tempMaster)
+				view.IsAdopted = false
+				mergedResults = append(mergedResults, view)
+				seenCodes[jcshmsInfo.ProductCode] = true
 			}
+
+			// 3. 最終結果をソート
+			sort.Slice(mergedResults, func(i, j int) bool {
+				return mergedResults[i].KanaName < mergedResults[j].KanaName
+			})
+
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(mergedResults)
+
+		} else {
+			// それ以外の画面では、product_masterのみを検索
+			localMasters, err := database.GetFilteredProductMasters(conn, dosageForm, kanaName, genericName, shelfNumber)
+			if err != nil {
+				http.Error(w, "Failed to search product_master: "+err.Error(), http.StatusInternalServerError)
+				return
+			}
+
+			results := make([]model.ProductMasterView, len(localMasters))
+			for i, master := range localMasters {
+				view := mappers.ToProductMasterView(&master)
+				view.IsAdopted = true // ローカルに存在するので全て採用済み
+				results[i] = view
+			}
+
+			sort.Slice(results, func(i, j int) bool {
+				return results[i].KanaName < results[j].KanaName
+			})
+
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(results)
 		}
-
-		// ▼▼▼【ここに追加】Go側でも最終結果をカナ名でソートし、ランダムな並びを防ぐ ▼▼▼
-		sort.Slice(results, func(i, j int) bool {
-			return results[i].KanaName < results[j].KanaName
-		})
-		// ▲▲▲【追加ここまで】▲▲▲
-
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(results)
 	}
 }
 
 // ▼▼▼【ここから修正】バーコード検索を単一APIに共通化（DB共通関数を使用） ▼▼▼
 func GetProductByBarcodeHandler(conn *sqlx.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		barcodeStr := strings.TrimPrefix(r.URL.Path, "/api/product/by_barcode/")
-		if barcodeStr == "" {
+		rawBarcode := strings.TrimPrefix(r.URL.Path, "/api/product/by_barcode/")
+		if rawBarcode == "" {
 			http.Error(w, "barcode is required", http.StatusBadRequest)
+
 			return
 		}
 
-		log.Printf("API request received for barcode: %s", barcodeStr)
+		log.Printf("API: Received raw barcode: %s", rawBarcode)
 
-		// DB共通関数でマスターを検索
-		master, err := database.GetProductMasterByBarcode(conn, barcodeStr)
-
-		// 共通のエラーハンドリング
+		// 1. バーコードを解析
+		parsed, err := barcode.Parse(rawBarcode)
 		if err != nil {
-			if errors.Is(err, sql.ErrNoRows) {
-				log.Printf("Product master not found for barcode: %s", barcodeStr)
-				http.Error(w, "Product not found", http.StatusNotFound)
-			} else {
-				log.Printf("Error searching product master by barcode %s: %v", barcodeStr, err)
-				http.Error(w, fmt.Sprintf("マスター検索エラー: %v", err), http.StatusInternalServerError)
-			}
+			http.Error(w, fmt.Sprintf("バーコード解析エラー: %v", err), http.StatusBadRequest)
+			return
+		}
+		gtin14 := parsed.Gtin14
+		if gtin14 == "" {
+			http.Error(w, "バーコードから製品コード(GTIN)が抽出できません", http.StatusBadRequest)
 			return
 		}
 
-		masterView := mappers.ToProductMasterView(master)
+		// 2. まず product_master を検索
+		master, err := database.GetProductMasterByGs1Code(conn, gtin14)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			// データベース検索で「見つからない」以外のエラーが起きた場合
+			log.Printf("Error searching product_master by GS1 %s: %v", gtin14, err)
+			http.Error(w, "データベースエラーが発生しました", http.StatusInternalServerError)
+			return
+		}
+
+		// 3. product_master に見つかった場合
+		if master != nil {
+			log.Printf("Found product in product_master: %s", master.ProductName)
+			masterView := mappers.ToProductMasterView(master)
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(masterView)
+			return
+		}
+
+		// 4. product_master に見つからなかった場合、JCSHMSを検索
+		log.Printf("Product not in product_master, searching JCSHMS...")
+		jcshmsInfo, err := database.GetJcshmsInfoByGs1Code(conn, gtin14)
+		if err != nil {
+			log.Printf("Error searching JCSHMS by GS1 %s: %v", gtin14, err)
+			http.Error(w, "JCSHMSマスターの検索中にエラーが発生しました", http.StatusInternalServerError)
+			return
+		}
+
+		// 5. JCSHMS にも見つからなかった場合
+		if jcshmsInfo ==
+			nil {
+			log.Printf("Product not found in JCSHMS for GS1 %s", gtin14)
+			http.Error(w, "どのマスターにも製品が見つかりませんでした", http.StatusNotFound)
+			return
+		}
+
+		// 6. JCSHMS に見つかった場合、product_masterに新規作成
+		log.Printf("Found product in JCSHMS: %s. Creating new master...", jcshmsInfo.ProductName)
+
+		// ▼▼▼【ここから修正】mappers.FromJcshmsToProductMaster -> mastermanager.JcshmsToProductMasterInput ▼▼▼
+		input := mastermanager.JcshmsToProductMasterInput(jcshmsInfo)
+		input.Gs1Code = gtin14 // 解析で得たGTIN-14をセット
+		// ▲▲▲【修正ここまで】▲▲▲
+
+		tx, err := conn.Beginx()
+		if err != nil {
+			log.Printf("Failed to begin transaction to create master: %v", err)
+			http.Error(w, "トランザクションの開始に失敗しました", http.StatusInternalServerError)
+			return
+		}
+		defer tx.Rollback() // In case of panic or error
+
+		// ▼▼▼【ここから修正】database.InsertProductMaster -> mastermanager.UpsertProductMasterSqlx ▼▼▼
+		newMaster, err := mastermanager.UpsertProductMasterSqlx(tx, input) // Upsert を呼び出し、 *model.ProductMaster を受け取る
+		if err != nil {
+			log.Printf("Failed to insert new master from JCSHMS: %v", err)
+			http.Error(w, "マスターの新規作成に失敗しました", http.StatusInternalServerError)
+			return
+		}
+		// ▲▲▲【修正ここまで】▲▲▲
+
+		if err := tx.Commit(); err != nil {
+			log.Printf("Failed to commit transaction to create master: %v", err)
+			http.Error(w, "トランザクションのコミットに失敗しました", http.StatusInternalServerError)
+			return
+		}
+
+		log.Printf("Successfully created new master for %s", newMaster.ProductName)
+		masterView := mappers.ToProductMasterView(newMaster)
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(masterView)
 	}
 }
 
-// ▲▲▲【修正ここまで】▲▲▲
+func AdoptMasterHandler(conn *sqlx.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var payload struct {
+			Gs1Code string `json:"gs1Code"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			http.Error(w, "Invalid request body", http.StatusBadRequest)
+			return
+		}
 
-// ▼▼▼【ここから削除】古いハンドラを削除 ▼▼▼
-/*
-func GetProductByGS1Handler(conn *sqlx.DB) http.HandlerFunc
-{
-	return func(w http.ResponseWriter, r *http.Request) {
-// ... (古いコード [cite: 804] 削除) ...
+		if payload.Gs1Code == "" {
+			http.Error(w, "gs1Code is required", http.StatusBadRequest)
+			return
+		}
+
+		// JCSHMSをGS1コードで検索
+		jcshmsInfo, err := database.GetJcshmsInfoByGs1Code(conn, payload.Gs1Code)
+		if err != nil {
+			log.Printf("Error searching JCSHMS for adoption by GS1 %s: %v", payload.Gs1Code, err)
+			http.Error(w, "JCSHMSマスターの検索中にエラーが発生しました", http.StatusInternalServerError)
+			return
+		}
+
+		if jcshmsInfo == nil {
+			http.Error(w, "Adoption failed: Product not found in JCSHMS", http.StatusNotFound)
+			return
+		}
+
+		// product_masterに新規作成
+		// ▼▼▼【ここから修正】mappers.FromJcshmsToProductMaster -> mastermanager.JcshmsToProductMasterInput ▼▼▼
+		input := mastermanager.JcshmsToProductMasterInput(jcshmsInfo)
+		// ▲▲▲【修正ここまで】▲▲▲
+
+		tx, err := conn.Beginx()
+		if err != nil {
+			http.Error(w, "トランザクションの開始に失敗しました", http.StatusInternalServerError)
+			return
+		}
+		defer tx.Rollback()
+
+		// ▼▼▼【ここから修正】database.InsertProductMaster -> mastermanager.UpsertProductMasterSqlx ▼▼▼
+		newMaster, err := mastermanager.UpsertProductMasterSqlx(tx, input) // Upsert を呼び出し、 *model.ProductMaster を受け取る
+		if err != nil {
+
+			http.Error(w, "マスターの新規作成に失敗しました", http.StatusInternalServerError)
+			return
+		}
+		// ▲▲▲【修正ここまで】▲▲▲
+
+		if err := tx.Commit(); err != nil {
+			http.Error(w, "トランザクションのコミットに失敗しました", http.StatusInternalServerError)
+			return
+		}
+
+		log.Printf("Successfully adopted master for %s", newMaster.ProductName)
+		masterView := mappers.ToProductMasterView(newMaster)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(masterView)
 	}
 }
-func GetMasterByCodeHandler(conn *sqlx.DB) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-// ... (古いコード [cite: 804] 削除) ...
-	}
-}
-*/
-// ▲▲▲【削除ここまで】▲▲▲
 
 
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\render\renderer.go -----
@@ -4113,6 +4508,7 @@ import (
 	"tkr/config"
 	"tkr/dat"
 	"tkr/database"
+	"tkr/inout"
 	"tkr/inventoryadjustment"
 	"tkr/loader"
 	"tkr/masteredit"
@@ -4187,6 +4583,7 @@ func main() {
 		if err != nil {
 			log.Fatalf("Failed to parse views/common_search_modal.html: %v", err)
 		}
+		appTemplate, err = appTemplate.ParseFS(viewsFS, "common_input_modal.html")
 	}
 
 	log.Println("HTML templates loaded and parsed.")
@@ -4303,6 +4700,11 @@ func main() {
 	mux.HandleFunc("/api/dat/search", dat.SearchDatHandler(dbConn))
 	mux.HandleFunc("/api/usage/upload", usage.UploadUsageHandler(dbConn))
 
+	// In-Out (入出庫) Handlers
+	mux.HandleFunc("/api/receipts/by_date", inout.GetReceiptNumbersByDateHandler(dbConn))
+	mux.HandleFunc("/api/transaction/", inout.GetTransactionsByReceiptNumberHandler(dbConn))
+	mux.HandleFunc("/api/inout/save", inout.SaveInOutHandler(dbConn))
+	mux.HandleFunc("/api/transaction/delete/", inout.DeleteTransactionHandler(dbConn))
 	mux.HandleFunc("/api/masters", masteredit.ListMastersHandler(dbConn))
 	mux.HandleFunc("/api/masters/update", masteredit.UpdateMasterHandler(dbConn))
 
@@ -4310,6 +4712,7 @@ func main() {
 	mux.HandleFunc("/api/inventory/adjust/save", inventoryadjustment.SaveInventoryDataHandler(dbConn))
 
 	mux.HandleFunc("/api/products/search_filtered", product.SearchProductsHandler(dbConn))
+	mux.HandleFunc("/api/master/adopt", product.AdoptMasterHandler(dbConn))
 
 	mux.HandleFunc("/api/product/by_barcode/", product.GetProductByBarcodeHandler(dbConn))
 	mux.HandleFunc("/api/master/by_code/", func(w http.ResponseWriter, r *http.Request) {
@@ -4625,6 +5028,17 @@ INSERT OR IGNORE INTO code_sequences(name, last_no) VALUES ('MA2Y', 0);
 INSERT OR IGNORE INTO code_sequences(name, last_no) VALUES ('CL', 0);
 -- ▼▼▼【ここに追加】仮ProductCode用シーケンス ▼▼▼
 INSERT OR IGNORE INTO code_sequences(name, last_no) VALUES ('MA2J', 0);
+-- ▲▲▲【追加ここまで】▲▲▲
+
+-- ▼▼▼【ここから追加】包装キー単位の在庫起点テーブル ▼▼▼
+CREATE TABLE IF NOT EXISTS package_stock (
+  package_key TEXT PRIMARY KEY,          -- 包装キー (例: '2647709N1060|包装小|5|Ｇ')
+  yj_code TEXT,                          -- 対応するYJコード (検索用)
+  stock_quantity_yj REAL NOT NULL,       -- その包装キーのYJ単位での在庫量
+  last_inventory_date TEXT NOT NULL      -- この在庫量が確定した最新の棚卸日 (YYYYMMDD)
+);
+
+CREATE INDEX IF NOT EXISTS idx_package_stock_yj_code ON package_stock (yj_code);
 -- ▲▲▲【追加ここまで】▲▲▲
 
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\wholesaler_handler.go -----

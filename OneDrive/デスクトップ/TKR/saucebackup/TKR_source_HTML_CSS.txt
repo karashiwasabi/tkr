@@ -592,11 +592,6 @@
    (モーダルの基本枠は modal.css で定義)
 */
 
-/* 検索パネルと検索ボタンを非表示にする (これがこのモーダル固有の動作) */
-#tkr-search-modal-overlay .filter-container {
-    display: none !important; /* 検索パネル全体を非表示 */
-}
-
 /* 検索結果テーブル */
 #search-results-table {
     font-size: 10px; /* 通常より少し小さく */
@@ -959,6 +954,33 @@ body {
 .status-success { color: green; }
 .status-error   { color: red; }
 
+.data-table td input[type="text"],
+.data-table td input[type="number"] {
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  border: 1px solid #ccc;
+  margin: 0;
+  padding: 0 2px;
+  font-size: inherit;
+  vertical-align: middle;
+}
+
+----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\views\common_input_modal.html -----
+{{ define "common_input_modal" }}
+<div id="input-modal-overlay" class="modal-overlay hidden">
+    <div class="modal-content" style="width: 400px; max-width: 90%;">
+        <h2 id="input-modal-title"></h2>
+        <input type="text" id="input-modal-input" style="width: 100%; padding: 5px; font-size: 1.1em; margin-top: 10px;">
+        <div class="form-actions" style="margin-top: 20px;">
+            <button id="input-modal-cancel" class="btn">キャンセル</button>
+            <button id="input-modal-ok" class="btn">OK</button>
+        </div>
+    </div>
+</div>
+{{ end }}
+
+
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\views\common_search_modal.html -----
 {{ define "common_search_modal" }}
 <div id="tkr-search-modal-overlay" class="modal-overlay hidden">
@@ -1128,6 +1150,52 @@ body {
         </table>
     </div>
 </div>
+
+----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\views\inout_view.html -----
+<div id="inout-view" class="view">
+    <h1>入出庫伝票</h1>
+
+    <div class="inout-header-controls">
+        <div class="form-group">
+            <label for="in-out-date">日付:</label>
+            <input type="date" id="in-out-date">
+        </div>
+        <div class="form-group">
+            <label for="in-out-receipt">伝票番号 (日付選択で絞込):</label>
+            <select id="in-out-receipt">
+                <option value="">日付を選択してください</option>
+                <option value="--new--">--- 新規作成 ---</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label for="in-out-client">得意先:</label>
+            <select id="in-out-client">
+                <option value="">選択してください</option>
+                <option value="--new--">--- 新規作成 ---</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label for="in-out-type">種別:</label>
+            <select id="in-out-type">
+                <option value="11">入庫</option>
+                <option value="12">出庫</option>
+            </select>
+        </div>
+        <div class="buttons-group">
+            <button id="saveBtn" class="btn">保存</button>
+            <button id="deleteBtn" class="btn" disabled>削除</button>
+        </div>
+    </div>
+
+    <div class="inout-view-container">
+        <div class="inout-details-header">
+            <button id="addRowBtn" class="btn">明細を追加</button>
+        </div>
+        <div id="inout-details-container" class="table-container">
+            </div>
+    </div>
+</div>
+
 
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\views\inventory_adjustment_view.html -----
 <div id="inventory-adjustment-view" class="view">
@@ -1392,11 +1460,13 @@ body {
     <link rel="stylesheet" href="/static/css/search_modal.css">
     <link rel="stylesheet" href="/static/css/search_form_group.css">
     <link rel="stylesheet" href="/static/css/modal.css">
+    <link rel="stylesheet" href="/static/css/inout.css">
     </head>
 <body>
     <header id="main-header">
         <button id="datViewBtn" class="btn">DAT取込</button>
         <button id="usageViewBtn" class="btn">USAGE取込</button>
+        <button id="inOutViewBtn" class="btn">入出庫</button>
         <button id="inventoryAdjustmentViewBtn" class="btn">棚卸調整</button>
         <button id="masterEditViewBtn" class="btn">マスタ編集</button>
         <button id="configViewBtn" class="btn">設定</button>
@@ -1426,52 +1496,8 @@ body {
     </div>
     <div id="notification-box"></div>
 
-    <div id="inout-view" class="view">
-    <h1>入出庫伝票</h1>
-
-    <div class="inout-header-controls">
-        <div class="form-group">
-            <label for="in-out-date">日付:</label>
-            <input type="date" id="in-out-date">
-        </div>
-        <div class="form-group">
-            <label for="in-out-receipt">伝票番号 (日付選択で絞込):</label>
-            <select id="in-out-receipt">
-                <option value="">日付を選択してください</option>
-                <option value="--new--">--- 新規作成 ---</option>
-            </select>
-        </div>
-        <div class="form-group">
-            <label for="in-out-client">得意先:</label>
-            <select id="in-out-client">
-                <option value="">選択してください</option>
-                <option value="--new--">--- 新規作成 ---</option>
-            </select>
-        </div>
-        <div class="form-group">
-            <label for="in-out-type">種別:</label>
-            <select id="in-out-type">
-                <option value="11">入庫</option>
-                <option value="12">出庫</option>
-            </select>
-        </div>
-        <div class="buttons-group">
-            <button id="saveBtn" class="btn">保存</button>
-            <button id="deleteBtn" class="btn" disabled>削除</button>
-        </div>
-    </div>
-
-    <div class="inout-view-container">
-        <div class="inout-details-header">
-            <button id="addRowBtn" class="btn">明細を追加</button>
-        </div>
-        <div id="inout-details-container" class="table-container">
-            </div>
-    </div>
-</div>
-
-
  {{ template "common_search_modal" . }}
+ {{ template "common_input_modal" . }}
     <script type="module" src="/static/js/app.js"></script>
 </body>
 </html>

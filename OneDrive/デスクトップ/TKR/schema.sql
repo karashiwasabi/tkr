@@ -240,3 +240,14 @@ INSERT OR IGNORE INTO code_sequences(name, last_no) VALUES ('CL', 0);
 -- ▼▼▼【ここに追加】仮ProductCode用シーケンス ▼▼▼
 INSERT OR IGNORE INTO code_sequences(name, last_no) VALUES ('MA2J', 0);
 -- ▲▲▲【追加ここまで】▲▲▲
+
+-- ▼▼▼【ここから追加】包装キー単位の在庫起点テーブル ▼▼▼
+CREATE TABLE IF NOT EXISTS package_stock (
+  package_key TEXT PRIMARY KEY,          -- 包装キー (例: '2647709N1060|包装小|5|Ｇ')
+  yj_code TEXT,                          -- 対応するYJコード (検索用)
+  stock_quantity_yj REAL NOT NULL,       -- その包装キーのYJ単位での在庫量
+  last_inventory_date TEXT NOT NULL      -- この在庫量が確定した最新の棚卸日 (YYYYMMDD)
+);
+
+CREATE INDEX IF NOT EXISTS idx_package_stock_yj_code ON package_stock (yj_code);
+-- ▲▲▲【追加ここまで】▲▲▲

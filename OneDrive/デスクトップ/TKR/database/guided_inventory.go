@@ -2,13 +2,12 @@
 package database
 
 import (
-	"database/sql" // ▼▼▼【ここに追加】▼▼▼
+	"database/sql"
 	"fmt"
-	"strconv"     // ▼▼▼【ここに追加】▼▼▼
-	"tkr/mappers" // ▼▼▼【ここに追加】▼▼▼
+	"strconv"
+	"tkr/mappers"
 	"tkr/model"
-
-	// "tkr/units" // 削除 (mappers が担当)
+	"tkr/units" //
 
 	"github.com/jmoiron/sqlx"
 )
@@ -20,7 +19,7 @@ func DeleteTransactionsByFlagAndDateAndCodes(tx *sqlx.Tx, flag int, date string,
 		return nil
 	}
 
-	query, args, err := sqlx.In(`DELETE FROM transaction_records WHERE flag = ? AND transaction_date = ? AND jan_code IN (?)`, flag, date, productCodes)
+	query, args, err := sqlx.In(`DELETE FROM transaction_records WHERE flag = ? AND transaction_date = ? AND jan_code IN (?)`, flag, date, productCodes) //
 	if err != nil {
 		return fmt.Errorf("failed to create IN query for deleting transactions: %w", err)
 	}
@@ -46,7 +45,7 @@ func SaveGuidedInventoryData(tx *sqlx.Tx, date string, yjCode string, allPackagi
 
 	// 1. 同日の既存棚卸データ(flag=0)を削除
 	if len(allProductCodes) > 0 {
-		if err := DeleteTransactionsByFlagAndDateAndCodes(tx, 0, date, allProductCodes); err != nil {
+		if err := DeleteTransactionsByFlagAndDateAndCodes(tx, 0, date, allProductCodes); err != nil { //
 			return fmt.Errorf("failed to delete old inventory records for the same day: %w", err)
 		}
 	}
@@ -69,10 +68,9 @@ func SaveGuidedInventoryData(tx *sqlx.Tx, date string, yjCode string, allPackagi
 
 	// データベースから 'ADJ251031' で始まる最大の伝票番号を取得
 	q := `SELECT receipt_number FROM transaction_records 
-		  WHERE receipt_number LIKE ? 
-		  ORDER BY receipt_number DESC LIMIT 1`
+		  WHERE receipt_number LIKE ? ORDER BY receipt_number DESC LIMIT 1` //
 	var lastReceiptNumber string
-	err := tx.Get(&lastReceiptNumber, q, prefix+"%")
+	err := tx.Get(&lastReceiptNumber, q, prefix+"%") //
 
 	if err != nil && err != sql.ErrNoRows {
 		return fmt.Errorf("failed to get last receipt number sequence for prefix %s: %w", prefix, err)
@@ -92,8 +90,11 @@ func SaveGuidedInventoryData(tx *sqlx.Tx, date string, yjCode string, allPackagi
 	// ▲▲▲【修正ここまで】▲▲▲
 
 	var productCodesWithInventory []string
+	// ▼▼▼【ここから追加】包装キー単位のYJ在庫量を集計するマップ ▼▼▼
+	packageStockTotalsYj := make(map[string]float64) //
+	// ▲▲▲【追加ここまで】▲▲▲
 
-	// 2. 新しい棚卸データを挿入
+	// 2. 新しい棚卸データを挿入 (flag=0 履歴用)
 	for i, productCode := range allProductCodes {
 		master, ok := mastersMap[productCode]
 		if !ok {
@@ -101,10 +102,18 @@ func SaveGuidedInventoryData(tx *sqlx.Tx, date string, yjCode string, allPackagi
 		}
 
 		janQty := inventoryData[productCode]
+		yjQty := janQty * master.JanPackInnerQty //
+
 		// 在庫が0より大きい（＝入力があった）コードを記録
 		if janQty > 0 {
-			productCodesWithInventory = append(productCodesWithInventory, productCode)
+			productCodesWithInventory = append(productCodesWithInventory, productCode) //
 		}
+
+		// ▼▼▼【ここから追加】包装キー単位でYJ在庫量を集計 ▼▼▼
+		// (aggregation.go の GetFilteredMastersAndYjCodes と同じキー生成ロジック )
+		packageKey := fmt.Sprintf("%s|%s|%g|%s", master.YjCode, master.PackageForm, master.JanPackInnerQty, units.ResolveName(master.YjUnitName)) //
+		packageStockTotalsYj[packageKey] += yjQty                                                                                                 //
+		// ▲▲▲【追加ここまで】▲▲▲
 
 		tr := model.TransactionRecord{
 			TransactionDate: date,
@@ -114,7 +123,7 @@ func SaveGuidedInventoryData(tx *sqlx.Tx, date string, yjCode string, allPackagi
 			JanCode:         master.ProductCode,
 			YjCode:          master.YjCode,
 			JanQuantity:     janQty,
-			YjQuantity:      janQty * master.JanPackInnerQty,
+			YjQuantity:      yjQty, // YJ単位に換算
 		}
 
 		// (棚卸の場合は薬価を単価とし、金額を計算)
@@ -124,7 +133,7 @@ func SaveGuidedInventoryData(tx *sqlx.Tx, date string, yjCode string, allPackagi
 		// 共通マッパー呼び出し
 		mappers.MapMasterToTransaction(&tr, master)
 
-		if err := InsertTransactionRecord(tx, tr); err != nil {
+		if err := InsertTransactionRecord(tx, tr); err != nil { //
 			return fmt.Errorf("failed to insert inventory record for %s: %w", productCode, err)
 		}
 	}
@@ -142,16 +151,24 @@ func SaveGuidedInventoryData(tx *sqlx.Tx, date string, yjCode string, allPackagi
 		}
 
 		// このYJコードに関連する既存のロット・期限情報を一度すべて削除
-		if err := DeleteDeadStockByProductCodesInTx(tx, allProductCodes); err != nil {
+		if err := DeleteDeadStockByProductCodesInTx(tx, allProductCodes); err != nil { //
 			return fmt.Errorf("failed to delete old dead stock records: %w", err)
 		}
 		// 新しいロット・期限情報（在庫>0のもの）を保存
 		if len(relevantDeadstockData) > 0 {
-			if err := SaveDeadStockListInTx(tx, relevantDeadstockData); err != nil {
+			if err := SaveDeadStockListInTx(tx, relevantDeadstockData); err != nil { //
 				return fmt.Errorf("failed to upsert new dead stock records: %w", err)
 			}
 		}
 	}
+
+	// ▼▼▼【ここから追加】4. package_stock テーブルを更新（在庫起点） ▼▼▼
+	for key, totalYjQty := range packageStockTotalsYj {
+		if err := UpsertPackageStockInTx(tx, key, yjCode, totalYjQty, date); err != nil { //
+			return fmt.Errorf("failed to upsert package_stock for key %s: %w", key, err)
+		}
+	}
+	// ▲▲▲【追加ここまで】▲▲▲
 
 	return nil
 }
