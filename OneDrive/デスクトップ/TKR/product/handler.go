@@ -3,24 +3,61 @@ package product
 
 import (
 	"database/sql"
-
-	// ▼▼▼【ここに追加】▼▼▼
 	"encoding/json"
-	"errors" // ▼▼▼【ここに追加】▼▼▼
-	"fmt"    // ▼▼▼【ここに追加】▼▼▼
-	"log"    // ▼▼▼【ここに追加】▼▼▼
+	"errors"
+	"fmt"
+	"log"
 	"net/http"
 	"sort"
 	"strings"
 	"tkr/barcode"
-
-	// ▼▼▼【ここに追加】▼▼▼
 	"tkr/database"
-	"tkr/mappers" // Viewマッパー
+	"tkr/mappers"       // Viewマッパー
+	"tkr/mastermanager" // ▼▼▼【ここに追加】▼▼▼
 	"tkr/model"
 
 	"github.com/jmoiron/sqlx"
 )
+
+// ▼▼▼【ここに追加】JcshmsToProductMasterInput の結果を ProductMaster (View用) に変換するヘルパー ▼▼▼
+// (SearchProductsHandler が DB に挿入せずに View を生成するために使用)
+func inputToMaster(input model.ProductMasterInput) *model.ProductMaster {
+	return &model.ProductMaster{
+		ProductCode:         input.ProductCode,
+		YjCode:              input.YjCode,
+		Gs1Code:             input.Gs1Code,
+		ProductName:         input.ProductName,
+		KanaName:            input.KanaName,
+		KanaNameShort:       input.KanaNameShort,
+		GenericName:         input.GenericName,
+		MakerName:           input.MakerName,
+		Specification:       input.Specification,
+		UsageClassification: input.UsageClassification,
+		PackageForm:         input.PackageForm,
+		YjUnitName:          input.YjUnitName,
+		YjPackUnitQty:       input.YjPackUnitQty,
+		JanPackInnerQty:     input.JanPackInnerQty,
+		JanUnitCode:         input.JanUnitCode,
+		JanPackUnitQty:      input.JanPackUnitQty,
+		Origin:              input.Origin,
+		NhiPrice:            input.NhiPrice,
+		PurchasePrice:       input.PurchasePrice,
+		FlagPoison:          input.FlagPoison,
+		FlagDeleterious:     input.FlagDeleterious,
+		FlagNarcotic:        input.FlagNarcotic,
+		FlagPsychotropic:    input.FlagPsychotropic,
+		FlagStimulant:       input.FlagStimulant,
+		FlagStimulantRaw:    input.FlagStimulantRaw,
+		IsOrderStopped:      input.IsOrderStopped,
+		SupplierWholesale:   input.SupplierWholesale,
+		GroupCode:           input.GroupCode,
+		ShelfNumber:         input.ShelfNumber,
+		Category:            input.Category,
+		UserNotes:           input.UserNotes,
+	}
+}
+
+// ▲▲▲【追加ここまで】▲▲▲
 
 func SearchProductsHandler(conn *sqlx.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -54,6 +91,7 @@ func SearchProductsHandler(conn *sqlx.DB) http.HandlerFunc {
 			jcshmsResults, err := database.GetFilteredJcshmsInfo(conn, dosageForm, kanaName, genericName)
 			if err != nil {
 				http.Error(w, "Failed to search jcshms_master: "+err.Error(), http.StatusInternalServerError)
+
 				return
 			}
 
@@ -61,7 +99,10 @@ func SearchProductsHandler(conn *sqlx.DB) http.HandlerFunc {
 				if seenCodes[jcshmsInfo.ProductCode] {
 					continue // 既に採用済みのものはスキップ
 				}
-				tempMaster := mappers.FromJcshmsToProductMaster(jcshmsInfo)
+				// ▼▼▼【ここから修正】mappers.FromJcshmsToProductMaster -> mastermanager.JcshmsToProductMasterInput ▼▼▼
+				input := mastermanager.JcshmsToProductMasterInput(jcshmsInfo)
+				tempMaster := inputToMaster(input) // View生成のために *model.ProductMaster に変換
+				// ▲▲▲【修正ここまで】▲▲▲
 				view := mappers.ToProductMasterView(tempMaster)
 				view.IsAdopted = false
 				mergedResults = append(mergedResults, view)
@@ -107,6 +148,7 @@ func GetProductByBarcodeHandler(conn *sqlx.DB) http.HandlerFunc {
 		rawBarcode := strings.TrimPrefix(r.URL.Path, "/api/product/by_barcode/")
 		if rawBarcode == "" {
 			http.Error(w, "barcode is required", http.StatusBadRequest)
+
 			return
 		}
 
@@ -152,7 +194,8 @@ func GetProductByBarcodeHandler(conn *sqlx.DB) http.HandlerFunc {
 		}
 
 		// 5. JCSHMS にも見つからなかった場合
-		if jcshmsInfo == nil {
+		if jcshmsInfo ==
+			nil {
 			log.Printf("Product not found in JCSHMS for GS1 %s", gtin14)
 			http.Error(w, "どのマスターにも製品が見つかりませんでした", http.StatusNotFound)
 			return
@@ -160,8 +203,11 @@ func GetProductByBarcodeHandler(conn *sqlx.DB) http.HandlerFunc {
 
 		// 6. JCSHMS に見つかった場合、product_masterに新規作成
 		log.Printf("Found product in JCSHMS: %s. Creating new master...", jcshmsInfo.ProductName)
-		newMaster := mappers.FromJcshmsToProductMaster(jcshmsInfo)
-		newMaster.Gs1Code = gtin14 // 解析で得たGTIN-14をセット
+
+		// ▼▼▼【ここから修正】mappers.FromJcshmsToProductMaster -> mastermanager.JcshmsToProductMasterInput ▼▼▼
+		input := mastermanager.JcshmsToProductMasterInput(jcshmsInfo)
+		input.Gs1Code = gtin14 // 解析で得たGTIN-14をセット
+		// ▲▲▲【修正ここまで】▲▲▲
 
 		tx, err := conn.Beginx()
 		if err != nil {
@@ -171,11 +217,14 @@ func GetProductByBarcodeHandler(conn *sqlx.DB) http.HandlerFunc {
 		}
 		defer tx.Rollback() // In case of panic or error
 
-		if err := database.InsertProductMaster(tx, newMaster); err != nil {
+		// ▼▼▼【ここから修正】database.InsertProductMaster -> mastermanager.UpsertProductMasterSqlx ▼▼▼
+		newMaster, err := mastermanager.UpsertProductMasterSqlx(tx, input) // Upsert を呼び出し、 *model.ProductMaster を受け取る
+		if err != nil {
 			log.Printf("Failed to insert new master from JCSHMS: %v", err)
 			http.Error(w, "マスターの新規作成に失敗しました", http.StatusInternalServerError)
 			return
 		}
+		// ▲▲▲【修正ここまで】▲▲▲
 
 		if err := tx.Commit(); err != nil {
 			log.Printf("Failed to commit transaction to create master: %v", err)
@@ -219,7 +268,9 @@ func AdoptMasterHandler(conn *sqlx.DB) http.HandlerFunc {
 		}
 
 		// product_masterに新規作成
-		newMaster := mappers.FromJcshmsToProductMaster(jcshmsInfo)
+		// ▼▼▼【ここから修正】mappers.FromJcshmsToProductMaster -> mastermanager.JcshmsToProductMasterInput ▼▼▼
+		input := mastermanager.JcshmsToProductMasterInput(jcshmsInfo)
+		// ▲▲▲【修正ここまで】▲▲▲
 
 		tx, err := conn.Beginx()
 		if err != nil {
@@ -228,10 +279,14 @@ func AdoptMasterHandler(conn *sqlx.DB) http.HandlerFunc {
 		}
 		defer tx.Rollback()
 
-		if err := database.InsertProductMaster(tx, newMaster); err != nil {
+		// ▼▼▼【ここから修正】database.InsertProductMaster -> mastermanager.UpsertProductMasterSqlx ▼▼▼
+		newMaster, err := mastermanager.UpsertProductMasterSqlx(tx, input) // Upsert を呼び出し、 *model.ProductMaster を受け取る
+		if err != nil {
+
 			http.Error(w, "マスターの新規作成に失敗しました", http.StatusInternalServerError)
 			return
 		}
+		// ▲▲▲【修正ここまで】▲▲▲
 
 		if err := tx.Commit(); err != nil {
 			http.Error(w, "トランザクションのコミットに失敗しました", http.StatusInternalServerError)
@@ -244,21 +299,3 @@ func AdoptMasterHandler(conn *sqlx.DB) http.HandlerFunc {
 		json.NewEncoder(w).Encode(masterView)
 	}
 }
-
-// ▲▲▲【修正ここまで】▲▲▲
-
-// ▼▼▼【ここから削除】古いハンドラを削除 ▼▼▼
-/*
-func GetProductByGS1Handler(conn *sqlx.DB) http.HandlerFunc
-{
-	return func(w http.ResponseWriter, r *http.Request) {
-// ... (古いコード [cite: 804] 削除) ...
-	}
-}
-func GetMasterByCodeHandler(conn *sqlx.DB) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-// ... (古いコード [cite: 804] 削除) ...
-	}
-}
-*/
-// ▲▲▲【削除ここまで】▲▲▲
