@@ -5,11 +5,6 @@
    (モーダルの基本枠は modal.css で定義)
 */
 
-/* 検索パネルと検索ボタンを非表示にする (これがこのモーダル固有の動作) */
-#tkr-search-modal-overlay .filter-container {
-    display: none !important; /* 検索パネル全体を非表示 */
-}
-
 /* 検索結果テーブル */
 #search-results-table {
     font-size: 10px; /* 通常より少し小さく */

@@ -92,14 +92,62 @@
     color: #fff;
 }
 
+----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\css\inout.css -----
+/* C:\Users\wasab\OneDrive\デスクトップ\TKR\static\css\inout.css */
+.inout-view-container {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.inout-header-controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px 16px;
+    padding: 10px;
+    border: 1px solid #ccc;
+    background-color: #f7f7f7;
+    align-items: flex-end;
+}
+
+.inout-header-controls .form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.inout-header-controls .form-group label {
+    font-size: 10px;
+    font-weight: bold;
+}
+.inout-header-controls .form-group input,
+.inout-header-controls .form-group select {
+    padding: 3px;
+    border: 1px solid #ccc;
+    font-size: inherit;
+    min-width: 150px;
+}
+.inout-header-controls .buttons-group {
+    display: flex;
+    gap: 8px;
+    margin-left: auto;
+}
+
+.inout-details-header {
+    text-align: right;
+    margin-bottom: 5px;
+}
+
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\css\inventory_adjustment.css -----
 /* C:\Users\wasab\OneDrive\デスクトップ\TKR\static\css\inventory_adjustment.css */
 
-/* 棚卸調整ビューのフィルターコンテナ */
+/* ▼▼▼【削除】固有の背景色指定を削除 ▼▼▼ */
+/*
 #inventory-adjustment-view .filter-container {
-    background-color: #f0f8ff; /* 薄い青 */
+    background-color: #f0f8ff; 
     border: 1px solid #cce;
 }
+*/
+/* ▲▲▲【削除ここまで】▲▲▲ */
 
 /* 共通フォーム内の input/select へのスタイル指定 */
 #inventory-adjustment-view .filter-container .form-group input,
@@ -169,8 +217,6 @@
     color: #333;
 }
 
-/* ▼▼▼【ここから追加】JSのインラインスタイルをクラス化 ▼▼▼ */
-
 /* --- 棚卸調整ビュー全体 --- */
 .adj-header {
     text-align: center; 
@@ -215,8 +261,6 @@
 .reference-table th.col-ref-qty     { width: 15%; }
 .reference-table th.col-ref-expiry  { width: 20%; }
 .reference-table th.col-ref-lot     { width: 25%; }
-
-/* ▲▲▲【追加ここまで】▲▲▲ */
 
 
 /* 棚卸入力セクション */
@@ -279,14 +323,12 @@
     color: #555;
     margin-left: 10px;
 }
-/* ▼▼▼【ここから追加】JSのインラインスタイルをクラス化 ▼▼▼ */
 .info-text.stock-info {
     color: #dc3545;
 }
 .info-text.align-right {
     margin-left: auto;
 }
-/* ▲▲▲【追加ここまで】▲▲▲ */
 
 
 /* 最終入力テーブル */
@@ -295,13 +337,11 @@
     font-size: 9px;
     min-width: 20px;
 }
-/* ▼▼▼【ここから追加】JSのインラインスタイルをクラス化 ▼▼▼ */
 .final-input-tbody .action-buttons {
     display: flex; 
     flex-direction: column; 
     gap: 4px;
 }
-/* ▲▲▲【追加ここまで】▲▲▲ */
 .final-input-tbody .register-inventory-btn {
     background-color: #28a745;
     border-color: #1e7e34;
@@ -323,22 +363,23 @@
 .final-input-tbody input[type="number"] {
     text-align: right;
 }
-/* ▼▼▼【ここから追加】JSのインラインスタイルをクラス化 ▼▼▼ */
 .lot-input-header {
     font-size: 10px; 
     font-weight: bold; 
     margin-bottom: 4px;
 }
-/* ▲▲▲【追加ここまで】▲▲▲ */
 
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\css\masteredit.css -----
 /* C:\Users\wasab\OneDrive\デスクトップ\TKR\static\css\masteredit.css */
 
-/* マスター一覧テーブルの編集ボタン */
+/* ▼▼▼【削除】masterListTable は使用しなくなったため不要 ▼▼▼ */
+/*
 #masterListTable .edit-master-btn {
     padding: 1px 4px;
     font-size: 9px;
 }
+*/
+/* ▲▲▲【削除ここまで】▲▲▲ */
 
 /* ▼▼▼ master_edit_view.html のインラインスタイルをクラス化 ▼▼▼ */
 
@@ -840,7 +881,6 @@ body {
 .data-table td {
   border: 1px solid #ccc;
   padding: 2px 2px;
-  /* text-align: left; */ /* ← デフォルト指定は削除 */
   vertical-align: middle;
   min-height: 20px;
   height: 20px;
@@ -850,74 +890,60 @@ body {
   box-sizing: border-box;
 }
 
-/* ▼▼▼ ヘッダーは全て中央揃え ▼▼▼ */
 .data-table th {
   background-color: #f2f2f2;
   font-weight: bold;
   text-align: center;
-  /* ヘッダーは中央揃え */
 }
-/* ▲▲▲ 修正 ▲▲▲ */
 
-/* Zebra striping every two data rows */
 .data-table tbody tr:nth-child(4n-1),
 .data-table tbody tr:nth-child(4n) {
   background-color: #f9f9f9;
 }
 
 
-/* ▼▼▼ 列ごとの幅指定 (ヘッダーに適用) ▼▼▼ */
-/* width指定は th にのみ適用し、td は追従させる */
+/* ▼▼▼【ここから修正】列幅のパーセンテージを変更 ▼▼▼ */
 .data-table th.col-action     { width: 5%; }
-.data-table th.col-date       { width: 7%; }
-.data-table th.col-yj         { width: 10%; }
-/* 製品名は構成要素のクラスで幅を指定 */
-.data-table th.col-package    { width: 10%; }
-.data-table th.col-maker      { width: 10%; }
+.data-table th.col-date       { width: 6%; } /* 7% から 1% 削減 */
+.data-table th.col-yj         { width: 8%; } /* 10% から 2% 削減 */
+/* col-product (colspan=2) は col-package + col-maker で決定 */
+.data-table th.col-package    { width: 16%; } /* 10% から 3% 増加 */
+.data-table th.col-maker      { width: 16%; } /* 10% から 3% 増加 */
 .data-table th.col-count      { width: 4%; }
 .data-table th.col-yjqty      { width: 8%; }
 .data-table th.col-yjpackqty  { width: 8%; }
 .data-table th.col-yjunit     { width: 8%; }
 .data-table th.col-unitprice  { width: 6%; }
-.data-table th.col-expiry     { width: 8%; }
+.data-table th.col-expiry     { width: 6%; }
 .data-table th.col-wholesaler { width: 8%; }
-.data-table th.col-line       { width: 8%; }
-/* ヘッダー2行目のクラスにも幅を指定 */
-.data-table th.col-flag       { width: 7%; }
-.data-table th.col-jan        { width: 10%; }
+.data-table th.col-line       { width: 4%; } /* 8% から 3% 削減 */
+
+/* 2行目のヘッダーも1行目に合わせる */
+.data-table th.col-flag       { width: 6%; } /* 7% -> 6% */
+.data-table th.col-jan        { width: 8%; } /* 10% -> 8% */
 .data-table th.col-form       { width: 4%; }
 .data-table th.col-janqty     { width: 8%; }
 .data-table th.col-janpackqty { width: 8%; }
 .data-table th.col-janunit    { width: 8%; }
 .data-table th.col-amount     { width: 6%; }
-.data-table th.col-lot        { width: 8%; }
+.data-table th.col-lot        { width: 6%; }
 .data-table th.col-receipt    { width: 8%; }
-.data-table th.col-ma         { width: 8%; }
-/* ▲▲▲ 幅指定ここまで ▲▲▲ */
+.data-table th.col-ma         { width: 4%; } /* 8% -> 5% */
+/* ▲▲▲【修正ここまで】▲▲▲ */
 
 
-/* ▼▼▼ データセル (td) の文字揃え ▼▼▼ */
-/* デフォルトは左揃え (指定なし) */
+/* ▼▼▼ データセル (td) の文字揃え (変更なし) ▼▼▼ */
 .data-table td.col-action     { text-align: center; }
 .data-table td.col-date       { text-align: center; }
 .data-table td.col-flag       { text-align: center; }
-/* .data-table td.col-yj         { text-align: left; } (デフォルト) */
-/* .data-table td.col-jan        { text-align: left; } (デフォルト) */
-/* .data-table td.col-package    { text-align: left; } (デフォルト) */
-/* .data-table td.col-maker      { text-align: left; } (デフォルト) */
-/* .data-table td.col-product   { text-align: left; } (デフォルト) */
 .data-table td.col-count      { text-align: right; }
 .data-table td.col-form       { text-align: center; }
 .data-table td.col-yjqty      { text-align: right; }
 .data-table td.col-janqty     { text-align: right; }
 .data-table td.col-yjpackqty  { text-align: right; }
 .data-table td.col-janpackqty { text-align: right; }
-
-/* ▼▼▼【ここを修正】YJ単位とJAN単位を左寄せに変更 ▼▼▼ */
 .data-table td.col-yjunit     { text-align: left; }
 .data-table td.col-janunit    { text-align: left; }
-/* ▲▲▲ 修正ここまで ▲▲▲ */
-
 .data-table td.col-unitprice  { text-align: right; }
 .data-table td.col-amount     { text-align: right; }
 .data-table td.col-expiry     { text-align: center; }
@@ -1013,12 +1039,12 @@ body {
         <div class="config-form-container">
             <div class="form-row">
                 <div class="form-group">
-                    <label for="config-dat-folder-path">伝票取込フォルダパス (DAT):</label>
+                     <label for="config-dat-folder-path">伝票取込フォルダパス (DAT):</label>
                     <input type="text" id="config-dat-folder-path" autocomplete="off">
                 </div>
                 <div class="form-group">
                     <label for="config-usage-folder-path">処方取込フォルダパス (CSV):</label>
-                    <input type="text" id="config-usage-folder-path" autocomplete="off">
+                     <input type="text" id="config-usage-folder-path" autocomplete="off">
                 </div>
             </div>
             <div class="form-actions">
@@ -1026,21 +1052,8 @@ body {
             </div>
         </div>
     </section>
+ 
     <section class="config-section">
-        <h2>集計設定</h2>
-        <div class="config-form-container">
-            <div class="form-row">
-                <div class="form-group" style="flex-basis: 150px;">
-                    <label for="config-calculation-days">在庫集計期間 (日数):</label>
-                    <input type="number" id="config-calculation-days" autocomplete="off" value="90">
-                </div>
-            </div>
-            <div class="form-actions">
-                <button id="configSaveDaysBtn" class="btn">集計期間保存</button>
-            </div>
-        </div>
-    </section>
-<section class="config-section">
         <h2>集計設定</h2>
         <div class="config-form-container">
             <div class="form-row">
@@ -1054,15 +1067,16 @@ body {
             </div>
         </div>
     </section>
+
     <section class="config-section">
         <h2>卸コード管理</h2>
         <div class="config-form-container">
             <fieldset>
-                <legend>新規卸コード追加</legend>
+                 <legend>新規卸コード追加</legend>
                  <div class="form-row">
                     <div class="form-group flex-150">
                         <label for="config-wholesaler-code">卸コード:</label>
-                        <input type="text" id="config-wholesaler-code" autocomplete="off" maxlength="10">
+                         <input type="text" id="config-wholesaler-code" autocomplete="off" maxlength="10">
                     </div>
                      <div class="form-group flex-300">
                         <label for="config-wholesaler-name">卸名:</label>
@@ -1071,19 +1085,19 @@ body {
                      <div class="form-actions">
                         <button id="configAddWholesalerBtn" class="btn">追加</button>
                     </div>
-                </div>
+                 </div>
             </fieldset>
         </div>
          <div id="wholesalerListContainer" class="table-container">
             <table id="wholesalerListTable" class="data-table">
                 <thead>
                     <tr>
-                        <th class="col-config-code">卸コード</th>
+                         <th class="col-config-code">卸コード</th>
                          <th class="col-config-name">卸名</th>
                         <th class="col-config-action">操作</th>
                     </tr>
                 </thead>
-                <tbody>
+                 <tbody>
                 </tbody>
              </table>
         </div>
@@ -1260,7 +1274,7 @@ body {
             <div class="form-row">
                 <div class="form-group flex-150">
                     <label for="edit-supplier-wholesale">主要卸 (ユーザー):</label>
-                    <input type="text" id="edit-supplier-wholesale">
+                    <select id="edit-supplier-wholesale"></select>
                 </div>
                 <div class="form-group flex-150">
                     <label for="edit-group-code">グループコード (ユーザー):</label>
@@ -1302,10 +1316,10 @@ body {
         
         <div class="search-barcode-row">
             <div class="form-group">
-                <label for="{{ $inputID }}">GS1バーコードスキャン (クイック特定):</label>
+                <label for="{{ $inputID }}">バーコードスキャン:</label>
            
              <form id="{{ $formID }}" class="search-barcode-form">
-                    <input type="text" id="{{ $inputID }}" class="search-barcode-input" autocomplete="off" placeholder="GS1-128 (JAN+期限+ロット)">
+                    <input type="text" id="{{ $inputID }}" class="search-barcode-input" autocomplete="off" placeholder="GTIN/JAN, ロット情報含む可">
                 </form>
             </div>
         </div>
@@ -1350,11 +1364,10 @@ body {
 <div id="usage-upload-view" class="view">
     <h1>ファイルアップロード (USAGE)</h1>
 
-    <div style="margin-bottom: 20px;">
+    <div class="upload-button-container">
         <button id="usageUploadBtn" class="btn">USAGEファイル選択</button>
         <input type="file" id="usageFileInput" accept=".csv,.CSV,.txt,.TXT" class="hidden">
     </div>
-
     <div id="usageUploadResultContainer">
         <p>「USAGEファイル選択」ボタンを押してファイルを選んでください。</p>
     </div>
@@ -1413,7 +1426,51 @@ body {
     </div>
     <div id="notification-box"></div>
 
-    
+    <div id="inout-view" class="view">
+    <h1>入出庫伝票</h1>
+
+    <div class="inout-header-controls">
+        <div class="form-group">
+            <label for="in-out-date">日付:</label>
+            <input type="date" id="in-out-date">
+        </div>
+        <div class="form-group">
+            <label for="in-out-receipt">伝票番号 (日付選択で絞込):</label>
+            <select id="in-out-receipt">
+                <option value="">日付を選択してください</option>
+                <option value="--new--">--- 新規作成 ---</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label for="in-out-client">得意先:</label>
+            <select id="in-out-client">
+                <option value="">選択してください</option>
+                <option value="--new--">--- 新規作成 ---</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label for="in-out-type">種別:</label>
+            <select id="in-out-type">
+                <option value="11">入庫</option>
+                <option value="12">出庫</option>
+            </select>
+        </div>
+        <div class="buttons-group">
+            <button id="saveBtn" class="btn">保存</button>
+            <button id="deleteBtn" class="btn" disabled>削除</button>
+        </div>
+    </div>
+
+    <div class="inout-view-container">
+        <div class="inout-details-header">
+            <button id="addRowBtn" class="btn">明細を追加</button>
+        </div>
+        <div id="inout-details-container" class="table-container">
+            </div>
+    </div>
+</div>
+
+
  {{ template "common_search_modal" . }}
     <script type="module" src="/static/js/app.js"></script>
 </body>

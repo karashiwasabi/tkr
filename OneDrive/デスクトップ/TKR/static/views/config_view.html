@@ -5,12 +5,12 @@
         <div class="config-form-container">
             <div class="form-row">
                 <div class="form-group">
-                    <label for="config-dat-folder-path">伝票取込フォルダパス (DAT):</label>
+                     <label for="config-dat-folder-path">伝票取込フォルダパス (DAT):</label>
                     <input type="text" id="config-dat-folder-path" autocomplete="off">
                 </div>
                 <div class="form-group">
                     <label for="config-usage-folder-path">処方取込フォルダパス (CSV):</label>
-                    <input type="text" id="config-usage-folder-path" autocomplete="off">
+                     <input type="text" id="config-usage-folder-path" autocomplete="off">
                 </div>
             </div>
             <div class="form-actions">
@@ -18,21 +18,8 @@
             </div>
         </div>
     </section>
+ 
     <section class="config-section">
-        <h2>集計設定</h2>
-        <div class="config-form-container">
-            <div class="form-row">
-                <div class="form-group" style="flex-basis: 150px;">
-                    <label for="config-calculation-days">在庫集計期間 (日数):</label>
-                    <input type="number" id="config-calculation-days" autocomplete="off" value="90">
-                </div>
-            </div>
-            <div class="form-actions">
-                <button id="configSaveDaysBtn" class="btn">集計期間保存</button>
-            </div>
-        </div>
-    </section>
-<section class="config-section">
         <h2>集計設定</h2>
         <div class="config-form-container">
             <div class="form-row">
@@ -46,15 +33,16 @@
             </div>
         </div>
     </section>
+
     <section class="config-section">
         <h2>卸コード管理</h2>
         <div class="config-form-container">
             <fieldset>
-                <legend>新規卸コード追加</legend>
+                 <legend>新規卸コード追加</legend>
                  <div class="form-row">
                     <div class="form-group flex-150">
                         <label for="config-wholesaler-code">卸コード:</label>
-                        <input type="text" id="config-wholesaler-code" autocomplete="off" maxlength="10">
+                         <input type="text" id="config-wholesaler-code" autocomplete="off" maxlength="10">
                     </div>
                      <div class="form-group flex-300">
                         <label for="config-wholesaler-name">卸名:</label>
@@ -63,19 +51,19 @@
                      <div class="form-actions">
                         <button id="configAddWholesalerBtn" class="btn">追加</button>
                     </div>
-                </div>
+                 </div>
             </fieldset>
         </div>
          <div id="wholesalerListContainer" class="table-container">
             <table id="wholesalerListTable" class="data-table">
                 <thead>
                     <tr>
-                        <th class="col-config-code">卸コード</th>
+                         <th class="col-config-code">卸コード</th>
                          <th class="col-config-name">卸名</th>
                         <th class="col-config-action">操作</th>
                     </tr>
                 </thead>
-                <tbody>
+                 <tbody>
                 </tbody>
              </table>
         </div>

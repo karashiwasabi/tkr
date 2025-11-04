@@ -11,11 +11,13 @@
     <link rel="stylesheet" href="/static/css/search_modal.css">
     <link rel="stylesheet" href="/static/css/search_form_group.css">
     <link rel="stylesheet" href="/static/css/modal.css">
+    <link rel="stylesheet" href="/static/css/inout.css">
     </head>
 <body>
     <header id="main-header">
         <button id="datViewBtn" class="btn">DAT取込</button>
         <button id="usageViewBtn" class="btn">USAGE取込</button>
+        <button id="inOutViewBtn" class="btn">入出庫</button>
         <button id="inventoryAdjustmentViewBtn" class="btn">棚卸調整</button>
         <button id="masterEditViewBtn" class="btn">マスタ編集</button>
         <button id="configViewBtn" class="btn">設定</button>
@@ -45,8 +47,8 @@
     </div>
     <div id="notification-box"></div>
 
-    
  {{ template "common_search_modal" . }}
+ {{ template "common_input_modal" . }}
     <script type="module" src="/static/js/app.js"></script>
 </body>
 </html>

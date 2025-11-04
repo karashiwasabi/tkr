@@ -20,6 +20,11 @@ var yjCodeRegex = regexp.MustCompile(`^[0-9A-Z]{11,12}$`)
 // JANコードの判定は13桁の数字
 var janCodeRegex = regexp.MustCompile(`^[0-9]{13}$`)
 
+// ▼▼▼【ここに追加】MA2J形式の正規表現 ▼▼▼
+var ma2jCodeRegex = regexp.MustCompile(`^MA2J[0-9]{9}$`)
+
+// ▲▲▲【追加ここまで】▲▲▲
+
 // FindOrCreateMaster は、指定されたキー(YJコードまたはJANコード)に対応する製品マスターを探し、
 // なければ JCSHMS または仮マスターとして作成する共通関数です。
 func FindOrCreateMaster(tx *sqlx.Tx, productCodeOrKey string, productName string) (*model.ProductMaster, error) {
@@ -29,6 +34,9 @@ func FindOrCreateMaster(tx *sqlx.Tx, productCodeOrKey string, productName string
 
 	isJANKey := janCodeRegex.MatchString(productCodeOrKey)
 	isYJKey := yjCodeRegex.MatchString(productCodeOrKey)
+	// ▼▼▼【ここに追加】MA2J形式のチェック ▼▼▼
+	isMA2JKey := ma2jCodeRegex.MatchString(productCodeOrKey)
+	// ▲▲▲【追加ここまで】▲▲▲
 
 	// 1. DBで product_master を検索 (WASABIのロジック: YJコードを優先的に検索)
 	if isYJKey {
@@ -36,11 +44,11 @@ func FindOrCreateMaster(tx *sqlx.Tx, productCodeOrKey string, productName string
 		query := "SELECT * FROM product_master WHERE yj_code = ?"
 		err = tx.Get(&existingMaster, query, productCodeOrKey)
 		log.Printf("Searching master by YJ Code: %s", productCodeOrKey)
-	} else if isJANKey {
+	} else if isJANKey || isMA2JKey { // ▼▼▼【修正】MA2J も product_code で検索 ▼▼▼
 		// YJでヒットせず、JANなら product_code カラムで検索
 		query := "SELECT * FROM product_master WHERE product_code = ?"
 		err = tx.Get(&existingMaster, query, productCodeOrKey)
-		log.Printf("Searching master by JAN Code (Product Code): %s", productCodeOrKey)
+		log.Printf("Searching master by JAN/MA2J Code (Product Code): %s", productCodeOrKey)
 	} else {
 		// どちらでもない場合（合成キーなど）は product_code で検索
 		query := "SELECT * FROM product_master WHERE product_code = ?"
@@ -105,13 +113,18 @@ func FindOrCreateMaster(tx *sqlx.Tx, productCodeOrKey string, productName string
 		provisionalYjCode = newYj
 	}
 
-	// 仮マスターの ProductCode (JAN) を決定
+	// ▼▼▼【ここから修正】仮 ProductCode の生成ロジック変更 ▼▼▼
 	provisionalProductCode := productCodeOrKey
-	if !isJANKey {
-		// JANコードでない場合は合成キーを使用
-		provisionalProductCode = fmt.Sprintf("9999999999999%s", provisionalYjCode)
-		log.Printf("Original key was not JAN, using synthetic Product Code: %s", provisionalProductCode)
+	if !isJANKey && !isMA2JKey { // JANでもMA2Jでもない場合
+		// MA2Jシーケンスから新しい仮コードを採番 (13桁: MA2J + 9桁)
+		newPJCode, seqErr := database.NextSequenceInTx(tx, "MA2J", "MA2J", 9)
+		if seqErr != nil {
+			return nil, fmt.Errorf("failed to get next MA2J sequence for provisional master (Key: %s): %w", productCodeOrKey, seqErr)
+		}
+		provisionalProductCode = newPJCode
+		log.Printf("Original key was not JAN/MA2J, using synthetic Product Code: %s", provisionalProductCode)
 	}
+	// ▲▲▲【修正ここまで】▲▲▲
 
 	provisionalInput := model.ProductMasterInput{
 		ProductCode:         provisionalProductCode,
@@ -129,14 +142,17 @@ func FindOrCreateMaster(tx *sqlx.Tx, productCodeOrKey string, productName string
 	return newMaster, nil
 }
 
-// JcshmsToProductMasterInput (規格マッピングの修正は前回実施済み)
+// JcshmsToProductMasterInput は JCSHMS の情報を model.ProductMasterInput に変換します。
 func JcshmsToProductMasterInput(jcshms *model.JcshmsInfo) model.ProductMasterInput {
 	var unitNhiPrice float64
+	// WASABI: mappers/jcshms_to_master.go のロジック
 	if jcshms.NhiPriceFactor > 0 {
 		unitNhiPrice = jcshms.NhiPrice * jcshms.NhiPriceFactor
 	} else if jcshms.YjPackUnitQty > 0 {
+		// TKR: jcshms.PackageNhiPrice (JC050) / jcshms.YjPackUnitQty (JC044)
 		unitNhiPrice = jcshms.PackageNhiPrice / jcshms.YjPackUnitQty
 	} else {
+		// TKR: jcshms.NhiPrice (JC049)
 		unitNhiPrice = jcshms.NhiPrice
 	}
 	janUnitCodeInt, _ := strconv.Atoi(jcshms.JanUnitCode.String)
@@ -178,7 +194,7 @@ func JcshmsToProductMasterInput(jcshms *model.JcshmsInfo) model.ProductMasterInp
 	}
 }
 
-// UpsertProductMasterSqlx (修正箇所)
+// UpsertProductMasterSqlx は product_master テーブルにデータを挿入または更新します。
 func UpsertProductMasterSqlx(tx *sqlx.Tx, input model.ProductMasterInput) (*model.ProductMaster, error) {
 	query := `
 		INSERT INTO product_master (

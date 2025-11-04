@@ -237,3 +237,6 @@ CREATE TABLE IF NOT EXISTS code_sequences (
 
 INSERT OR IGNORE INTO code_sequences(name, last_no) VALUES ('MA2Y', 0);
 INSERT OR IGNORE INTO code_sequences(name, last_no) VALUES ('CL', 0);
+-- ▼▼▼【ここに追加】仮ProductCode用シーケンス ▼▼▼
+INSERT OR IGNORE INTO code_sequences(name, last_no) VALUES ('MA2J', 0);
+-- ▲▲▲【追加ここまで】▲▲▲

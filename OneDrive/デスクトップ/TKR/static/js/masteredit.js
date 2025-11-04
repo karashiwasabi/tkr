@@ -1,29 +1,25 @@
 // C:\Users\wasab\OneDrive\デスケトッフ\TKR\static\js\masteredit.js
-// ▼▼▼【修正】showModal と hiraganaToKatakana をインポート ▼▼▼
 import { showModal } from './search_modal.js';
+// ▼▼▼【修正】インポート先を変更 ▼▼▼
 import { hiraganaToKatakana, fetchProductMasterByBarcode } from './utils.js';
+import { wholesalerMap } from './master_data.js';
 // ▲▲▲【修正ここまで】▲▲▲
 
-let viewElement, masterListTable; // 削除: masterListBody, masterListHead
+let viewElement, masterListTable;
 let searchKanaNameInput, searchGenericNameInput, searchShelfNumberInput, searchBtn;
 let usageClassRadios;
 let editFormContainer;
 
 let saveMasterBtn, cancelEditMasterBtn;
 let editFormFields = {};
-// 削除: currentMasters = [];
 
 let gs1Form, gs1Input;
 
-// ▼▼▼【ここから削除】一覧表示関連の関数をすべて削除 ▼▼▼
-/*
-function renderEmptyMasterTable(...) { ... }
-function renderMasterTable(...) { ... }
-export async function fetchAndRenderMasters() { ... }
-*/
+// ▼▼▼【削除】キャッシュ変数は master_data.js にあるため不要 ▼▼▼
+// let wholesalerCache = [];
 // ▲▲▲【削除ここまで】▲▲▲
 
-// ▼▼▼【ここから追加】品目検索モーダルを開く関数（dat.js などから流用） ▼▼▼
+
 async function openProductSearchModalForMaster() {
     const apiUrl = '/api/products/search_filtered';
     const kanaInput = document.getElementById('master_search-kana');
@@ -64,14 +60,10 @@ async function openProductSearchModalForMaster() {
         window.hideLoading();
     }
 
-    // モーダルを表示
     showModal(
-        null, // マスタ編集では特定の行コンテキストは不要
+        null,
         (selectedProduct) => { 
-            // モーダルで品目が選択されたときのコールバック
-            // ProductMasterView (selectedProduct) をフォームに投入
             populateEditForm(selectedProduct); 
-            // 編集モーダルを開く
             showEditModal();
         }, 
         { 
@@ -79,10 +71,7 @@ async function openProductSearchModalForMaster() {
         }
     );
 }
-// ▲▲▲【追加ここまで】▲▲▲
 
-
-// GS1スキャン処理（変更なし、ただし currentMasters への保存処理を削除）
 async function handleMasterGs1Scan(event) {
     event.preventDefault();
     if (!gs1Input) return;
@@ -97,11 +86,6 @@ async function handleMasterGs1Scan(event) {
     try {
         const master = await fetchProductMasterByBarcode(barcode);
         
-        // ▼▼▼【削除】currentMasters へのキャッシュ処理 ▼▼▼
-        // const index = currentMasters.findIndex(m => m.productCode === master.productCode);
-        // ...
-        // ▲▲▲【削除ここまで】▲▲▲
-
         populateEditForm(master);
         showEditModal();
         
@@ -113,12 +97,6 @@ async function handleMasterGs1Scan(event) {
     }
 }
 
-// ▼▼▼【削除】handleEditClick (テーブルの一覧表示がなくなったため不要) ▼▼▼
-/*
-function handleEditClick(event) { ... }
-*/
-// ▲▲▲【削除ここまで】▲▲▲
-
 
 function populateEditForm(master) {
      console.log("Populating form for:", master);
@@ -129,7 +107,7 @@ function populateEditForm(master) {
 
     const isJcshmsOrigin = master.origin === 'JCSHMS';
     const jcshmsReadonlyKeys = [
-        'gs1Code', 'productName', 'kanaName', 'kanaNameShort', 'genericName',
+        'yjCode', 'gs1Code', 'productName', 'kanaName', 'kanaNameShort', 'genericName',
         'makerName', 'specification', 'usageClassification', 'packageForm',
         'yjUnitName', 'yjPackUnitQty', 'janPackInnerQty', 'janUnitCode',
         'janPackUnitQty', 'nhiPrice', 'flagPoison', 'flagDeleterious',
@@ -138,21 +116,25 @@ function populateEditForm(master) {
     ];
     for (const key in editFormFields) {
         const element = editFormFields[key];
-        // ▼▼▼【修正】 master.ProductMaster[key] ではなく master[key] を参照 ▼▼▼
-        // (showModalが返すのはProductMasterViewであり、fetchProductMasterByBarcodeが返すのもProductMasterView (mappers.go / product/handler.go))
-        // → populateEditForm が期待するのは ProductMaster (または互換性のあるView) なので master[key] で正しい
         const masterValue = master[key];
-        // ▲▲▲【修正ここまで】▲▲▲
 
         if (element) {
-            if (typeof masterValue === 'number') {
+            if (key === 'supplierWholesale' && element.tagName === 'SELECT') {
+                element.value = masterValue || '';
+            } 
+            else if (typeof masterValue === 'number') {
                 element.value = masterValue;
             } else {
                 element.value = masterValue || '';
             }
 
             if (key !== 'productCode' && element.id !== 'view-product-code') {
-                if (isJcshmsOrigin && jcshmsReadonlyKeys.includes(key)) {
+                
+                if (key === 'origin') {
+                    element.readOnly = true;
+                    element.classList.add('readonly-field');
+                } 
+                else if (isJcshmsOrigin && jcshmsReadonlyKeys.includes(key)) {
                     element.readOnly = true;
                     element.classList.add('readonly-field'); 
                 } else {
@@ -176,7 +158,6 @@ function hideEditModal() {
     }
 }
 
-// handleSaveMaster (変更なし)
 async function handleSaveMaster() {
     const inputData = {};
     const floatKeys = [
@@ -234,6 +215,27 @@ async function handleSaveMaster() {
     }
 }
 
+// ▼▼▼【修正】卸マスタ <select> 設定関数 (API呼び出しを削除し、キャッシュマップを使用) ▼▼▼
+function setupWholesalerDropdown() {
+    const selectElement = editFormFields['supplierWholesale'];
+    if (!selectElement || selectElement.tagName !== 'SELECT') {
+        console.error("Wholesaler select element not found in edit form.");
+        return;
+    }
+
+    // (キャッシュ読み込みAPI呼び出しを削除)
+
+    selectElement.innerHTML = '<option value="">--- 選択なし ---</option>';
+    // グローバルな wholesalerMap を使用
+    wholesalerMap.forEach((name, code) => {
+        const option = document.createElement('option');
+        option.value = code;
+        option.textContent = `${code}: ${name}`;
+        selectElement.appendChild(option);
+    });
+}
+// ▲▲▲【修正ここまで】▲▲▲
+
 export function initMasterEditView() {
     viewElement = document.getElementById('master-edit-view');
     masterListTable = document.getElementById('masterListTable');
@@ -282,6 +284,9 @@ export function initMasterEditView() {
             editFormFields[id] = element;
         }
     });
+
+    setupWholesalerDropdown();
+
     if (saveMasterBtn) {
         saveMasterBtn.addEventListener('click', handleSaveMaster);
     }
@@ -295,37 +300,26 @@ export function initMasterEditView() {
         console.error("Cancel button not found!");
     }
 
-    // ▼▼▼【ここから修正】品目検索ボタンのリスナーを変更 ▼▼▼
     searchBtn.addEventListener('click', openProductSearchModalForMaster);
-    // ▲▲▲【修正ここまで】▲▲▲
     
-    // GS1スキャンフォームのリスナー
     if (gs1Form) {
         gs1Form.addEventListener('submit', handleMasterGs1Scan);
     } else {
         console.error("Master edit GS1 scan form not found.");
     }
 
-    // ▼▼▼【ここから修正】フィルター入力欄のEnterキーリスナーを変更 ▼▼▼
     const handleKeyPress = (event) => {
         if (event.key === 'Enter') {
             openProductSearchModalForMaster();
         }
     };
-    // ▲▲▲【修正ここまで】▲▲▲
     if (searchKanaNameInput) searchKanaNameInput.addEventListener('keypress', handleKeyPress);
     if (searchGenericNameInput) searchGenericNameInput.addEventListener('keypress', handleKeyPress);
     if (searchShelfNumberInput) searchShelfNumberInput.addEventListener('keypress', handleKeyPress);
     
-    // ▼▼▼【削除】テーブルのクリックリスナーは不要 ▼▼▼
-    // if (masterListTable) masterListTable.addEventListener('click', handleEditClick);
-    // ▲▲▲【削除ここまで】▲▲▲
-    
-    // ▼▼▼【修正】テーブルを空にする（一覧表示はしないため）▼▼▼
     if (masterListTable) {
         masterListTable.innerHTML = '';
     }
-    // ▲▲▲【修正ここまで】▲▲▲
 
     console.log("Master Edit View Initialized.");
 }

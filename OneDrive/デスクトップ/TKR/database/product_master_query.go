@@ -125,3 +125,28 @@ ORDER BY product_code`
 	}
 	return masters, nil
 }
+
+const insertProductMasterQuery = `
+INSERT INTO product_master (
+    product_code, yj_code, gs1_code, product_name, kana_name, kana_name_short, 
+    generic_name, maker_name, specification, usage_classification, package_form, 
+    yj_unit_name, yj_pack_unit_qty, jan_pack_inner_qty, jan_unit_code, jan_pack_unit_qty, 
+    origin, nhi_price, purchase_price, flag_poison, flag_deleterious, flag_narcotic, 
+    flag_psychotropic, flag_stimulant, flag_stimulant_raw, is_order_stopped, 
+    supplier_wholesale, group_code, shelf_number, category, user_notes
+) VALUES (
+    :product_code, :yj_code, :gs1_code, :product_name, :kana_name, :kana_name_short, 
+    :generic_name, :maker_name, :specification, :usage_classification, :package_form, 
+    :yj_unit_name, :yj_pack_unit_qty, :jan_pack_inner_qty, :jan_unit_code, :jan_pack_unit_qty, 
+    :origin, :nhi_price, :purchase_price, :flag_poison, :flag_deleterious, :flag_narcotic, 
+    :flag_psychotropic, :flag_stimulant, :flag_stimulant_raw, :is_order_stopped, 
+    :supplier_wholesale, :group_code, :shelf_number, :category, :user_notes
+)`
+
+func InsertProductMaster(dbtx DBTX, master *model.ProductMaster) error {
+	_, err := dbtx.NamedExec(insertProductMasterQuery, master)
+	if err != nil {
+		return fmt.Errorf("failed to insert product master: %w", err)
+	}
+	return nil
+}

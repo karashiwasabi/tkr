@@ -2,9 +2,13 @@
 package database
 
 import (
+	"database/sql" // ▼▼▼【ここに追加】▼▼▼
 	"fmt"
+	"strconv"     // ▼▼▼【ここに追加】▼▼▼
+	"tkr/mappers" // ▼▼▼【ここに追加】▼▼▼
 	"tkr/model"
-	"tkr/units"
+
+	// "tkr/units" // 削除 (mappers が担当)
 
 	"github.com/jmoiron/sqlx"
 )
@@ -47,7 +51,46 @@ func SaveGuidedInventoryData(tx *sqlx.Tx, date string, yjCode string, allPackagi
 		}
 	}
 
-	receiptNumber := fmt.Sprintf("ADJ-%s-%s", date, yjCode)
+	// ▼▼▼【ここから修正】伝票番号の採番ロジック (WASABI  を参考に変更) ▼▼▼
+	var lastSeq int
+	// ADJyymmddnnnnn (ADJ + 6桁 + 5桁 = 14桁)
+
+	// YYYYMMDD (8桁) -> YYMMDD (6桁)
+	var dateYYMMDD string
+	if len(date) >= 8 {
+		dateYYMMDD = date[2:8] // "20251031" -> "251031"
+	} else if len(date) == 6 {
+		dateYYMMDD = date // 既に6桁ならそのまま
+	} else {
+		return fmt.Errorf("invalid date format for receipt number: %s", date)
+	}
+
+	prefix := "ADJ" + dateYYMMDD // "ADJ251031"
+
+	// データベースから 'ADJ251031' で始まる最大の伝票番号を取得
+	q := `SELECT receipt_number FROM transaction_records 
+		  WHERE receipt_number LIKE ? 
+		  ORDER BY receipt_number DESC LIMIT 1`
+	var lastReceiptNumber string
+	err := tx.Get(&lastReceiptNumber, q, prefix+"%")
+
+	if err != nil && err != sql.ErrNoRows {
+		return fmt.Errorf("failed to get last receipt number sequence for prefix %s: %w", prefix, err)
+	}
+
+	lastSeq = 0
+	if lastReceiptNumber != "" {
+		// "ADJ25103100001" (14桁) から "00001" (5桁) の部分を取得
+		if len(lastReceiptNumber) == 14 {
+			seqStr := lastReceiptNumber[9:] // 9文字目以降 (ADJ + 6桁 = 9桁)
+			lastSeq, _ = strconv.Atoi(seqStr)
+		}
+	}
+
+	newSeq := lastSeq + 1
+	receiptNumber := fmt.Sprintf("%s%05d", prefix, newSeq) // 14桁 (ADJ + 6 + 5)
+	// ▲▲▲【修正ここまで】▲▲▲
+
 	var productCodesWithInventory []string
 
 	// 2. 新しい棚卸データを挿入
@@ -65,25 +108,21 @@ func SaveGuidedInventoryData(tx *sqlx.Tx, date string, yjCode string, allPackagi
 
 		tr := model.TransactionRecord{
 			TransactionDate: date,
-			Flag:            0, // 棚卸
-			ReceiptNumber:   receiptNumber,
+			Flag:            0,             // 棚卸
+			ReceiptNumber:   receiptNumber, // ★生成した伝票番号を使用
 			LineNumber:      fmt.Sprintf("%d", i+1),
 			JanCode:         master.ProductCode,
 			YjCode:          master.YjCode,
-			ProductName:     master.ProductName, // ここは MapProductMasterToTransaction で上書きされる
 			JanQuantity:     janQty,
 			YjQuantity:      janQty * master.JanPackInnerQty,
-			ProcessFlagMA:   "COMPLETE", // 棚卸データは常にCOMPLETE
 		}
 
-		if master.Origin == "JCSHMS" {
-			tr.ProcessFlagMA = "COMPLETE"
-		} else {
-			tr.ProcessFlagMA = "PROVISIONAL"
-		}
+		// (棚卸の場合は薬価を単価とし、金額を計算)
+		tr.UnitPrice = master.NhiPrice
+		tr.Subtotal = tr.YjQuantity * tr.UnitPrice
 
-		// マスター情報をマッピング
-		MapMasterToTransactionForInventory(&tr, master)
+		// 共通マッパー呼び出し
+		mappers.MapMasterToTransaction(&tr, master)
 
 		if err := InsertTransactionRecord(tx, tr); err != nil {
 			return fmt.Errorf("failed to insert inventory record for %s: %w", productCode, err)
@@ -115,59 +154,4 @@ func SaveGuidedInventoryData(tx *sqlx.Tx, date string, yjCode string, allPackagi
 	}
 
 	return nil
-}
-
-// MapMasterToTransactionForInventory は棚卸レコード(flag=0)用にマッピングを行います。
-// dat/handler.go の MapDatToTransaction と usage/handler.go の MapUsageToTransaction を参考にします。
-func MapMasterToTransactionForInventory(tr *model.TransactionRecord, master *model.ProductMaster) {
-	// 1. 製品名と規格を連結
-	productNameWithSpec := master.ProductName
-	if master.Specification != "" {
-		productNameWithSpec = master.ProductName + " " + master.Specification
-	}
-	tr.ProductName = productNameWithSpec
-
-	// 2. 数量 (YjQuantity, JanQuantity) は呼び出し元で設定済み
-
-	// 3. 包装仕様
-	yjUnitName := units.ResolveName(master.YjUnitName)
-	packageSpec := fmt.Sprintf("%s %g%s", master.PackageForm, master.YjPackUnitQty, yjUnitName)
-	janUnitCodeStr := fmt.Sprintf("%d", master.JanUnitCode)
-	var janUnitName string
-	if master.JanUnitCode == 0 {
-		janUnitName = yjUnitName
-	} else {
-		janUnitName = units.ResolveName(janUnitCodeStr)
-	}
-	if master.JanPackInnerQty > 0 && master.JanPackUnitQty > 0 {
-		packageSpec += fmt.Sprintf(" (%g%s×%g%s)",
-			master.JanPackInnerQty, yjUnitName, master.JanPackUnitQty, janUnitName)
-	}
-	tr.PackageSpec = packageSpec
-
-	// 4.
-	tr.KanaName = master.KanaName
-	tr.UsageClassification = master.UsageClassification
-	tr.PackageForm = master.PackageForm
-	tr.MakerName = master.MakerName
-	tr.JanPackInnerQty = master.JanPackInnerQty
-	tr.JanPackUnitQty = master.JanPackUnitQty
-	tr.JanUnitName = janUnitName
-	tr.JanUnitCode = janUnitCodeStr
-	tr.YjPackUnitQty = master.YjPackUnitQty
-	tr.YjUnitName = yjUnitName
-
-	// 5. 単価と金額 (棚卸の場合は薬価を単価とし、金額を計算)
-	tr.UnitPrice = master.NhiPrice
-	tr.Subtotal = tr.YjQuantity * tr.UnitPrice
-	tr.PurchasePrice = master.PurchasePrice         // 参考情報として仕入単価も記録
-	tr.SupplierWholesale = master.SupplierWholesale // 参考情報
-
-	// 6. フラグ
-	tr.FlagPoison = master.FlagPoison
-	tr.FlagDeleterious = master.FlagDeleterious
-	tr.FlagNarcotic = master.FlagNarcotic
-	tr.FlagPsychotropic = master.FlagPsychotropic
-	tr.FlagStimulant = master.FlagStimulant
-	tr.FlagStimulantRaw = master.FlagStimulantRaw
 }

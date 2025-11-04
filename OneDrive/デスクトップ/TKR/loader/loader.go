@@ -8,6 +8,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"tkr/database"
 
 	"github.com/jmoiron/sqlx" // sqlx をインポート
 	"golang.org/x/text/encoding/japanese"
@@ -79,6 +80,29 @@ func InitDatabase(db *sqlx.DB) error {
 		// ここでロードする場合は、適切なテーブル定義と LoadCSV 呼び出しを追加します。
 		log.Printf("Note: TANI.CSV exists but loading logic is not implemented here yet.")
 	}
+
+	// ▼▼▼【ここから追加】シーケンスの初期化 ▼▼▼
+	// (LoadCSVの後、DB接続が確立しているこのタイミングでシーケンスを初期化)
+	tx, err := db.Beginx()
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction for sequence initialization: %w", err)
+	}
+	defer tx.Rollback() // エラー時
+
+	if err := database.InitializeSequenceFromMaxYjCode(tx); err != nil {
+		log.Printf("WARN: Failed to initialize MA2Y sequence: %v", err)
+		// エラーでも続行
+	}
+	if err := database.InitializeSequenceFromMaxProductCode(tx); err != nil {
+		log.Printf("WARN: Failed to initialize MA2J sequence: %v", err)
+		// エラーでも続行
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit sequence initialization: %w", err)
+	}
+	log.Println("Code sequences initialized.")
+	// ▲▲▲【追加ここまで】▲▲▲
 
 	return nil
 }

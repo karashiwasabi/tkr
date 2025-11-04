@@ -1,0 +1,43 @@
+<div id="inout-view" class="view">
+    <h1>入出庫伝票</h1>
+
+    <div class="inout-header-controls">
+        <div class="form-group">
+            <label for="in-out-date">日付:</label>
+            <input type="date" id="in-out-date">
+        </div>
+        <div class="form-group">
+            <label for="in-out-receipt">伝票番号 (日付選択で絞込):</label>
+            <select id="in-out-receipt">
+                <option value="">日付を選択してください</option>
+                <option value="--new--">--- 新規作成 ---</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label for="in-out-client">得意先:</label>
+            <select id="in-out-client">
+                <option value="">選択してください</option>
+                <option value="--new--">--- 新規作成 ---</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label for="in-out-type">種別:</label>
+            <select id="in-out-type">
+                <option value="11">入庫</option>
+                <option value="12">出庫</option>
+            </select>
+        </div>
+        <div class="buttons-group">
+            <button id="saveBtn" class="btn">保存</button>
+            <button id="deleteBtn" class="btn" disabled>削除</button>
+        </div>
+    </div>
+
+    <div class="inout-view-container">
+        <div class="inout-details-header">
+            <button id="addRowBtn" class="btn">明細を追加</button>
+        </div>
+        <div id="inout-details-container" class="table-container">
+            </div>
+    </div>
+</div>

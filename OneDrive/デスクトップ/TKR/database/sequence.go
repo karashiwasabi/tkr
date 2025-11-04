@@ -67,3 +67,28 @@ func InitializeSequenceFromMaxYjCode(tx *sqlx.Tx) error {
 	}
 	return nil
 }
+
+// ▼▼▼【ここから追加】MA2Jシーケンス初期化関数 (MA2Y  をコピーして修正) ▼▼▼
+func InitializeSequenceFromMaxProductCode(tx *sqlx.Tx) error {
+	var maxCode sql.NullString
+	// product_code カラムから MA2J... の最大値を取得
+	err := tx.Get(&maxCode, "SELECT product_code FROM product_master WHERE product_code LIKE 'MA2J%' ORDER BY product_code DESC LIMIT 1")
+	if err != nil {
+		if err == sql.ErrNoRows {
+			// レコードがない場合は0で初期化
+			_, err = tx.Exec("UPDATE code_sequences SET last_no = 0 WHERE name = 'MA2J'")
+			return err
+		}
+		return err
+	}
+	if maxCode.Valid && strings.HasPrefix(maxCode.String, "MA2J") {
+		numPart := strings.TrimPrefix(maxCode.String, "MA2J")
+		maxNum, _ := strconv.Atoi(numPart)
+		// 取得した最大値でシーケンスを更新
+		_, err = tx.Exec("UPDATE code_sequences SET last_no = ? WHERE name = 'MA2J'", maxNum)
+		return err
+	}
+	return nil
+}
+
+// ▲▲▲【追加ここまで】▲▲▲

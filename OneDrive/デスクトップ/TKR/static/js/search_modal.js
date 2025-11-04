@@ -1,32 +1,63 @@
-// C:\Users\wasab\OneDrive\デスクトップ\TKR\static\js\search_modal.js
-import { hiraganaToKatakana, parseBarcode, fetchProductMasterByBarcode } from './utils.js';
+import { hiraganaToKatakana } from './utils.js';
+
 let activeCallback = null;
 let activeRowElement = null;
 
 let modal, closeModalBtn, searchResultsBody;
-// 検索UI関連の変数は削除
-// let modalGs1Input, modalUsageClassRadios, modalKanaInput, modalGenericInput, modalShelfInput;
-// let modalGs1Form;
+let searchBtn;
+let modalGs1Input, modalUsageClassRadios, modalKanaInput, modalGenericInput, modalShelfInput;
+let modalGs1Form;
 
 function hideModal() {
   if (modal) {
-        modal.classList.add('hidden');
+    modal.classList.add('hidden');
     document.body.classList.remove('modal-open');
   }
 }
 
 function handleResultClick(event) {
-  if (event.target && event.target.classList.contains('select-product-btn')) {
-    const product = JSON.parse(event.target.dataset.product);
+  if (!event.target.classList.contains('select-product-btn')) return;
+
+  const product = JSON.parse(event.target.dataset.product);
+
+  if (product.isAdopted) {
+    // 既に採用済みの場合は、そのままコールバックを呼ぶ
     if (typeof activeCallback === 'function') {
       activeCallback(product, activeRowElement);
     }
     hideModal();
+  } else {
+    // 未採用の場合は、バックエンドで採用処理を行う
+    if (!confirm(`「${product.productName}」をマスターに新規採用します。よろしいですか？`)) {
+        return;
+    }
+    window.showLoading('マスターに採用中...');
+    fetch('/api/master/adopt', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ gs1Code: product.gs1Code })
+    })
+    .then(res => {
+        if (!res.ok) {
+            return res.text().then(text => { throw new Error(text || '採用処理に失敗しました') });
+        }
+        return res.json();
+    })
+    .then(adoptedMaster => {
+        window.hideLoading();
+        window.showNotification(`「${adoptedMaster.productName}」をマスターに採用しました。`, 'success');
+        if (typeof activeCallback === 'function') {
+            // 新しく採用されたマスター情報をコールバックに渡す
+            activeCallback(adoptedMaster, activeRowElement);
+        }
+        hideModal();
+    })
+    .catch(err => {
+        window.hideLoading();
+        window.showNotification(`エラー: ${err.message}`, 'error');
+    });
   }
 }
-
-// performSearch 関数を削除
-// handleGs1Search 関数を削除
 
 function renderSearchResults(products) {
   if (!products || products.length === 0) {
@@ -36,38 +67,105 @@ function renderSearchResults(products) {
   let html = '';
   products.forEach(p => {
     const productData = JSON.stringify(p);
+    const spec = p.formattedPackageSpec || `${p.packageForm || ''} ${p.specification || ''}`;
     html += `
       <tr class="${p.isAdopted ? 'adopted-item' : ''}">
         <td class="left">${p.productName || ''}</td>
         <td class="left">${p.makerName || ''}</td>
-        <td class="left">${p.formattedPackageSpec}</td>
+        <td class="left">${spec}</td>
         <td>${p.yjCode || ''}</td>
         <td>${p.productCode || ''}</td>
-        <td><button typebutton" class="select-product-btn btn" data-product='${productData.replace(/'/g, "&apos;")}'>選択</button></td>
+        <td><button type="button" class="select-product-btn btn" data-product='${productData.replace(/'/g, "&apos;")}'>選択</button></td>
       </tr>
-  
- 
     `;
   });
   searchResultsBody.innerHTML = html;
 }
+
+async function performSearch() {
+    const kanaName = modalKanaInput ? hiraganaToKatakana(modalKanaInput.value.trim()) : '';
+    const genericName = modalGenericInput ? modalGenericInput.value.trim() : '';
+    const shelfNumber = modalShelfInput ? modalShelfInput.value.trim() : '';
+    const selectedUsageRadio = modalUsageClassRadios ? document.querySelector('input[name="modal_usage_class"]:checked') : null;
+    const usageClass = selectedUsageRadio ? selectedUsageRadio.value : '';
+
+    const params = new URLSearchParams();
+    params.append('kanaName', kanaName);
+    params.append('genericName', genericName);
+    params.append('shelfNumber', shelfNumber);
+    params.append('dosageForm', usageClass);
+    if (modal.dataset.searchMode) {
+        params.append('searchMode', modal.dataset.searchMode);
+    }
+
+    window.showLoading('品目リストを検索中...');
+    try {
+        const fullUrl = `/api/products/search_filtered?${params.toString()}`;
+        const res = await fetch(fullUrl);
+        if (!res.ok) {
+            throw new Error(`品目リストの取得に失敗しました: ${res.status}`);
+        }
+        const products = await res.json();
+        renderSearchResults(products);
+    } catch (err) {
+        searchResultsBody.innerHTML = '<tr><td colspan="6" class="center" style="color:red;">検索エラー: ' + err.message + '</td></tr>';
+        window.showNotification(err.message, 'error');
+    } finally {
+        window.hideLoading();
+    }
+}
+
+async function handleGs1Search(event) {
+    event.preventDefault();
+    if (!modalGs1Input) return;
+    const barcode = modalGs1Input.value.trim();
+    if (!barcode) return;
+
+    window.showLoading('マスターを検索中...');
+    try {
+        const res = await fetch(`/api/product/by_barcode/${barcode}`);
+        if (!res.ok) {
+             const errText = await res.text();
+             throw new Error(errText || '製品の検索に失敗しました。');
+        }
+        const master = await res.json();
+        if (typeof activeCallback === 'function') {
+            activeCallback(master, activeRowElement);
+        }
+        hideModal();
+    } catch (err) {
+        window.showNotification(`エラー: ${err.message}`, 'error');
+    } finally {
+        window.hideLoading();
+        modalGs1Input.value = '';
+    }
+}
+
+
 export function initSearchModal() {
   modal = document.getElementById('tkr-search-modal-overlay');
   closeModalBtn = document.getElementById('closeSearchModalBtn');
-  // searchBtn = document.getElementById('product-search-btn'); // 削除
   const searchResultsTable = document.getElementById('search-results-table');
   searchResultsBody = searchResultsTable ? searchResultsTable.querySelector('tbody') : null;
-  // modalGs1Form = document.getElementById('modal-search-gs1-form'); // 削除
-  // modalGs1Input = document.getElementById('modal-search-gs1'); // 削除
-  // ... (他の検索UI要素の取得も削除)
+  
+  searchBtn = document.getElementById('product-search-btn');
+  modalGs1Form = document.getElementById('modal-search-gs1-form');
+  modalGs1Input = document.getElementById('modal-search-gs1');
+  modalUsageClassRadios = document.getElementById('modal-search-usage-class');
+  modalKanaInput = document.getElementById('modal-search-kana');
+  modalGenericInput = document.getElementById('modal-search-generic');
+  modalShelfInput = document.getElementById('modal-search-shelf');
 
-  if (!modal || !closeModalBtn || !searchResultsBody) {
+  if (!modal || !closeModalBtn || !searchResultsBody || !searchBtn) {
     console.error("品目検索モーダルの必須要素が見つかりません。");
     return;
   }
   
   closeModalBtn.addEventListener('click', hideModal);
-  // 検索ボタン、GS1フォーム、キープレスイベントリスナーを削除
+  searchBtn.addEventListener('click', performSearch);
+  if (modalGs1Form) {
+    modalGs1Form.addEventListener('submit', handleGs1Search);
+  }
   searchResultsBody.addEventListener('click', handleResultClick);
 }
 
@@ -79,12 +177,13 @@ export function showModal(rowElement, callback, options = {}) {
   document.body.classList.add('modal-open');
   activeRowElement = rowElement;
   activeCallback = callback; 
+  modal.dataset.searchMode = options.searchMode || ''; // searchModeを保存
   
   modal.classList.remove('hidden');
     
   if (options.initialResults) {
       renderSearchResults(options.initialResults);
   } else {
-      searchResultsBody.innerHTML = '<tr><td colspan="6" class="center">メイン画面で検索を実行してください。</td></tr>';
+      searchResultsBody.innerHTML = '<tr><td colspan="6" class="center">検索条件を入力して検索してください。</td></tr>';
   }
 }

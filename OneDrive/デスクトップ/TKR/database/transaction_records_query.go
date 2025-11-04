@@ -3,14 +3,12 @@ package database
 
 import (
 	"fmt"
-	"strings" // ★ strings をインポート
+	"strings"
 	"tkr/model"
 
 	"github.com/jmoiron/sqlx"
 )
 
-// ▼▼▼【ここから追加】(WASABI: db/transaction_records.go  より) ▼▼▼
-// TransactionColumns は transaction_records の全カラムを定義します。
 const TransactionColumns = `
     id, transaction_date, client_code, receipt_number, line_number, flag,
     jan_code, yj_code, product_name, kana_name, usage_classification, package_form, package_spec, maker_name,
@@ -20,7 +18,6 @@ const TransactionColumns = `
     flag_deleterious, flag_narcotic, flag_psychotropic, flag_stimulant,
     flag_stimulant_raw, process_flag_ma`
 
-// ScanTransactionRecord は sql.Rows から TransactionRecord をスキャンします。
 func ScanTransactionRecord(row interface{ Scan(...interface{}) error }) (*model.TransactionRecord, error) {
 	var r model.TransactionRecord
 	err := row.Scan(
@@ -37,8 +34,6 @@ func ScanTransactionRecord(row interface{ Scan(...interface{}) error }) (*model.
 	}
 	return &r, nil
 }
-
-// ▲▲▲【追加ここまで】▲▲▲
 
 const insertTransactionQuery = `
 INSERT INTO transaction_records (
@@ -60,7 +55,6 @@ INSERT INTO transaction_records (
 )`
 
 func InsertTransactionRecord(tx *sqlx.Tx, record model.TransactionRecord) error {
-
 	_, err := tx.NamedExec(insertTransactionQuery, record)
 	if err != nil {
 		return fmt.Errorf("failed to insert transaction record: %w", err)
@@ -68,22 +62,39 @@ func InsertTransactionRecord(tx *sqlx.Tx, record model.TransactionRecord) error 
 	return nil
 }
 
+func PersistTransactionRecordsInTx(tx *sqlx.Tx, records []model.TransactionRecord) error {
+	stmt, err := tx.PrepareNamed(insertTransactionQuery)
+	if err != nil {
+		return fmt.Errorf("failed to prepare statement for transaction_records: %w", err)
+	}
+	defer stmt.Close()
+
+	for _, rec := range records {
+		_, err = stmt.Exec(rec)
+		if err != nil {
+			return fmt.Errorf("failed to exec statement for transaction_records (JAN: %s): %w", rec.JanCode, err)
+		}
+	}
+	return nil
+}
+
 func DeleteUsageTransactionsInDateRange(tx *sqlx.Tx, minDate, maxDate string) error {
-	const q = `DELETE FROM transaction_records WHERE flag = 3 AND transaction_date BETWEEN ? AND ?`
+	q := `DELETE FROM transaction_records WHERE flag = '2' AND transaction_date BETWEEN ? AND ?`
 	_, err := tx.Exec(q, minDate, maxDate)
 	if err != nil {
-		return fmt.Errorf("failed to delete usage transactions: %w", err)
+		return fmt.Errorf("failed to delete usage transactions in date range: %w", err)
 	}
 	return nil
 }
 
 func GetTransactionsByProductCodes(db *sqlx.DB, productCodes []string) (map[string][]model.TransactionRecord, error) {
-	transactionsMap := make(map[string][]model.TransactionRecord)
+	transactionsByProductCode := make(map[string][]model.TransactionRecord)
 	if len(productCodes) == 0 {
-		return transactionsMap, nil
+		return transactionsByProductCode, nil
 	}
 
-	const batchSize = 500
+	batchSize := 100 
+
 	for i := 0; i < len(productCodes); i += batchSize {
 		end := i + batchSize
 		if end > len(productCodes) {
@@ -91,70 +102,99 @@ func GetTransactionsByProductCodes(db *sqlx.DB, productCodes []string) (map[stri
 		}
 		batch := productCodes[i:end]
 
-		if len(batch) > 0 {
-			query, args, err := sqlx.In(`
-				SELECT * FROM transaction_records 
-				WHERE jan_code IN (?) 
-				ORDER BY transaction_date, id`, batch)
-			if err != nil {
-				return nil, fmt.Errorf("failed to create IN query: %w", err)
-			}
-			query = db.Rebind(query)
+		var records []model.TransactionRecord
+		query, args, err := sqlx.In(`SELECT `+TransactionColumns+` FROM transaction_records WHERE jan_code IN (?)`, batch)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create IN query for batch: %w", err)
+		}
+		query = db.Rebind(query)
+		err = db.Select(&records, query, args...)
+		if err != nil {
+			return nil, fmt.Errorf("failed to select transactions for batch: %w", err)
+		}
 
-			var transactions []model.TransactionRecord
-			err = db.Select(&transactions, query, args...)
-			if err != nil {
-				return nil, fmt.Errorf("failed to select transactions: %w", err)
-			}
-
-			for _, t := range transactions {
-				transactionsMap[t.JanCode] = append(transactionsMap[t.JanCode], t)
-			}
+		for _, r := range records {
+			transactionsByProductCode[r.JanCode] = append(transactionsByProductCode[r.JanCode], r)
 		}
 	}
-	return transactionsMap, nil
+
+	return transactionsByProductCode, nil
 }
 
 func SearchTransactions(db *sqlx.DB, janCode string, expiryYYMMDD string, expiryYYMM string, lotNumber string) ([]model.TransactionRecord, error) {
-	var transactions []model.TransactionRecord
-
-	conditions := []string{}
+	var records []model.TransactionRecord
+	
+	var queryBuilder strings.Builder
+	queryBuilder.WriteString("SELECT ")
+	queryBuilder.WriteString(TransactionColumns)
+	queryBuilder.WriteString(" FROM transaction_records WHERE 1=1")
+	
 	args := []interface{}{}
 
 	if janCode != "" {
-		conditions = append(conditions, "jan_code = ?")
+		queryBuilder.WriteString(" AND jan_code = ?")
 		args = append(args, janCode)
 	}
-
-	if expiryYYMMDD != "" && expiryYYMM != "" {
-		conditions = append(conditions, "(expiry_date = ? OR expiry_date = ?)")
-		args = append(args, expiryYYMM)   // 4桁
-		args = append(args, expiryYYMMDD) // 6桁
-	} else if expiryYYMMDD != "" {
-		conditions = append(conditions, "expiry_date = ?")
+	if expiryYYMMDD != "" {
+		queryBuilder.WriteString(" AND expiry_date = ?")
 		args = append(args, expiryYYMMDD)
-	} else if expiryYYMM != "" {
-		conditions = append(conditions, "expiry_date = ?")
+	}
+	if expiryYYMM != "" {
+		queryBuilder.WriteString(" AND SUBSTR(expiry_date, 1, 6) = ?")
 		args = append(args, expiryYYMM)
 	}
-
 	if lotNumber != "" {
-		conditions = append(conditions, "lot_number = ?")
+		queryBuilder.WriteString(" AND lot_number = ?")
 		args = append(args, lotNumber)
 	}
 
-	if len(conditions) == 0 {
-		return transactions, nil
-	}
+	queryBuilder.WriteString(" ORDER BY transaction_date DESC, id DESC")
 
-	query := `SELECT * FROM transaction_records WHERE `
-	query += strings.Join(conditions, " AND ")
-	query += ` ORDER BY transaction_date, id`
-
-	err := db.Select(&transactions, query, args...)
+	err := db.Select(&records, queryBuilder.String(), args...)
 	if err != nil {
-		return nil, fmt.Errorf("failed to select transactions by dynamic criteria: %w", err)
+		return nil, fmt.Errorf("failed to search transactions: %w", err)
+	}
+	return records, nil
+}
+
+func GetReceiptNumbersByDate(db *sqlx.DB, date string, prefix string, clientCode string) ([]string, error) {
+	var numbers []string
+
+	query := "SELECT DISTINCT receipt_number FROM transaction_records"
+	conditions := []string{"transaction_date = ?", "receipt_number LIKE ?"}
+	args := []interface{}{date, prefix + "%"}
+
+	if clientCode != "" {
+		conditions = append(conditions, "client_code = ?")
+		args = append(args, clientCode)
 	}
 
-	return transactions, nil
+	query += " WHERE " + strings.Join(conditions, " AND ")
+	query += " ORDER BY receipt_number"
+
+	err := db.Select(&numbers, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get receipt numbers by date: %w", err)
+	}
+	return numbers, nil
+}
+
+func GetTransactionsByReceiptNumber(db *sqlx.DB, receiptNumber string) ([]model.TransactionRecord, error) {
+	var records []model.TransactionRecord
+	q := `SELECT ` + TransactionColumns + ` FROM transaction_records WHERE receipt_number = ? ORDER BY line_number`
+
+	err := db.Select(&records, q, receiptNumber)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get transactions by receipt number: %w", err)
+	}
+	return records, nil
+}
+
+func DeleteTransactionsByReceiptNumberInTx(tx *sqlx.Tx, receiptNumber string) error {
+	const q = `DELETE FROM transaction_records WHERE receipt_number = ?`
+	_, err := tx.Exec(q, receiptNumber)
+	if err != nil {
+		return fmt.Errorf("failed to delete transactions for receipt %s: %w", receiptNumber, err)
+	}
+	return nil
 }

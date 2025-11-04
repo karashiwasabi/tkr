@@ -11,37 +11,29 @@ import (
 	"net/http"
 	"tkr/barcode"
 	"tkr/database"
+	"tkr/mappers"
 	"tkr/mastermanager"
 	"tkr/model"
 	"tkr/parsers"
-	"tkr/render"
-	"tkr/units"
 
 	"github.com/jmoiron/sqlx"
 )
 
-// (respondJSONError, UploadDatHandler は変更なし)
-// ...
 func respondJSONError(w http.ResponseWriter, message string, statusCode int) {
 	log.Println("Error response:", message)
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"message":   message,
-		"results":   []interface{}{},
-		"tableHTML": render.RenderTransactionTableHTML(nil, nil),
+		"message": message,
+		"results": []interface{}{},
 	})
 }
 
 func UploadDatHandler(db *sqlx.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		log.Println("Received DAT upload request...")
-		wholesalerMap, err := database.GetWholesalerMap(db)
-		if err != nil {
-			respondJSONError(w, "卸マスターの読み込みに失敗しました。", http.StatusInternalServerError)
-			return
-		}
-		err = r.ParseMultipartForm(32 << 20)
+
+		err := r.ParseMultipartForm(32 << 20)
 		if err != nil {
 			respondJSONError(w, "File upload error: "+err.Error(), http.StatusBadRequest)
 			return
@@ -54,10 +46,10 @@ func UploadDatHandler(db *sqlx.DB) http.HandlerFunc {
 			log.Printf("Processing file: %s", fileHeader.Filename)
 			processedFiles = append(processedFiles, fileHeader.Filename)
 			fileResult := map[string]interface{}{"filename": fileHeader.Filename}
-			var currentFileTransactions []model.TransactionRecord
-			// ▼▼▼【ここを修正】`` タグを削除 ▼▼▼
+			// ▼▼▼【削除】使用しない変数を削除 ▼▼▼
+			// var currentFileTransactions []model.TransactionRecord //
+			// ▲▲▲【削除ここまで】▲▲▲
 			file, openErr := fileHeader.Open()
-			// ▲▲▲【修正ここまで】▲▲▲
 			if openErr != nil {
 				log.Printf("Failed to open uploaded file %s: %v", fileHeader.Filename, openErr)
 				fileResult["error"] = fmt.Sprintf("Failed to open file: %v", openErr)
@@ -74,6 +66,7 @@ func UploadDatHandler(db *sqlx.DB) http.HandlerFunc {
 			}
 			log.Printf("Parsed %d records from %s", len(parsedRecords), fileHeader.Filename)
 			fileResult["records_parsed"] = len(parsedRecords)
+
 			tx, txErr := db.Beginx()
 			if txErr != nil {
 				log.Printf("Failed to start transaction for %s: %v", fileHeader.Filename, txErr)
@@ -81,61 +74,88 @@ func UploadDatHandler(db *sqlx.DB) http.HandlerFunc {
 				allResults = append(allResults, fileResult)
 				continue
 			}
-			var insertedCount int = 0
-			for _, rec := range parsedRecords {
-				key := rec.JanCode
-				if key == "" ||
-					// ▼▼▼【ここを修正】`` タグを削除 ▼▼▼
-					key == "0000000000000" {
-					// ▲▲▲【修正ここまで】▲▲▲
-					key = fmt.Sprintf("9999999999999%s", rec.ProductName)
-				}
-				master, err := mastermanager.FindOrCreateMaster(tx, key, rec.ProductName)
-				if err != nil {
-					log.Printf("Failed to find or create master for key %s (Product: %s) in file %s: %v", key, rec.ProductName, fileHeader.Filename, err)
-					fileResult["error"] = fmt.Sprintf("Master creation failed for key %s: %v", key, err)
-					allResults = append(allResults, fileResult)
-					tx.Rollback()
-					goto nextFileLoop
-				}
-				transaction := MapDatToTransaction(rec, master)
-				// ▼▼▼【ここを修正】`` タグを削除 ▼▼▼
-				if err := database.InsertTransactionRecord(tx, transaction); err != nil {
-					// ▲▲▲【修正ここまで】▲▲▲
-					log.Printf("Failed to insert transaction record for key %s (Product: %s) in file %s: %v", key, rec.ProductName, fileHeader.Filename, err)
-					fileResult["error"] = fmt.Sprintf("Transaction insert failed for key %s: %v", key, err)
-					allResults = append(allResults, fileResult)
-					tx.Rollback()
-					goto nextFileLoop
-				}
-				currentFileTransactions = append(currentFileTransactions, transaction)
-				insertedCount++
+
+			insertedTransactions, processErr := ProcessDatRecords(tx, parsedRecords)
+			if processErr != nil {
+				log.Printf("Failed to process DAT records for %s: %v", fileHeader.Filename, processErr)
+				fileResult["error"] = fmt.Sprintf("Failed to process records: %v", processErr)
+				allResults = append(allResults, fileResult)
+				tx.Rollback()
+				continue
 			}
-			// ▼▼▼【ここを修正】`` タグを削除 ▼▼▼
+
 			if commitErr := tx.Commit(); commitErr != nil {
-				// ▲▲▲【修正ここまで】▲▲▲
 				log.Printf("Failed to commit transaction for %s: %v", fileHeader.Filename, commitErr)
 				fileResult["error"] = fmt.Sprintf("Failed to commit transaction: %v", commitErr)
 				allResults = append(allResults, fileResult)
-				goto nextFileLoop
+				continue
 			}
-			successfullyInsertedTransactions = append(successfullyInsertedTransactions, currentFileTransactions...)
-			log.Printf("Successfully inserted %d records from %s", insertedCount, fileHeader.Filename)
+
+			successfullyInsertedTransactions = append(successfullyInsertedTransactions, insertedTransactions...)
+			log.Printf("Successfully inserted %d records from %s", len(insertedTransactions), fileHeader.Filename)
 			fileResult["success"] = true
-			fileResult["records_inserted"] = insertedCount
+			fileResult["records_inserted"] = len(insertedTransactions)
 			allResults = append(allResults, fileResult)
-		nextFileLoop:
-			continue
 		}
 		w.Header().Set("Content-Type", "application/json")
-		htmlString := render.RenderTransactionTableHTML(successfullyInsertedTransactions, wholesalerMap)
 		json.NewEncoder(w).Encode(map[string]interface{}{
-			"message":   fmt.Sprintf("Processed %d DAT file(s). See results for details.", len(processedFiles)),
-			"results":   allResults,
-			"tableHTML": htmlString,
+			"message": fmt.Sprintf("Processed %d DAT file(s). See results for details.", len(processedFiles)),
+			"results": allResults,
+			"records": successfullyInsertedTransactions,
 		})
 		log.Println("Finished DAT upload request.")
 	}
+}
+
+func ProcessDatRecords(tx *sqlx.Tx, parsedRecords []model.DatRecord) ([]model.TransactionRecord, error) {
+	var insertedTransactions []model.TransactionRecord
+	var insertedCount int = 0
+
+	for _, rec := range parsedRecords {
+		key := rec.JanCode
+		if key == "" || key == "0000000000000" {
+			key = fmt.Sprintf("9999999999999%s", rec.ProductName)
+		}
+
+		master, err := mastermanager.FindOrCreateMaster(tx, key, rec.ProductName)
+		if err != nil {
+			return nil, fmt.Errorf("master creation failed for key %s: %w", key, err)
+		}
+
+		transaction := model.TransactionRecord{
+			TransactionDate: rec.Date,
+			ClientCode:      rec.ClientCode,
+			ReceiptNumber:   rec.ReceiptNumber,
+			LineNumber:      rec.LineNumber,
+			Flag:            rec.Flag,
+			DatQuantity:     rec.DatQuantity,
+			UnitPrice:       rec.UnitPrice,
+			Subtotal:        rec.Subtotal,
+			ExpiryDate:      rec.ExpiryDate,
+			LotNumber:       rec.LotNumber,
+		}
+
+		if master.YjPackUnitQty > 0 {
+			transaction.YjQuantity = rec.DatQuantity * master.YjPackUnitQty
+		}
+		if master.JanPackUnitQty > 0 {
+			transaction.JanQuantity = rec.DatQuantity * master.JanPackUnitQty
+		}
+
+		if transaction.UnitPrice == 0 {
+			transaction.UnitPrice = master.NhiPrice
+			transaction.Subtotal = transaction.YjQuantity * transaction.UnitPrice
+		}
+
+		mappers.MapMasterToTransaction(&transaction, master)
+
+		if err := database.InsertTransactionRecord(tx, transaction); err != nil {
+			return nil, fmt.Errorf("transaction insert failed for key %s: %w", key, err)
+		}
+		insertedTransactions = append(insertedTransactions, transaction)
+		insertedCount++
+	}
+	return insertedTransactions, nil
 }
 
 func SearchDatHandler(db *sqlx.DB) http.HandlerFunc {
@@ -145,24 +165,14 @@ func SearchDatHandler(db *sqlx.DB) http.HandlerFunc {
 			return
 		}
 
-		wholesalerMap, err := database.GetWholesalerMap(db)
-		if err != nil {
-			respondJSONError(w, "卸マスターの読み込みに失敗しました。", http.StatusInternalServerError)
-			return
-		}
-
-		// ▼▼▼【ここから修正】DB共通関数 GetProductMasterByBarcode を使用 ▼▼▼
 		barcodeStr := r.URL.Query().Get("barcode")
-		// ▼▼▼【ここを修正】改行と `` タグを削除 ▼▼▼
 		log.Printf("Received DAT search request... Barcode: [%s]", barcodeStr)
-		// ▲▲▲【修正ここまで】▲▲▲
 
 		if barcodeStr == "" {
 			respondJSONError(w, "バーコードを入力してください。", http.StatusBadRequest)
 			return
 		}
 
-		// DB共通関数でマスターを検索
 		master, err := database.GetProductMasterByBarcode(db, barcodeStr)
 		if err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
@@ -176,12 +186,10 @@ func SearchDatHandler(db *sqlx.DB) http.HandlerFunc {
 		}
 
 		productCode := master.ProductCode
-
-		// 期限とロットはGS1の場合のみ取得
 		var expiryYYMMDD, expiryYYMM, lotNumber string
-		if len(barcodeStr) > 14 { // 15桁以上の場合のみGS1解析
+		if len(barcodeStr) > 14 {
 			gs1Result, parseErr := barcode.Parse(barcodeStr)
-			if parseErr == nil && gs1Result != nil { // エラーは無視
+			if parseErr == nil && gs1Result != nil {
 				expiryYYMMDD = gs1Result.ExpiryDate
 				if len(expiryYYMMDD) == 6 {
 					expiryYYMM = expiryYYMMDD[:4]
@@ -193,115 +201,21 @@ func SearchDatHandler(db *sqlx.DB) http.HandlerFunc {
 		log.Printf("Search criteria: ProductCode(JAN)='%s', Expiry(6)='%s', Expiry(4)='%s', Lot='%s'",
 			productCode, expiryYYMMDD, expiryYYMM, lotNumber)
 
-		// ▼▼▼【ここを修正】`` タグを削除 ▼▼▼
 		transactions, err := database.SearchTransactions(db, productCode, expiryYYMMDD, expiryYYMM, lotNumber)
-		// ▲▲▲【修正ここまで】▲▲▲
 
 		if err != nil {
-			// ▼▼▼【ここを修正】`` タグを削除 ▼▼▼
 			log.Printf("Error searching transactions: %v", err)
-			// ▲▲▲【修正ここまで】▲▲▲
 			respondJSONError(w, "トランザクション検索中にエラーが発生しました。", http.StatusInternalServerError)
 			return
 		}
 
 		log.Printf("Found %d transactions matching criteria.", len(transactions))
 
-		htmlString := render.RenderTransactionTableHTML(transactions, wholesalerMap)
-
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]interface{}{
-			"message":   fmt.Sprintf("%d 件のデータが見つかりました。", len(transactions)),
-			"tableHTML": htmlString,
+			"message":      fmt.Sprintf("%d 件のデータが見つかりました。", len(transactions)),
+			"transactions": transactions,
 		})
-	}
-}
-
-// (MapDatToTransaction, OpenFileHeader は変更なし)
-// ...
-func MapDatToTransaction(dat model.DatRecord, master *model.ProductMaster) model.TransactionRecord {
-	productNameWithSpec := master.ProductName
-	if master.Specification != "" {
-		productNameWithSpec = master.ProductName + " " + master.Specification
-	}
-	var yjQuantity, janQuantity float64
-	if master.YjPackUnitQty > 0 {
-		yjQuantity = dat.DatQuantity * master.YjPackUnitQty
-	}
-	if master.JanPackUnitQty > 0 {
-		janQuantity = dat.DatQuantity * master.JanPackUnitQty
-	}
-	yjUnitName := units.ResolveName(master.YjUnitName)
-	packageSpec := fmt.Sprintf("%s %g%s", master.PackageForm, master.YjPackUnitQty, yjUnitName)
-	janUnitCodeStr := fmt.Sprintf("%d", master.JanUnitCode)
-	var janUnitName string
-	if master.JanUnitCode == 0 {
-		janUnitName = yjUnitName
-	} else {
-		janUnitName = units.ResolveName(janUnitCodeStr)
-	}
-	// ▼▼▼【ここを修正】if と { を同じ行にする ▼▼▼
-	if master.JanPackInnerQty > 0 && master.JanPackUnitQty > 0 {
-		// ▲▲▲【修正ここまで】▲▲▲
-		packageSpec += fmt.Sprintf(" (%g%s×%g%s)",
-			master.JanPackInnerQty,
-			yjUnitName,
-			master.JanPackUnitQty,
-			janUnitName,
-		)
-	}
-	var processFlagMA string
-	// ▼▼▼【ここを修正】if と { を同じ行にする ▼▼▼
-	if master.Origin == "JCSHMS" {
-		// ▲▲▲【修正ここまで】▲▲▲
-		processFlagMA = "COM"
-	} else {
-		processFlagMA = "PRO"
-	}
-	return model.TransactionRecord{
-		TransactionDate: dat.Date,
-		ClientCode:      dat.ClientCode,
-		ReceiptNumber:   dat.ReceiptNumber,
-		LineNumber:      dat.LineNumber,
-		Flag:            dat.Flag,
-		JanCode:         master.ProductCode,
-		YjCode:          master.YjCode,
-		// ▼▼▼【ここを修正】`` タグを削除 ▼▼▼
-		ProductName: productNameWithSpec,
-		KanaName:    master.KanaName,
-		// ▲▲▲【修正ここまで】▲▲▲
-		UsageClassification: master.UsageClassification,
-		PackageForm:         master.PackageForm,
-		PackageSpec:         packageSpec,
-		MakerName:           master.MakerName,
-		DatQuantity:         dat.DatQuantity,
-		JanPackInnerQty:     master.JanPackInnerQty,
-		JanQuantity:         janQuantity,
-		JanPackUnitQty:      master.JanPackUnitQty,
-		JanUnitName:         janUnitName,
-		JanUnitCode:         janUnitCodeStr,
-		YjQuantity:          yjQuantity,
-		// ▼▼▼【ここを修正】`` タグを削除 ▼▼▼
-		YjPackUnitQty: master.YjPackUnitQty,
-		YjUnitName:    yjUnitName,
-		// ▲▲▲【修正ここまで】▲▲▲
-		UnitPrice:         dat.UnitPrice,
-		PurchasePrice:     master.PurchasePrice,
-		SupplierWholesale: master.SupplierWholesale,
-		Subtotal:          dat.Subtotal,
-		TaxAmount:         0,
-		TaxRate:           0,
-		ExpiryDate:        dat.ExpiryDate,
-		LotNumber:         dat.LotNumber,
-		// ▼▼▼【ここを修正】`` タグを削除 ▼▼▼
-		FlagPoison:      master.FlagPoison,
-		FlagDeleterious: master.FlagDeleterious,
-		// ▲▲▲【修正ここまで】▲▲▲
-		FlagNarcotic:     master.FlagNarcotic,
-		FlagPsychotropic: master.FlagPsychotropic,
-		FlagStimulant:    master.FlagStimulant,
-		FlagStimulantRaw: master.FlagStimulantRaw,
-		ProcessFlagMA:    processFlagMA,
 	}
 }
 

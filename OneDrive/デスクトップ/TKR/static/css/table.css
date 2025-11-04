@@ -17,7 +17,6 @@
 .data-table td {
   border: 1px solid #ccc;
   padding: 2px 2px;
-  /* text-align: left; */ /* ← デフォルト指定は削除 */
   vertical-align: middle;
   min-height: 20px;
   height: 20px;
@@ -27,74 +26,60 @@
   box-sizing: border-box;
 }
 
-/* ▼▼▼ ヘッダーは全て中央揃え ▼▼▼ */
 .data-table th {
   background-color: #f2f2f2;
   font-weight: bold;
   text-align: center;
-  /* ヘッダーは中央揃え */
 }
-/* ▲▲▲ 修正 ▲▲▲ */
 
-/* Zebra striping every two data rows */
 .data-table tbody tr:nth-child(4n-1),
 .data-table tbody tr:nth-child(4n) {
   background-color: #f9f9f9;
 }
 
 
-/* ▼▼▼ 列ごとの幅指定 (ヘッダーに適用) ▼▼▼ */
-/* width指定は th にのみ適用し、td は追従させる */
+/* ▼▼▼【ここから修正】列幅のパーセンテージを変更 ▼▼▼ */
 .data-table th.col-action     { width: 5%; }
-.data-table th.col-date       { width: 7%; }
-.data-table th.col-yj         { width: 10%; }
-/* 製品名は構成要素のクラスで幅を指定 */
-.data-table th.col-package    { width: 10%; }
-.data-table th.col-maker      { width: 10%; }
+.data-table th.col-date       { width: 6%; } /* 7% から 1% 削減 */
+.data-table th.col-yj         { width: 8%; } /* 10% から 2% 削減 */
+/* col-product (colspan=2) は col-package + col-maker で決定 */
+.data-table th.col-package    { width: 16%; } /* 10% から 3% 増加 */
+.data-table th.col-maker      { width: 16%; } /* 10% から 3% 増加 */
 .data-table th.col-count      { width: 4%; }
 .data-table th.col-yjqty      { width: 8%; }
 .data-table th.col-yjpackqty  { width: 8%; }
 .data-table th.col-yjunit     { width: 8%; }
 .data-table th.col-unitprice  { width: 6%; }
-.data-table th.col-expiry     { width: 8%; }
+.data-table th.col-expiry     { width: 6%; }
 .data-table th.col-wholesaler { width: 8%; }
-.data-table th.col-line       { width: 8%; }
-/* ヘッダー2行目のクラスにも幅を指定 */
-.data-table th.col-flag       { width: 7%; }
-.data-table th.col-jan        { width: 10%; }
+.data-table th.col-line       { width: 4%; } /* 8% から 3% 削減 */
+
+/* 2行目のヘッダーも1行目に合わせる */
+.data-table th.col-flag       { width: 6%; } /* 7% -> 6% */
+.data-table th.col-jan        { width: 8%; } /* 10% -> 8% */
 .data-table th.col-form       { width: 4%; }
 .data-table th.col-janqty     { width: 8%; }
 .data-table th.col-janpackqty { width: 8%; }
 .data-table th.col-janunit    { width: 8%; }
 .data-table th.col-amount     { width: 6%; }
-.data-table th.col-lot        { width: 8%; }
+.data-table th.col-lot        { width: 6%; }
 .data-table th.col-receipt    { width: 8%; }
-.data-table th.col-ma         { width: 8%; }
-/* ▲▲▲ 幅指定ここまで ▲▲▲ */
+.data-table th.col-ma         { width: 4%; } /* 8% -> 5% */
+/* ▲▲▲【修正ここまで】▲▲▲ */
 
 
-/* ▼▼▼ データセル (td) の文字揃え ▼▼▼ */
-/* デフォルトは左揃え (指定なし) */
+/* ▼▼▼ データセル (td) の文字揃え (変更なし) ▼▼▼ */
 .data-table td.col-action     { text-align: center; }
 .data-table td.col-date       { text-align: center; }
 .data-table td.col-flag       { text-align: center; }
-/* .data-table td.col-yj         { text-align: left; } (デフォルト) */
-/* .data-table td.col-jan        { text-align: left; } (デフォルト) */
-/* .data-table td.col-package    { text-align: left; } (デフォルト) */
-/* .data-table td.col-maker      { text-align: left; } (デフォルト) */
-/* .data-table td.col-product   { text-align: left; } (デフォルト) */
 .data-table td.col-count      { text-align: right; }
 .data-table td.col-form       { text-align: center; }
 .data-table td.col-yjqty      { text-align: right; }
 .data-table td.col-janqty     { text-align: right; }
 .data-table td.col-yjpackqty  { text-align: right; }
 .data-table td.col-janpackqty { text-align: right; }
-
-/* ▼▼▼【ここを修正】YJ単位とJAN単位を左寄せに変更 ▼▼▼ */
 .data-table td.col-yjunit     { text-align: left; }
 .data-table td.col-janunit    { text-align: left; }
-/* ▲▲▲ 修正ここまで ▲▲▲ */
-
 .data-table td.col-unitprice  { text-align: right; }
 .data-table td.col-amount     { text-align: right; }
 .data-table td.col-expiry     { text-align: center; }
@@ -109,3 +94,15 @@
 /* ステータス色 */
 .status-success { color: green; }
 .status-error   { color: red; }
+
+.data-table td input[type="text"],
+.data-table td input[type="number"] {
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  border: 1px solid #ccc;
+  margin: 0;
+  padding: 0 2px;
+  font-size: inherit;
+  vertical-align: middle;
+}

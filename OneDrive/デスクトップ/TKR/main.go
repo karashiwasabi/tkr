@@ -19,6 +19,7 @@ import (
 	"tkr/config"
 	"tkr/dat"
 	"tkr/database"
+	"tkr/inout"
 	"tkr/inventoryadjustment"
 	"tkr/loader"
 	"tkr/masteredit"
@@ -58,35 +59,29 @@ func main() {
 		log.Println("Unit (TANI.CSV) master loaded successfully.")
 	}
 
-	// 'static' フォルダをFSとしてキャプチャ
 	staticFS := os.DirFS("static")
-	// 'static/views' サブディレクトリをFSとしてキャプチャ
 	viewsFS, err = fs.Sub(staticFS, "views")
 	if err != nil {
 		log.Printf("WARN: 'static/views' directory not found. Will only load index.html. %v", err)
 	}
 
-	// 共通部品 search_form_group.html のための FS を設定
 	searchFormsFS, err = fs.Sub(staticFS, "views")
 	if err != nil {
 		log.Fatalf("Failed to sub views directory for search forms: %v", err)
 	}
 
-	// メインの index.html をパース
 	appTemplate, err = template.ParseFS(staticFS, "index.html")
 	if err != nil {
 		log.Fatalf("Failed to parse index.html: %v", err)
 	}
 
 	if viewsFS != nil {
-		// viewsFS (static/views) 内のすべての .html ファイルを追加でパース
 		appTemplate, err = appTemplate.ParseFS(viewsFS, "*.html")
 		if err != nil {
 			log.Fatalf("Failed to parse views/*.html: %v", err)
 		}
 	}
 
-	// 共通部品 search_form_group.html をパースに追加
 	if searchFormsFS != nil {
 		appTemplate, err = appTemplate.ParseFS(searchFormsFS, "search_form_group.html")
 		if err != nil {
@@ -94,14 +89,13 @@ func main() {
 		}
 	}
 
-	// ▼▼▼【ここから追加】共通部品 common_search_modal.html をパースに追加 ▼▼▼
 	if viewsFS != nil {
 		appTemplate, err = appTemplate.ParseFS(viewsFS, "common_search_modal.html")
 		if err != nil {
 			log.Fatalf("Failed to parse views/common_search_modal.html: %v", err)
 		}
+		appTemplate, err = appTemplate.ParseFS(viewsFS, "common_input_modal.html")
 	}
-	// ▲▲▲【追加ここまで】▲▲▲
 
 	log.Println("HTML templates loaded and parsed.")
 
@@ -116,10 +110,8 @@ func main() {
 			return
 		}
 
-		// viewsFS から全ビューのファイル名を取得
 		viewFiles := []string{}
 		if viewsFS != nil {
-			// search_form_group.html と common_search_modal.html は部品なので除外する
 			files, err := fs.Glob(viewsFS, "*.html")
 			if err != nil {
 				log.Printf("Error globbing view files: %v", err)
@@ -133,10 +125,8 @@ func main() {
 			}
 		}
 
-		// 全ビューを結合するためのデータマップ
 		viewMap := make(map[string]template.HTML)
 		for _, file := range viewFiles {
-			// ファイル名 (例: dat_view.html) からキー (dat_view) を作成
 			key := strings.TrimSuffix(file, filepath.Ext(file))
 
 			data := struct {
@@ -147,7 +137,6 @@ func main() {
 				SearchButtonText   string
 			}{}
 
-			// プリフィックスとIDを設定
 			switch key {
 			case "dat_view":
 				data.Prefix = "dat_"
@@ -171,7 +160,6 @@ func main() {
 				data.Prefix = ""
 			}
 
-			// バッファにビューを描画
 			var viewContent strings.Builder
 			if err := appTemplate.ExecuteTemplate(&viewContent, file, data); err != nil {
 				log.Printf("Error executing view template %s: %v", file, err)
@@ -181,7 +169,6 @@ func main() {
 			viewMap[key] = template.HTML(viewContent.String())
 		}
 
-		// メインの index.html テンプレートに全ビューを埋め込んで描画
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		err = appTemplate.ExecuteTemplate(w, "index.html", struct {
 			Views map[string]template.HTML
@@ -193,7 +180,6 @@ func main() {
 		}
 	})
 
-	// ( ... JCSHMS APIハンドラ ... )
 	mux.HandleFunc("/api/jcshms/", func(w http.ResponseWriter, r *http.Request) {
 		janCode := strings.TrimPrefix(r.URL.Path, "/api/jcshms/")
 		if janCode == "" {
@@ -221,11 +207,15 @@ func main() {
 		log.Printf("Successfully returned JCSHMS info for JAN: %s", janCode)
 	})
 
-	// ( ... 他のAPIハンドラ ... )
 	mux.HandleFunc("/api/dat/upload", dat.UploadDatHandler(dbConn))
 	mux.HandleFunc("/api/dat/search", dat.SearchDatHandler(dbConn))
 	mux.HandleFunc("/api/usage/upload", usage.UploadUsageHandler(dbConn))
 
+	// In-Out (入出庫) Handlers
+	mux.HandleFunc("/api/receipts/by_date", inout.GetReceiptNumbersByDateHandler(dbConn))
+	mux.HandleFunc("/api/transaction/", inout.GetTransactionsByReceiptNumberHandler(dbConn))
+	mux.HandleFunc("/api/inout/save", inout.SaveInOutHandler(dbConn))
+	mux.HandleFunc("/api/transaction/delete/", inout.DeleteTransactionHandler(dbConn))
 	mux.HandleFunc("/api/masters", masteredit.ListMastersHandler(dbConn))
 	mux.HandleFunc("/api/masters/update", masteredit.UpdateMasterHandler(dbConn))
 
@@ -233,6 +223,7 @@ func main() {
 	mux.HandleFunc("/api/inventory/adjust/save", inventoryadjustment.SaveInventoryDataHandler(dbConn))
 
 	mux.HandleFunc("/api/products/search_filtered", product.SearchProductsHandler(dbConn))
+	mux.HandleFunc("/api/master/adopt", product.AdoptMasterHandler(dbConn))
 
 	mux.HandleFunc("/api/product/by_barcode/", product.GetProductByBarcodeHandler(dbConn))
 	mux.HandleFunc("/api/master/by_code/", func(w http.ResponseWriter, r *http.Request) {
@@ -254,6 +245,18 @@ func main() {
 	mux.HandleFunc("/api/wholesalers/list", ListWholesalersHandler(dbConn))
 	mux.HandleFunc("/api/wholesalers/create", CreateWholesalerHandler(dbConn))
 	mux.HandleFunc("/api/wholesalers/delete/", DeleteWholesalerHandler(dbConn))
+
+	// ▼▼▼【ここから追加】得意先リスト取得API (WASABI: client/handlers.go [cite: 852-853] より) ▼▼▼
+	mux.HandleFunc("/api/clients", func(w http.ResponseWriter, r *http.Request) {
+		clients, err := database.GetAllClients(dbConn)
+		if err != nil {
+			http.Error(w, "Failed to get clients", http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(clients)
+	})
+	// ▲▲▲【追加ここまで】▲▲▲
 
 	mux.HandleFunc("/api/config", func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
