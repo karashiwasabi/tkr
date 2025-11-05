@@ -126,6 +126,16 @@ ORDER BY product_code`
 	return masters, nil
 }
 
+func GetProductMasterByKanaNameShort(dbtx DBTX, kanaNameShort string) (*model.ProductMaster, error) {
+	var master model.ProductMaster
+	query := `SELECT * FROM product_master WHERE kana_name_short = ?`
+	err := dbtx.Get(&master, query, kanaNameShort)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get product master by kana_name_short %s: %w", kanaNameShort, err)
+	}
+	return &master, nil
+}
+
 const insertProductMasterQuery = `
 INSERT INTO product_master (
     product_code, yj_code, gs1_code, product_name, kana_name, kana_name_short, 

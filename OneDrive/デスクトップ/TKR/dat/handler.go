@@ -114,7 +114,22 @@ func ProcessDatRecords(tx *sqlx.Tx, parsedRecords []model.DatRecord) ([]model.Tr
 	for _, rec := range parsedRecords {
 		key := rec.JanCode
 		if key == "" || key == "0000000000000" {
-			key = fmt.Sprintf("9999999999999%s", rec.ProductName)
+			// ユーザーの要求: DATファイルの商品名をプロダクトマスタのkana_name_shortに照合
+			// なければ、DAT商品名をプロダクトマスタの商品名とkana_name_shortに記載
+			foundMaster, err := database.GetProductMasterByKanaNameShort(tx, rec.ProductName)
+			if err != nil && !errors.Is(err, sql.ErrNoRows) {
+				return nil, fmt.Errorf("failed to search product master by kana_name_short for %s: %w", rec.ProductName, err)
+			}
+
+			if foundMaster != nil {
+				// 照合できた場合、そのマスターのProductCodeを使用
+				key = foundMaster.ProductCode
+				log.Printf("Found existing master by kana_name_short for '%s', using ProductCode: %s", rec.ProductName, key)
+			} else {
+				// 照合できなかった場合、既存の自動採番ロジック（9999999999999 + ProductName）を使用
+				key = fmt.Sprintf("9999999999999%s", rec.ProductName)
+				log.Printf("No master found by kana_name_short for '%s', generating new key: %s", rec.ProductName, key)
+			}
 		}
 
 		master, err := mastermanager.FindOrCreateMaster(tx, key, rec.ProductName)
