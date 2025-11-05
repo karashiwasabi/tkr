@@ -24,6 +24,7 @@ import (
 	"tkr/loader"
 	"tkr/masteredit"
 	"tkr/product"
+	"tkr/reprocess" // ▼▼▼【ここに追加】▼▼▼
 	"tkr/units"
 	"tkr/usage"
 )
@@ -246,7 +247,7 @@ func main() {
 	mux.HandleFunc("/api/wholesalers/create", CreateWholesalerHandler(dbConn))
 	mux.HandleFunc("/api/wholesalers/delete/", DeleteWholesalerHandler(dbConn))
 
-	// ▼▼▼【ここから追加】得意先リスト取得API (WASABI: client/handlers.go [cite: 852-853] より) ▼▼▼
+	// ▼▼▼【ここから追加】得意先リスト取得API (WASABI: client/handlers.go  より) ▼▼▼
 	mux.HandleFunc("/api/clients", func(w http.ResponseWriter, r *http.Request) {
 		clients, err := database.GetAllClients(dbConn)
 		if err != nil {
@@ -270,6 +271,10 @@ func main() {
 	})
 
 	mux.HandleFunc("/api/units/map", units.GetTaniMapHandler())
+
+	// ▼▼▼【ここに追加】全取引再計算APIエンドポイント ▼▼▼
+	mux.HandleFunc("/api/reprocess/all", reprocess.ProcessTransactionsHandler(dbConn))
+	// ▲▲▲【追加ここまで】▲▲▲
 
 	port := ":8080"
 	log.Printf("Starting server on http://localhost%s", port)

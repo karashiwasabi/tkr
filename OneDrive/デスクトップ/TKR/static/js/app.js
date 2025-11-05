@@ -12,7 +12,7 @@ import { initInOut, resetInOutView } from './inout.js';
 
 let loadingOverlay, loadingMessage, notificationBox;
 // ▼▼▼【ここに追加】▼▼▼
-let views, datViewBtn, usageViewBtn, inventoryAdjustmentViewBtn, masterEditViewBtn, configViewBtn, inoutViewBtn;
+let views, datViewBtn, usageViewBtn, inventoryAdjustmentViewBtn, masterEditViewBtn, configViewBtn, inoutViewBtn, reprocessBtn;
 // ▲▲▲【追加ここまで】▲▲▲
 const initializedViews = {
     dat: false,
@@ -24,7 +24,6 @@ const initializedViews = {
     inout: false,
     // ▲▲▲【追加ここまで】▲▲▲
 };
-
 window.showLoading = (message = '処理中...') => {
     if (!loadingOverlay) loadingOverlay = document.getElementById('loading-overlay');
     if (!loadingMessage) loadingMessage = document.getElementById('loading-message');
@@ -110,6 +109,33 @@ function setActiveView(targetId) {
     }
 }
 
+// ▼▼▼【ここから追加】全取引再計算処理 ▼▼▼
+async function handleReprocessAll() {
+    if (!confirm('全ての取引データを、最新のマスター情報に基づいて再計算します。\nこの処理はデータ量に応じて時間がかかります。\n実行しますか？')) {
+        return;
+    }
+
+    window.showLoading('全取引データを再計算中... (時間がかかる場合があります)');
+    try {
+        const response = await fetch('/api/reprocess/all', {
+            method: 'POST', // 再計算はPOSTリクエストを使用
+        });
+
+        const result = await response.json();
+        if (!response.ok) {
+            throw new Error(result.message || `サーバーエラー (HTTP ${response.status})`);
+        }
+
+        window.showNotification(result.message || '全取引データの再計算が完了しました。', 'success');
+    } catch (error) {
+        console.error('Reprocessing failed:', error);
+        window.showNotification(`再計算エラー: ${error.message}`, 'error');
+    } finally {
+        window.hideLoading();
+    }
+}
+// ▲▲▲【追加ここまで】▲▲▲
+
 document.addEventListener('DOMContentLoaded', async () => {
     console.log('TKR App Initialized.');
 
@@ -124,13 +150,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     configViewBtn = document.getElementById('configViewBtn'); 
     // ▼▼▼【ここに追加】▼▼▼
     inoutViewBtn = document.getElementById('inOutViewBtn');
+    reprocessBtn = document.getElementById('reprocessBtn');
     // ▲▲▲【追加ここまで】▲▲▲
 
     await loadMasterData();
 
     initSearchModal();
 
-    if (datViewBtn) {
+    if 
+ (datViewBtn) {
         datViewBtn.addEventListener('click', () => setActiveView('dat-upload-view'));
     }
     if (usageViewBtn) {
@@ -149,6 +177,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     // ▼▼▼【ここに追加】▼▼▼
     if (inoutViewBtn) {
         inoutViewBtn.addEventListener('click', () => setActiveView('inout-view'));
+    }
+    if (reprocessBtn) {
+        reprocessBtn.addEventListener('click', handleReprocessAll);
     }
     // ▲▲▲【追加ここまで】▲▲▲
 

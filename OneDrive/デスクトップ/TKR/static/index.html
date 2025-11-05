@@ -10,7 +10,7 @@
     <link rel="stylesheet" href="/static/css/inventory_adjustment.css">
     <link rel="stylesheet" href="/static/css/search_modal.css">
     <link rel="stylesheet" href="/static/css/search_form_group.css">
-    <link rel="stylesheet" href="/static/css/modal.css">
+   <link rel="stylesheet" href="/static/css/modal.css">
     <link rel="stylesheet" href="/static/css/inout.css">
     </head>
 <body>
@@ -20,13 +20,15 @@
         <button id="inOutViewBtn" class="btn">入出庫</button>
         <button id="inventoryAdjustmentViewBtn" class="btn">棚卸調整</button>
         <button id="masterEditViewBtn" class="btn">マスタ編集</button>
+        <button id="reprocessBtn" class="btn">全取引再計算</button>
         <button id="configViewBtn" class="btn">設定</button>
     
 </header>
 
     <main>
         {{if .Views}}
-            {{range .Views}}
+    
+             {{range .Views}}
                  {{.}}
             {{end}}
         {{else}}
@@ -35,7 +37,8 @@
            <div id="usage-upload-view" class="view">USAGEビュー</div>
          
    <div id="inventory-adjustment-view" class="view">棚卸調整ビュー</div>
-            <div id="master-edit-view" class="view">マスタ編集ビュー</div>
+   
+             <div id="master-edit-view" class="view">マスタ編集ビュー</div>
            
              <div id="config-view" class="view">設定ビュー</div>
         {{end}}

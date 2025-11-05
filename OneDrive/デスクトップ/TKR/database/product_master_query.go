@@ -12,7 +12,29 @@ type DBTX interface {
 	Get(dest interface{}, query string, args ...interface{}) error
 	Select(dest interface{}, query string, args ...interface{}) error
 	NamedExec(query string, arg interface{}) (sql.Result, error)
+	// ▼▼▼【ここから修正】sqlx.DB/Txが持つQueryインターフェースを追加 ▼▼▼
+	Query(query string, args ...interface{}) (*sql.Rows, error)
+	// ▲▲▲【修正ここまで】▲▲▲
 }
+
+// ▼▼▼【ここから追加】GetAllProductMasters (reprocessハンドラ用) ▼▼▼
+func GetAllProductMasters(dbtx DBTX) ([]*model.ProductMaster, error) {
+	var masters []*model.ProductMaster
+	query := `SELECT * FROM product_master`
+	err := dbtx.Select(&masters, query)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return []*model.ProductMaster{}, nil
+		}
+		return nil, fmt.Errorf("failed to select all product masters: %w", err)
+	}
+	if masters == nil {
+		masters = []*model.ProductMaster{}
+	}
+	return masters, nil
+}
+
+// ▲▲▲【追加ここまで】▲▲▲
 
 func GetFilteredProductMasters(dbtx DBTX, usageClass, kanaName, genericName, shelfNumber string) ([]model.ProductMaster, error) {
 
@@ -111,8 +133,7 @@ func GetProductMasterByBarcode(dbtx DBTX, barcodeStr string) (*model.ProductMast
 
 func GetProductMastersByYjCode(dbtx DBTX, yjCode string) ([]*model.ProductMaster, error) {
 	var masters []*model.ProductMaster
-	query := `SELECT * FROM product_master WHERE yj_code = ?
-ORDER BY product_code`
+	query := `SELECT * FROM product_master WHERE yj_code = ? ORDER BY product_code`
 	err := dbtx.Select(&masters, query, yjCode)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -139,7 +160,8 @@ func GetProductMasterByKanaNameShort(dbtx DBTX, kanaNameShort string) (*model.Pr
 const insertProductMasterQuery = `
 INSERT INTO product_master (
     product_code, yj_code, gs1_code, product_name, kana_name, kana_name_short, 
-    generic_name, maker_name, specification, usage_classification, package_form, 
+    generic_name, maker_name, specification, usage_classification, 
+ package_form, 
     yj_unit_name, yj_pack_unit_qty, jan_pack_inner_qty, jan_unit_code, jan_pack_unit_qty, 
     origin, nhi_price, purchase_price, flag_poison, flag_deleterious, flag_narcotic, 
     flag_psychotropic, flag_stimulant, flag_stimulant_raw, is_order_stopped, 

@@ -127,7 +127,7 @@ func ProcessDatRecords(tx *sqlx.Tx, parsedRecords []model.DatRecord) ([]model.Tr
 				log.Printf("Found existing master by kana_name_short for '%s', using ProductCode: %s", rec.ProductName, key)
 			} else {
 				// ▼▼▼【ここを修正】合成キー(999...)を生成せず、元のキー(0x13)をそのまま使う ▼▼▼
-				key = rec.JanCode // ( "0000000000000" が key になる)
+				key = rec.JanCode // ( "0000000000000" または "" が key になる)
 				log.Printf("No master found by kana_name_short for '%s', using original key: %s", rec.ProductName, key)
 				// ▲▲▲【修正ここまで】▲▲▲
 			}
@@ -151,16 +151,20 @@ func ProcessDatRecords(tx *sqlx.Tx, parsedRecords []model.DatRecord) ([]model.Tr
 			LotNumber:       rec.LotNumber,
 		}
 
-		if master.YjPackUnitQty > 0 {
-			transaction.YjQuantity = rec.DatQuantity * master.YjPackUnitQty
-		}
-		if master.JanPackUnitQty > 0 {
-			transaction.JanQuantity = rec.DatQuantity * master.JanPackUnitQty
-		}
+		// ▼▼▼【ここから修正】数量計算のバグを修正 ▼▼▼
+		// 1. JanQuantity は DAT数量(rec.DatQuantity) と等価
+		transaction.JanQuantity = rec.DatQuantity
+
+		// 2. YjQuantity は (DAT数量 * JAN包装内入数) で計算
+		// (もし JanPackInnerQty が 0 なら YjQuantity も 0 になるが、それはマスタ設定の問題)
+		transaction.YjQuantity = rec.DatQuantity * master.JanPackInnerQty
+		// ▲▲▲【修正ここまで】▲▲▲
 
 		if transaction.UnitPrice == 0 {
 			transaction.UnitPrice = master.NhiPrice
+			// ▼▼▼【ここを修正】金額計算も YjQuantity を基準にする ▼▼▼
 			transaction.Subtotal = transaction.YjQuantity * transaction.UnitPrice
+			// ▲▲▲【修正ここまで】▲▲▲
 		}
 
 		mappers.MapMasterToTransaction(&transaction, master)

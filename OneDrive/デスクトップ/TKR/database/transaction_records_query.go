@@ -47,7 +47,8 @@ INSERT INTO transaction_records (
     flag_stimulant_raw, process_flag_ma
 ) VALUES (
     :transaction_date, :client_code, :receipt_number, :line_number, :flag,
-    :jan_code, :yj_code, :product_name, :kana_name, :usage_classification, :package_form, :package_spec, :maker_name,
+    :jan_code, :yj_code, :product_name, :kana_name, :usage_classification, :package_form, 
+ :package_spec, :maker_name,
     :dat_quantity, :jan_pack_inner_qty, :jan_quantity, :jan_pack_unit_qty, :jan_unit_name, :jan_unit_code,
     :yj_quantity, :yj_pack_unit_qty, :yj_unit_name, :unit_price, :purchase_price, :supplier_wholesale,
     :subtotal, :tax_amount, :tax_rate, :expiry_date, :lot_number, :flag_poison,
@@ -62,6 +63,59 @@ func InsertTransactionRecord(tx *sqlx.Tx, record model.TransactionRecord) error 
 	}
 	return nil
 }
+
+// ▼▼▼【ここから追加】UpdateFullTransactionInTx (reprocessハンドラ用) ▼▼▼
+// (TKRの TransactionColumns に基づいて UPDATE 文を構築)
+const updateTransactionQuery = `
+UPDATE transaction_records SET
+    transaction_date = :transaction_date,
+    client_code = :client_code,
+    receipt_number = :receipt_number,
+    line_number = :line_number,
+    flag = :flag,
+    jan_code = :jan_code,
+    yj_code = :yj_code,
+    product_name = :product_name,
+    kana_name = :kana_name,
+    usage_classification = :usage_classification,
+    package_form = :package_form,
+    package_spec = :package_spec,
+    maker_name = :maker_name,
+    dat_quantity = :dat_quantity,
+    jan_pack_inner_qty = :jan_pack_inner_qty,
+    jan_quantity = :jan_quantity,
+    jan_pack_unit_qty = :jan_pack_unit_qty,
+    jan_unit_name = :jan_unit_name,
+    jan_unit_code = :jan_unit_code,
+    yj_quantity = :yj_quantity,
+    yj_pack_unit_qty = :yj_pack_unit_qty,
+    yj_unit_name = :yj_unit_name,
+    unit_price = :unit_price,
+    purchase_price = :purchase_price,
+    supplier_wholesale = :supplier_wholesale,
+    subtotal = :subtotal,
+    tax_amount = :tax_amount,
+    tax_rate = :tax_rate,
+    expiry_date = :expiry_date,
+    lot_number = :lot_number,
+    flag_poison = :flag_poison,
+    flag_deleterious = :flag_deleterious,
+    flag_narcotic = :flag_narcotic,
+    flag_psychotropic = :flag_psychotropic,
+    flag_stimulant = :flag_stimulant,
+    flag_stimulant_raw = :flag_stimulant_raw,
+    process_flag_ma = :process_flag_ma
+WHERE id = :id`
+
+func UpdateFullTransactionInTx(tx *sqlx.Tx, rec *model.TransactionRecord) error {
+	_, err := tx.NamedExec(updateTransactionQuery, rec)
+	if err != nil {
+		return fmt.Errorf("UpdateFullTransactionInTx failed for ID %d: %w", rec.ID, err)
+	}
+	return nil
+}
+
+// ▲▲▲【追加ここまで】▲▲▲
 
 func PersistTransactionRecordsInTx(tx *sqlx.Tx, records []model.TransactionRecord) error {
 	stmt, err := tx.PrepareNamed(insertTransactionQuery)
@@ -191,6 +245,7 @@ func GetTransactionsByReceiptNumber(db *sqlx.DB, receiptNumber string) ([]model.
 	return records, nil
 }
 
+// ▼▼▼【ここから追加】TKR_source_OTHERS.txt  から欠落していた関数を復元 ▼▼▼
 func DeleteTransactionsByReceiptNumberInTx(tx *sqlx.Tx, receiptNumber string) error {
 	const q = `DELETE FROM transaction_records WHERE receipt_number = ?`
 	_, err := tx.Exec(q, receiptNumber)
@@ -199,6 +254,8 @@ func DeleteTransactionsByReceiptNumberInTx(tx *sqlx.Tx, receiptNumber string) er
 	}
 	return nil
 }
+
+// ▲▲▲【追加ここまで】▲▲▲
 
 // ▼▼▼【ここから追加】最新の棚卸明細を取得する関数 (deadstock.go の代替) ▼▼▼
 // GetLatestInventoryDetailsByYjCode は、指定されたYJコードの最新の棚卸明細(flag=0)を取得します。
@@ -224,8 +281,7 @@ func GetLatestInventoryDetailsByYjCode(dbtx DBTX, yjCode string) ([]model.Transa
 	var records []model.TransactionRecord
 	q := `SELECT ` + TransactionColumns + ` 
 		  FROM transaction_records 
-		  WHERE yj_code = ? 
-		  AND transaction_date = ? 
+		  WHERE yj_code = ? AND transaction_date = ? 
 		  AND flag = 0 
 		  ORDER BY jan_code, expiry_date, lot_number`
 
