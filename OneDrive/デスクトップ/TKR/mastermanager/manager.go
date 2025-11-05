@@ -27,6 +27,7 @@ var ma2jCodeRegex = regexp.MustCompile(`^MA2J[0-9]{9}$`)
 
 // FindOrCreateMaster は、指定されたキー(YJコードまたはJANコード)に対応する製品マスターを探し、
 // なければ JCSHMS または仮マスターとして作成する共通関数です。
+// ▼▼▼【ここから修正】FindOrCreateMaster 全体を上書き ▼▼▼
 func FindOrCreateMaster(tx *sqlx.Tx, productCodeOrKey string, productName string) (*model.ProductMaster, error) {
 
 	var existingMaster model.ProductMaster
@@ -44,7 +45,8 @@ func FindOrCreateMaster(tx *sqlx.Tx, productCodeOrKey string, productName string
 		query := "SELECT * FROM product_master WHERE yj_code = ?"
 		err = tx.Get(&existingMaster, query, productCodeOrKey)
 		log.Printf("Searching master by YJ Code: %s", productCodeOrKey)
-	} else if isJANKey || isMA2JKey { // ▼▼▼【修正】MA2J も product_code で検索 ▼▼▼
+	} else if isJANKey ||
+		isMA2JKey { // ▼▼▼【修正】MA2J も product_code で検索 ▼▼▼
 		// YJでヒットせず、JANなら product_code カラムで検索
 		query := "SELECT * FROM product_master WHERE product_code = ?"
 		err = tx.Get(&existingMaster, query, productCodeOrKey)
@@ -70,7 +72,9 @@ func FindOrCreateMaster(tx *sqlx.Tx, productCodeOrKey string, productName string
 	log.Printf("Product master not found in DB for key: %s. Attempting to create...", productCodeOrKey)
 
 	// 2. JCSHMS から作成を試みる (JANコードの場合のみ)
-	if isJANKey && !strings.HasPrefix(productCodeOrKey, "999") {
+	// ▼▼▼【修正】0x13 または "" の場合は JCSHMS を検索しない ▼▼▼
+	if isJANKey && !strings.HasPrefix(productCodeOrKey, "999") && productCodeOrKey != "0000000000000" && productCodeOrKey != "" {
+		// ▲▲▲【修正ここまで】▲▲▲
 		jcshmsInfo, jcshmsErr := database.GetJcshmsInfoByJan(tx, productCodeOrKey)
 		if jcshmsErr != nil && jcshmsErr != sql.ErrNoRows {
 			return nil, fmt.Errorf("failed to query jcshms/jancode for JAN %s: %w", productCodeOrKey, jcshmsErr)
@@ -113,16 +117,17 @@ func FindOrCreateMaster(tx *sqlx.Tx, productCodeOrKey string, productName string
 		provisionalYjCode = newYj
 	}
 
-	// ▼▼▼【ここから修正】仮 ProductCode の生成ロジック変更 ▼▼▼
+	// ▼▼▼【ここから修正】仮 ProductCode の生成ロジック変更 (0x13 と "" も MA2J 採番対象に) ▼▼▼
 	provisionalProductCode := productCodeOrKey
-	if !isJANKey && !isMA2JKey { // JANでもMA2Jでもない場合
+	// JAN形式でない、または 0x13、または "" の場合は MA2J を採番する
+	if !isJANKey || productCodeOrKey == "0000000000000" || productCodeOrKey == "" {
 		// MA2Jシーケンスから新しい仮コードを採番 (13桁: MA2J + 9桁)
 		newPJCode, seqErr := database.NextSequenceInTx(tx, "MA2J", "MA2J", 9)
 		if seqErr != nil {
 			return nil, fmt.Errorf("failed to get next MA2J sequence for provisional master (Key: %s): %w", productCodeOrKey, seqErr)
 		}
 		provisionalProductCode = newPJCode
-		log.Printf("Original key was not JAN/MA2J, using synthetic Product Code: %s", provisionalProductCode)
+		log.Printf("Original key was not JAN/MA2J or was 0x13 or empty, using synthetic Product Code: %s", provisionalProductCode)
 	}
 	// ▲▲▲【修正ここまで】▲▲▲
 
@@ -134,6 +139,13 @@ func FindOrCreateMaster(tx *sqlx.Tx, productCodeOrKey string, productName string
 		UsageClassification: "他",
 	}
 
+	// ▼▼▼【ここから修正】DATの0埋JAN(0x13)または空JAN("")の場合、KanaNameShortにも製品名をセット ▼▼▼
+	if productCodeOrKey == "0000000000000" || productCodeOrKey == "" {
+		provisionalInput.KanaNameShort = productName
+		log.Printf("Setting KanaNameShort for DAT auto-provisional master (key: '%s'): %s", productCodeOrKey, productName)
+	}
+	// ▲▲▲【修正ここまで】▲▲▲
+
 	newMaster, upsertErr := UpsertProductMasterSqlx(tx, provisionalInput)
 	if upsertErr != nil {
 		return nil, fmt.Errorf("failed to upsert provisional master (OrigKey: %s): %w", productCodeOrKey, upsertErr)
@@ -141,6 +153,8 @@ func FindOrCreateMaster(tx *sqlx.Tx, productCodeOrKey string, productName string
 	log.Printf("Successfully created provisional master (OrigKey: %s, ProductCode: %s, YJ: %s)", productCodeOrKey, newMaster.ProductCode, newMaster.YjCode)
 	return newMaster, nil
 }
+
+// ▲▲▲【修正ここまで】FindOrCreateMaster
 
 // JcshmsToProductMasterInput は JCSHMS の情報を model.ProductMasterInput に変換します。
 func JcshmsToProductMasterInput(jcshms *model.JcshmsInfo) model.ProductMasterInput {

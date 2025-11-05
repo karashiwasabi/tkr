@@ -126,9 +126,10 @@ func ProcessDatRecords(tx *sqlx.Tx, parsedRecords []model.DatRecord) ([]model.Tr
 				key = foundMaster.ProductCode
 				log.Printf("Found existing master by kana_name_short for '%s', using ProductCode: %s", rec.ProductName, key)
 			} else {
-				// 照合できなかった場合、既存の自動採番ロジック（9999999999999 + ProductName）を使用
-				key = fmt.Sprintf("9999999999999%s", rec.ProductName)
-				log.Printf("No master found by kana_name_short for '%s', generating new key: %s", rec.ProductName, key)
+				// ▼▼▼【ここを修正】合成キー(999...)を生成せず、元のキー(0x13)をそのまま使う ▼▼▼
+				key = rec.JanCode // ( "0000000000000" が key になる)
+				log.Printf("No master found by kana_name_short for '%s', using original key: %s", rec.ProductName, key)
+				// ▲▲▲【修正ここまで】▲▲▲
 			}
 		}
 
