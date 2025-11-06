@@ -158,6 +158,7 @@ func FindOrCreateMaster(tx *sqlx.Tx, productCodeOrKey string, productName string
 
 // JcshmsToProductMasterInput は JCSHMS の情報を model.ProductMasterInput に変換します。
 func JcshmsToProductMasterInput(jcshms *model.JcshmsInfo) model.ProductMasterInput {
+	// ... (変更なし) ...
 	var unitNhiPrice float64
 	// WASABI: mappers/jcshms_to_master.go のロジック
 	if jcshms.NhiPriceFactor > 0 {
@@ -210,6 +211,7 @@ func JcshmsToProductMasterInput(jcshms *model.JcshmsInfo) model.ProductMasterInp
 
 // UpsertProductMasterSqlx は product_master テーブルにデータを挿入または更新します。
 func UpsertProductMasterSqlx(tx *sqlx.Tx, input model.ProductMasterInput) (*model.ProductMaster, error) {
+	// ... (変更なし) ...
 	query := `
 		INSERT INTO product_master (
 			product_code, yj_code, gs1_code, product_name, kana_name, kana_name_short, generic_name,
@@ -256,3 +258,42 @@ func UpsertProductMasterSqlx(tx *sqlx.Tx, input model.ProductMasterInput) (*mode
 
 	return &insertedMaster, nil
 }
+
+// ▼▼▼【ここから追加】model.ProductMaster を model.ProductMasterInput に変換するヘルパー ▼▼▼
+func MasterToInput(m *model.ProductMaster) model.ProductMasterInput {
+	return model.ProductMasterInput{
+		ProductCode:         m.ProductCode,
+		YjCode:              m.YjCode,
+		Gs1Code:             m.Gs1Code,
+		ProductName:         m.ProductName,
+		KanaName:            m.KanaName,
+		KanaNameShort:       m.KanaNameShort,
+		GenericName:         m.GenericName,
+		MakerName:           m.MakerName,
+		Specification:       m.Specification,
+		UsageClassification: m.UsageClassification,
+		PackageForm:         m.PackageForm,
+		YjUnitName:          m.YjUnitName,
+		YjPackUnitQty:       m.YjPackUnitQty,
+		JanPackInnerQty:     m.JanPackInnerQty,
+		JanUnitCode:         m.JanUnitCode,
+		JanPackUnitQty:      m.JanPackUnitQty,
+		Origin:              m.Origin,
+		NhiPrice:            m.NhiPrice,
+		PurchasePrice:       m.PurchasePrice,
+		FlagPoison:          m.FlagPoison,
+		FlagDeleterious:     m.FlagDeleterious,
+		FlagNarcotic:        m.FlagNarcotic,
+		FlagPsychotropic:    m.FlagPsychotropic,
+		FlagStimulant:       m.FlagStimulant,
+		FlagStimulantRaw:    m.FlagStimulantRaw,
+		IsOrderStopped:      m.IsOrderStopped,
+		SupplierWholesale:   m.SupplierWholesale,
+		GroupCode:           m.GroupCode,
+		ShelfNumber:         m.ShelfNumber,
+		Category:            m.Category,
+		UserNotes:           m.UserNotes,
+	}
+}
+
+// ▲▲▲【追加ここまで】▲▲▲

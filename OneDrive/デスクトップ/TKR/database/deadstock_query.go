@@ -130,18 +130,27 @@ func GetDeadStockList(db *sqlx.DB, startDate, endDate string) ([]model.DeadStock
 
 		// 在庫が 0 より大きい品目のみロット・期限を取得
 		if item.StockQuantityYj > 0 {
-			// ▼▼▼【ここから修正】SELECT句に jan_unit_name を追加 ▼▼▼
+			// ▼▼▼【ここから修正】SELECT句に T.gs1_code を追加 ▼▼▼
+			// (transaction_records には gs1_code がないため、product_master と JOIN する)
 			err = db.Select(&item.LotDetails, `
-				SELECT jan_code, package_spec, expiry_date, lot_number, jan_quantity, jan_unit_name
-				FROM transaction_records
-				WHERE yj_code = ? 
-				  AND flag = 0 
-				  AND transaction_date = (
+				SELECT 
+					T.jan_code, 
+					P.gs1_code, 
+					T.package_spec, 
+					T.expiry_date, 
+					T.lot_number, 
+					T.jan_quantity, 
+					T.jan_unit_name
+				FROM transaction_records AS T
+				LEFT JOIN product_master AS P ON T.jan_code = P.product_code
+				WHERE T.yj_code = ? 
+				  AND T.flag = 0 
+				  AND T.transaction_date = (
 					  SELECT MAX(last_inventory_date) 
 					  FROM package_stock 
 					  WHERE yj_code = ?
 				  )
-				ORDER BY expiry_date, lot_number
+				ORDER BY T.expiry_date, T.lot_number
 			`, item.YjCode, item.YjCode)
 			// ▲▲▲【修正ここまで】▲▲▲
 

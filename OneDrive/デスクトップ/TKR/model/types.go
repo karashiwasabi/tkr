@@ -197,9 +197,7 @@ type AggregationFilters struct {
 	YjCode       string
 	MovementOnly bool
 	ShelfNumber  string
-	// ▼▼▼【ここに追加】(WASABI: model/types.go より) ▼▼▼
-	GenericName string // 一般名
-	// ▲▲▲【追加ここまで】▲▲▲
+	GenericName  string
 }
 
 // StockLedgerYJGroup はYJコード単位の集計グループです。
@@ -254,26 +252,25 @@ type PackageStock struct {
 
 // DeadStockItem は不動在庫リストの表示用構造体です。
 type DeadStockItem struct {
-	PackageKey      string      `db:"package_key" json:"packageKey"`
-	YjCode          string      `db:"yj_code" json:"yjCode"`
-	StockQuantityYj float64     `db:"stock_quantity_yj" json:"stockQuantityYj"`
-	ProductName     string      `db:"product_name" json:"productName"` // 代表品名
-	PackageSpec     string      `db:"package_spec" json:"packageSpec"` // 代表包装仕様
-	LotDetails      []LotDetail `json:"lotDetails"`                    // 棚卸明細
-	// ▼▼▼【ここから追加】ソート用カラム ▼▼▼
-	KanaName            string `db:"kana_name"`
-	UsageClassification string `db:"usage_classification"`
-	// ▲▲▲【追加ここまで】▲▲▲
+	PackageKey          string      `db:"package_key" json:"packageKey"`
+	YjCode              string      `db:"yj_code" json:"yjCode"`
+	StockQuantityYj     float64     `db:"stock_quantity_yj" json:"stockQuantityYj"`
+	ProductName         string      `db:"product_name" json:"productName"` // 代表品名
+	PackageSpec         string      `db:"package_spec" json:"packageSpec"` // 代表包装仕様
+	LotDetails          []LotDetail `json:"lotDetails"`                    // 棚卸明細
+	KanaName            string      `db:"kana_name"`
+	UsageClassification string      `db:"usage_classification"`
 }
 
 // LotDetail は棚卸時のロット・期限・JAN数量の明細です。
 type LotDetail struct {
-	// ▼▼▼【ここから修正】JanUnitName を追加 ▼▼▼
+	// ▼▼▼【ここから修正】Gs1Code を追加 ▼▼▼
 	JanCode     string  `db:"jan_code" json:"JanCode"`
+	Gs1Code     string  `db:"gs1_code" json:"Gs1Code"`
 	PackageSpec string  `db:"package_spec" json:"PackageSpec"`
 	ExpiryDate  string  `db:"expiry_date" json:"ExpiryDate"`
 	LotNumber   string  `db:"lot_number" json:"LotNumber"`
 	JanQuantity float64 `db:"jan_quantity" json:"JanQuantity"`
-	JanUnitName string  `db:"jan_unit_name" json:"JanUnitName"` // 追加
+	JanUnitName string  `db:"jan_unit_name" json:"JanUnitName"`
 	// ▲▲▲【修正ここまで】▲▲▲
 }

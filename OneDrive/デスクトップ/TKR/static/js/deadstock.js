@@ -2,6 +2,11 @@
 import { getLocalDateString } from './utils.js';
 
 let startDateInput, endDateInput, searchBtn, resultContainer;
+let csvDateInput, csvFileInput, csvUploadBtn;
+// ▼▼▼【ここから修正】変数名を変更 ▼▼▼
+let exportCsvBtn;
+// ▲▲▲【修正ここまで】▲▲▲
+
 
 /**
  * 期間のデフォルト値を設定（例: 90日前から本日）
@@ -16,6 +21,9 @@ function setDefaultDates() {
     }
     if (endDateInput) {
         endDateInput.value = getLocalDateString(endDate);
+    }
+    if (csvDateInput) {
+        csvDateInput.value = getLocalDateString(endDate);
     }
 }
 
@@ -122,18 +130,143 @@ function renderDeadStockTable(items) {
     resultContainer.innerHTML = header + body + footer;
 }
 
+async function handleCsvUpload() {
+    const file = csvFileInput.files[0];
+    const date = csvDateInput.value;
+
+    if (!file) {
+        window.showNotification('CSVファイルを選択してください。', 'warning');
+        return;
+    }
+    if (!date) {
+        window.showNotification('棚卸日を選択してください。', 'warning');
+        return;
+    }
+    
+    if (!confirm(`${date} の棚卸データとしてCSVを登録します。\n※この日付の既存棚卸データは、CSVに含まれる品目（YJコード）についてのみ上書きされます。\nよろしいですか？`)) {
+        return;
+    }
+
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('date', date.replace(/-/g, '')); // YYYYMMDD形式で送信
+
+    window.showLoading('棚卸CSVを登録中...');
+    
+    try {
+        const response = await fetch('/api/deadstock/upload', {
+            method: 'POST',
+            body: formData,
+        });
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(errorText || `サーバーエラー (HTTP ${response.status})`);
+        }
+
+        const result = await response.json();
+        window.showNotification(result.message || '棚卸CSVを登録しました。', 'success');
+
+        // 登録が成功したら、リストを再検索する
+        fetchAndRenderDeadStock();
+
+    } catch (error) {
+        console.error('Failed to upload dead stock CSV:', error);
+        window.showNotification(`CSV登録エラー: ${error.message}`, 'error');
+    } finally {
+        // ファイル入力をリセット
+        if (csvFileInput) csvFileInput.value = '';
+        window.hideLoading();
+    }
+}
+
+// ▼▼▼【ここから修正】CSVエクスポート処理（IDと変数名を修正） ▼▼▼
+async function handleCsvExport() {
+    const startDate = startDateInput.value.replace(/-/g, '');
+    const endDate = endDateInput.value.replace(/-/g, '');
+
+    if (!startDate || !endDate) {
+        window.showNotification('開始日と終了日を指定してください。', 'warning');
+        return;
+    }
+    
+    window.showLoading('CSVデータを生成中...');
+
+    try {
+        const params = new URLSearchParams({ startDate, endDate });
+        const response = await fetch(`/api/deadstock/export?${params.toString()}`);
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(errorText || `サーバーエラー (HTTP ${response.status})`);
+        }
+
+        // ファイル名を設定
+        const contentDisposition = response.headers.get('content-disposition');
+        let filename = `不動在庫リスト_${startDate}-${endDate}.csv`;
+        if (contentDisposition) {
+            const filenameMatch = contentDisposition.match(/filename="(.+?)"/);
+            if (filenameMatch && filenameMatch[1]) {
+                filename = filenameMatch[1];
+            }
+        }
+
+        // CSVデータをBlobとして取得
+        const blob = await response.blob();
+        
+        // ダウンロードリンクを作成してクリック
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        window.URL.revokeObjectURL(url);
+        
+        window.showNotification('CSVをエクスポートしました。', 'success');
+
+    } catch (error) {
+        console.error('Failed to export CSV:', error);
+        window.showNotification(`CSVエクスポートエラー: ${error.message}`, 'error');
+    } finally {
+        window.hideLoading();
+    }
+}
+// ▲▲▲【修正ここまで】▲▲▲
+
+
 /**
  * 不動在庫ビューの初期化
  */
 export function initDeadStockView() {
+    // 期間検索
     startDateInput = document.getElementById('ds-start-date');
     endDateInput = document.getElementById('ds-end-date');
     searchBtn = document.getElementById('ds-search-btn');
     resultContainer = document.getElementById('deadstock-result-container');
+    // ▼▼▼【ここから修正】IDと変数名を修正 ▼▼▼
+    exportCsvBtn = document.getElementById('ds-export-csv-btn'); 
+    // ▲▲▲【修正ここまで】▲▲▲
 
-    if (!searchBtn) return;
+    // CSVアップロード
+    csvDateInput = document.getElementById('ds-csv-date');
+    csvFileInput = document.getElementById('ds-csv-file-input');
+    csvUploadBtn = document.getElementById('ds-csv-upload-btn');
 
-    searchBtn.addEventListener('click', fetchAndRenderDeadStock);
+    if (searchBtn) {
+        searchBtn.addEventListener('click', fetchAndRenderDeadStock);
+    }
+    
+    if (csvUploadBtn) {
+        csvUploadBtn.addEventListener('click', handleCsvUpload);
+    }
+
+    // ▼▼▼【ここから修正】変数名を修正 ▼▼▼
+    if (exportCsvBtn) {
+        exportCsvBtn.addEventListener('click', handleCsvExport);
+    }
+    // ▲▲▲【修正ここまで】▲▲▲
     
     // デフォルト日付を設定
     setDefaultDates();
