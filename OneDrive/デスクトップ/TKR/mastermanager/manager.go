@@ -20,6 +20,11 @@ var yjCodeRegex = regexp.MustCompile(`^[0-9A-Z]{11,12}$`)
 // JANコードの判定は13桁の数字
 var janCodeRegex = regexp.MustCompile(`^[0-9]{13}$`)
 
+// ▼▼▼【ここに追加】GS1コード（14桁）の正規表現 ▼▼▼
+var gs1CodeRegex = regexp.MustCompile(`^[0-9]{14}$`)
+
+// ▲▲▲【追加ここまで】▲▲▲
+
 // ▼▼▼【ここに追加】MA2J形式の正規表現 ▼▼▼
 var ma2jCodeRegex = regexp.MustCompile(`^MA2J[0-9]{9}$`)
 
@@ -35,22 +40,29 @@ func FindOrCreateMaster(tx *sqlx.Tx, productCodeOrKey string, productName string
 
 	isJANKey := janCodeRegex.MatchString(productCodeOrKey)
 	isYJKey := yjCodeRegex.MatchString(productCodeOrKey)
-	// ▼▼▼【ここに追加】MA2J形式のチェック ▼▼▼
-	isMA2JKey := ma2jCodeRegex.MatchString(productCodeOrKey)
+	// ▼▼▼【ここに追加】GS1形式のチェック ▼▼▼
+	isGS1Key := gs1CodeRegex.MatchString(productCodeOrKey)
 	// ▲▲▲【追加ここまで】▲▲▲
+	isMA2JKey := ma2jCodeRegex.MatchString(productCodeOrKey)
 
-	// 1. DBで product_master を検索 (WASABIのロジック: YJコードを優先的に検索)
+	// 1. DBで product_master を検索
 	if isYJKey {
 		// YJコードなら yj_code カラムで検索
 		query := "SELECT * FROM product_master WHERE yj_code = ?"
 		err = tx.Get(&existingMaster, query, productCodeOrKey)
 		log.Printf("Searching master by YJ Code: %s", productCodeOrKey)
-	} else if isJANKey ||
-		isMA2JKey { // ▼▼▼【修正】MA2J も product_code で検索 ▼▼▼
-		// YJでヒットせず、JANなら product_code カラムで検索
+		// ▼▼▼【ここから修正】GS1Key も検索対象に追加 ▼▼▼
+	} else if isJANKey || isMA2JKey {
+		// JANまたはMA2Jなら product_code カラムで検索
 		query := "SELECT * FROM product_master WHERE product_code = ?"
 		err = tx.Get(&existingMaster, query, productCodeOrKey)
 		log.Printf("Searching master by JAN/MA2J Code (Product Code): %s", productCodeOrKey)
+	} else if isGS1Key {
+		// GS1なら gs1_code カラムで検索
+		query := "SELECT * FROM product_master WHERE gs1_code = ?"
+		err = tx.Get(&existingMaster, query, productCodeOrKey)
+		log.Printf("Searching master by GS1 Code (gs1_code): %s", productCodeOrKey)
+		// ▲▲▲【修正ここまで】▲▲▲
 	} else {
 		// どちらでもない場合（合成キーなど）は product_code で検索
 		query := "SELECT * FROM product_master WHERE product_code = ?"
@@ -71,40 +83,59 @@ func FindOrCreateMaster(tx *sqlx.Tx, productCodeOrKey string, productName string
 	// --- DB には見つからなかった場合の処理 (作成ロジック) ---
 	log.Printf("Product master not found in DB for key: %s. Attempting to create...", productCodeOrKey)
 
-	// 2. JCSHMS から作成を試みる (JANコードの場合のみ)
-	// ▼▼▼【修正】0x13 または "" の場合は JCSHMS を検索しない ▼▼▼
-	if isJANKey && !strings.HasPrefix(productCodeOrKey, "999") && productCodeOrKey != "0000000000000" && productCodeOrKey != "" {
+	// 2. JCSHMS から作成を試みる
+	// ▼▼▼【ここから修正】isJANKey または isGS1Key の場合に JCSHMS を検索 ▼▼▼
+	if (isJANKey || isGS1Key) && !strings.HasPrefix(productCodeOrKey, "999") && productCodeOrKey != "0000000000000" && productCodeOrKey != "" {
+
+		var jcshmsInfo *model.JcshmsInfo
+		var jcshmsErr error
+
+		if isJANKey {
+			// JANキーの場合
+			log.Printf("Key %s is JAN format. Searching JCSHMS by JAN...", productCodeOrKey)
+			jcshmsInfo, jcshmsErr = database.GetJcshmsInfoByJan(tx, productCodeOrKey)
+		} else {
+			// GS1キーの場合
+			log.Printf("Key %s is GS1 format. Searching JCSHMS by GS1...", productCodeOrKey)
+			jcshmsInfo, jcshmsErr = database.GetJcshmsInfoByGs1Code(tx, productCodeOrKey)
+		}
 		// ▲▲▲【修正ここまで】▲▲▲
-		jcshmsInfo, jcshmsErr := database.GetJcshmsInfoByJan(tx, productCodeOrKey)
+
 		if jcshmsErr != nil && jcshmsErr != sql.ErrNoRows {
-			return nil, fmt.Errorf("failed to query jcshms/jancode for JAN %s: %w", productCodeOrKey, jcshmsErr)
+			return nil, fmt.Errorf("failed to query jcshms/jancode for key %s: %w", productCodeOrKey, jcshmsErr)
 		}
 
 		if jcshmsInfo != nil {
-			log.Printf("Found info in JCSHMS for JAN: %s. Creating master...", productCodeOrKey)
+			log.Printf("Found info in JCSHMS for key: %s. Creating master...", productCodeOrKey)
 			input := JcshmsToProductMasterInput(jcshmsInfo)
+
+			// ▼▼▼【ここから追加】キーがGS1の場合、GS1コードをinputにセットする ▼▼▼
+			if isGS1Key && input.Gs1Code == "" {
+				input.Gs1Code = productCodeOrKey
+			}
+			// ▲▲▲【追加ここまで】▲▲▲
 
 			// JCSHMS由来でもYJコードがない場合、MA2Yで採番
 			if input.YjCode == "" {
 				newYj, seqErr := database.NextSequenceInTx(tx, "MA2Y", "MA2Y", 8)
 				if seqErr != nil {
-					return nil, fmt.Errorf("failed to get next MA2Y sequence for JCSHMS master (JAN: %s): %w", productCodeOrKey, seqErr)
+					return nil, fmt.Errorf("failed to get next MA2Y sequence for JCSHMS master (Key: %s): %w", productCodeOrKey, seqErr)
 				}
 				input.YjCode = newYj
-				log.Printf("Generated new YJ code %s for JAN %s from JCSHMS (original was empty)", newYj, productCodeOrKey)
+				log.Printf("Generated new YJ code %s for Key %s from JCSHMS (original was empty)", newYj, productCodeOrKey)
 			}
 
 			newMaster, upsertErr := UpsertProductMasterSqlx(tx, input)
 			if upsertErr != nil {
-				return nil, fmt.Errorf("failed to upsert master from JCSHMS for JAN %s: %w", productCodeOrKey, upsertErr)
+				return nil, fmt.Errorf("failed to upsert master from JCSHMS for Key %s: %w", productCodeOrKey, upsertErr)
 			}
-			log.Printf("Successfully created master from JCSHMS for JAN: %s (YJ: %s)", productCodeOrKey, newMaster.YjCode)
+			log.Printf("Successfully created master from JCSHMS for Key: %s (YJ: %s)", productCodeOrKey, newMaster.YjCode)
 			return newMaster, nil
 		}
 	}
 
-	// 3. JCSHMS にもない場合、またはJANでない場合は仮マスターを作成
-	log.Printf("Info not found in JCSHMS for key: %s (or it was not a valid JAN). Creating provisional master...", productCodeOrKey)
+	// 3. JCSHMS にもない場合、またはJAN/GS1でない場合は仮マスターを作成
+	log.Printf("Info not found in JCSHMS for key: %s (or it was not a valid JAN/GS1). Creating provisional master...", productCodeOrKey)
 
 	// 仮マスターの YJコードを決定
 	provisionalYjCode := productCodeOrKey
@@ -117,17 +148,17 @@ func FindOrCreateMaster(tx *sqlx.Tx, productCodeOrKey string, productName string
 		provisionalYjCode = newYj
 	}
 
-	// ▼▼▼【ここから修正】仮 ProductCode の生成ロジック変更 (0x13 と "" も MA2J 採番対象に) ▼▼▼
+	// ▼▼▼【ここから修正】仮 ProductCode の生成ロジック変更 (GS1形式も除外) ▼▼▼
 	provisionalProductCode := productCodeOrKey
-	// JAN形式でない、または 0x13、または "" の場合は MA2J を採番する
-	if !isJANKey || productCodeOrKey == "0000000000000" || productCodeOrKey == "" {
+	// JAN形式でもGS1形式でもない、または 0x13、または "" の場合は MA2J を採番する
+	if (!isJANKey && !isGS1Key) || productCodeOrKey == "0000000000000" || productCodeOrKey == "" {
 		// MA2Jシーケンスから新しい仮コードを採番 (13桁: MA2J + 9桁)
 		newPJCode, seqErr := database.NextSequenceInTx(tx, "MA2J", "MA2J", 9)
 		if seqErr != nil {
 			return nil, fmt.Errorf("failed to get next MA2J sequence for provisional master (Key: %s): %w", productCodeOrKey, seqErr)
 		}
 		provisionalProductCode = newPJCode
-		log.Printf("Original key was not JAN/MA2J or was 0x13 or empty, using synthetic Product Code: %s", provisionalProductCode)
+		log.Printf("Original key was not JAN/GS1 or was 0x13 or empty, using synthetic Product Code: %s", provisionalProductCode)
 	}
 	// ▲▲▲【修正ここまで】▲▲▲
 
@@ -138,6 +169,12 @@ func FindOrCreateMaster(tx *sqlx.Tx, productCodeOrKey string, productName string
 		Origin:              "PROVISIONAL",
 		UsageClassification: "他",
 	}
+
+	// ▼▼▼【ここから追加】キーがGS1の場合、GS1コードも仮マスターにセットする ▼▼▼
+	if isGS1Key {
+		provisionalInput.Gs1Code = productCodeOrKey
+	}
+	// ▲▲▲【追加ここまで】▲▲▲
 
 	// ▼▼▼【ここから修正】DATの0埋JAN(0x13)または空JAN("")の場合、KanaNameShortにも製品名をセット ▼▼▼
 	if productCodeOrKey == "0000000000000" || productCodeOrKey == "" {
@@ -158,7 +195,6 @@ func FindOrCreateMaster(tx *sqlx.Tx, productCodeOrKey string, productName string
 
 // JcshmsToProductMasterInput は JCSHMS の情報を model.ProductMasterInput に変換します。
 func JcshmsToProductMasterInput(jcshms *model.JcshmsInfo) model.ProductMasterInput {
-	// ... (変更なし) ...
 	var unitNhiPrice float64
 	// WASABI: mappers/jcshms_to_master.go のロジック
 	if jcshms.NhiPriceFactor > 0 {
@@ -211,7 +247,7 @@ func JcshmsToProductMasterInput(jcshms *model.JcshmsInfo) model.ProductMasterInp
 
 // UpsertProductMasterSqlx は product_master テーブルにデータを挿入または更新します。
 func UpsertProductMasterSqlx(tx *sqlx.Tx, input model.ProductMasterInput) (*model.ProductMaster, error) {
-	// ... (変更なし) ...
+	// ▼▼▼【ここを修正】 ':flag_deleteri'ous' -> ':flag_deleterious' ▼▼▼
 	query := `
 		INSERT INTO product_master (
 			product_code, yj_code, gs1_code, product_name, kana_name, kana_name_short, generic_name,
@@ -238,10 +274,12 @@ func UpsertProductMasterSqlx(tx *sqlx.Tx, input model.ProductMasterInput) (*mode
 			jan_pack_inner_qty=excluded.jan_pack_inner_qty, jan_unit_code=excluded.jan_unit_code, jan_pack_unit_qty=excluded.jan_pack_unit_qty,
 			origin=excluded.origin, nhi_price=excluded.nhi_price, purchase_price=excluded.purchase_price,
 			flag_poison=excluded.flag_poison, flag_deleterious=excluded.flag_deleterious, flag_narcotic=excluded.flag_narcotic,
-			flag_psychotropic=excluded.flag_psychotropic, flag_stimulant=excluded.flag_stimulant, flag_stimulant_raw=excluded.flag_stimulant_raw,
+			flag_psychotropic=excluded.flag_psychotropic, 
+flag_stimulant=excluded.flag_stimulant, flag_stimulant_raw=excluded.flag_stimulant_raw,
 			is_order_stopped=excluded.is_order_stopped, supplier_wholesale=excluded.supplier_wholesale,
 			group_code=excluded.group_code, shelf_number=excluded.shelf_number, category=excluded.category, user_notes=excluded.user_notes
 	`
+	// ▲▲▲【修正ここまで】▲▲▲
 
 	_, err := tx.NamedExec(query, input)
 	if err != nil {

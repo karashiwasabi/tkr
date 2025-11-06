@@ -92,6 +92,67 @@
     color: #fff;
 }
 
+----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\css\deadstock.css -----
+/* C:\Users\wasab\OneDrive\デスクトップ\TKR\static\css\deadstock.css */
+
+.deadstock-controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px 16px;
+    padding: 10px;
+    border: 1px solid #ccc;
+    background-color: #f7f7f7;
+    align-items: flex-end;
+    margin-bottom: 15px;
+}
+
+.deadstock-controls .form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.deadstock-controls .form-group label {
+    font-size: 10px;
+    font-weight: bold;
+}
+.deadstock-controls .form-group input {
+    padding: 3px;
+    border: 1px solid #ccc;
+    font-size: inherit;
+    min-width: 150px;
+}
+.deadstock-controls .form-actions {
+    /* ▼▼▼【修正】display: flex と margin-left: auto を追加 ▼▼▼ */
+    display: flex;
+    gap: 10px;
+    margin-left: auto;
+    /* ▲▲▲【修正ここまで】▲▲▲ */
+}
+
+/* ▼▼▼【追加】アップロード専用エリアのスタイル ▼▼▼ */
+.deadstock-upload-area {
+    background-color: #f0f4f8; /* 少し色を変える */
+    border-color: #cce;
+    margin-top: -10px; /* 上のコントロールにくっつける */
+}
+/* ▲▲▲【追加ここまで】▲▲▲ */
+
+/* 不動在庫テーブル */
+#deadstock-table {
+    margin-top: 10px;
+}
+
+#deadstock-table th.col-ds-key { width: 25%; } /* PackageKey */
+#deadstock-table th.col-ds-name { width: 25%; } /* 製品名 */
+#deadstock-table th.col-ds-qty { width: 10%; } /* 現在庫 */
+#deadstock-table th.col-ds-details { width: 40%; } /* 棚卸明細 (幅を拡大) */
+
+#deadstock-table .lot-details-list {
+    font-size: 0.9em;
+    padding-left: 15px;
+    margin: 0;
+}
+
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\css\inout.css -----
 /* C:\Users\wasab\OneDrive\デスクトップ\TKR\static\css\inout.css */
 .inout-view-container {
@@ -1151,6 +1212,44 @@ body {
     </div>
 </div>
 
+----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\views\deadstock_view.html -----
+<div id="deadstock-view" class="view">
+    <h1>不動在庫リスト</h1>
+    
+    <div class="deadstock-controls">
+        <div class="form-group">
+            <label for="ds-start-date">対象期間 (開始日):</label>
+            <input type="date" id="ds-start-date">
+        </div>
+        <div class="form-group">
+            <label for="ds-end-date">対象期間 (終了日):</label>
+            <input type="date" id="ds-end-date">
+        </div>
+        <div class="form-actions">
+            <button id="ds-search-btn" class="btn">この期間で検索</button>
+            <button id="ds-export-csv-btn" class="btn">CSVエクスポート</button>
+            </div>
+    </div>
+
+    <div class="deadstock-controls deadstock-upload-area">
+        <div class="form-group">
+            <label for="ds-csv-date">棚卸日 (CSV適用日):</label>
+            <input type="date" id="ds-csv-date">
+        </div>
+        <div class="form-group">
+            <label for="ds-csv-file-input">棚卸CSVファイル:</label>
+            <input type="file" id="ds-csv-file-input" accept=".csv,.CSV">
+        </div>
+        <div class="form-actions">
+            <button id="ds-csv-upload-btn" class="btn">CSVを棚卸として登録</button>
+        </div>
+    </div>
+    
+    <div id="deadstock-result-container" class="table-container">
+        <p>上記で期間を指定して検索してください。</p>
+    </div>
+</div>
+
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\views\inout_view.html -----
 <div id="inout-view" class="view">
     <h1>入出庫伝票</h1>
@@ -1459,8 +1558,9 @@ body {
     <link rel="stylesheet" href="/static/css/inventory_adjustment.css">
     <link rel="stylesheet" href="/static/css/search_modal.css">
     <link rel="stylesheet" href="/static/css/search_form_group.css">
-    <link rel="stylesheet" href="/static/css/modal.css">
+   <link rel="stylesheet" href="/static/css/modal.css">
     <link rel="stylesheet" href="/static/css/inout.css">
+    <link rel="stylesheet" href="/static/css/deadstock.css">
     </head>
 <body>
     <header id="main-header">
@@ -1468,14 +1568,17 @@ body {
         <button id="usageViewBtn" class="btn">USAGE取込</button>
         <button id="inOutViewBtn" class="btn">入出庫</button>
         <button id="inventoryAdjustmentViewBtn" class="btn">棚卸調整</button>
+        <button id="deadStockViewBtn" class="btn">不動在庫</button>
         <button id="masterEditViewBtn" class="btn">マスタ編集</button>
+        <button id="reprocessBtn" class="btn">全取引再計算</button>
         <button id="configViewBtn" class="btn">設定</button>
     
 </header>
 
     <main>
         {{if .Views}}
-            {{range .Views}}
+    
+             {{range .Views}}
                  {{.}}
             {{end}}
         {{else}}
@@ -1484,10 +1587,12 @@ body {
            <div id="usage-upload-view" class="view">USAGEビュー</div>
          
    <div id="inventory-adjustment-view" class="view">棚卸調整ビュー</div>
-            <div id="master-edit-view" class="view">マスタ編集ビュー</div>
+   
+             <div id="master-edit-view" class="view">マスタ編集ビュー</div>
            
              <div id="config-view" class="view">設定ビュー</div>
-        {{end}}
+             <div id="deadstock-view" class="view">不動在庫ビュー</div>
+             {{end}}
         </main>
 
     <div id="loading-overlay" class="hidden">
