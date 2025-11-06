@@ -10,10 +10,10 @@ import (
 	"net/http"
 	"sort"
 	"strings"
-	"tkr/barcode"
+	"tkr/barcode" // ▼▼▼【ここに追加】barcode パッケージをインポート ▼▼▼
 	"tkr/database"
 	"tkr/mappers"       // Viewマッパー
-	"tkr/mastermanager" // ▼▼▼【ここに追加】▼▼▼
+	"tkr/mastermanager" //
 	"tkr/model"
 
 	"github.com/jmoiron/sqlx"
@@ -142,35 +142,22 @@ func SearchProductsHandler(conn *sqlx.DB) http.HandlerFunc {
 	}
 }
 
-// ▼▼▼【ここから修正】バーコード検索を単一APIに共通化（DB共通関数を使用） ▼▼▼
+// ▼▼▼【ここから修正】バーコード検索を 13桁JAN / 14桁GS1 両対応に修正 ▼▼▼
 func GetProductByBarcodeHandler(conn *sqlx.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		rawBarcode := strings.TrimPrefix(r.URL.Path, "/api/product/by_barcode/")
 		if rawBarcode == "" {
 			http.Error(w, "barcode is required", http.StatusBadRequest)
-
 			return
 		}
 
 		log.Printf("API: Received raw barcode: %s", rawBarcode)
 
-		// 1. バーコードを解析
-		parsed, err := barcode.Parse(rawBarcode)
-		if err != nil {
-			http.Error(w, fmt.Sprintf("バーコード解析エラー: %v", err), http.StatusBadRequest)
-			return
-		}
-		gtin14 := parsed.Gtin14
-		if gtin14 == "" {
-			http.Error(w, "バーコードから製品コード(GTIN)が抽出できません", http.StatusBadRequest)
-			return
-		}
-
-		// 2. まず product_master を検索
-		master, err := database.GetProductMasterByGs1Code(conn, gtin14)
+		// 1. まず product_master を検索 (13桁JAN/14桁GS1自動振り分け)
+		master, err := database.GetProductMasterByBarcode(conn, rawBarcode)
 		if err != nil && !errors.Is(err, sql.ErrNoRows) {
 			// データベース検索で「見つからない」以外のエラーが起きた場合
-			log.Printf("Error searching product_master by GS1 %s: %v", gtin14, err)
+			log.Printf("Error searching product_master by Barcode %s: %v", rawBarcode, err)
 			http.Error(w, "データベースエラーが発生しました", http.StatusInternalServerError)
 			return
 		}
@@ -186,17 +173,42 @@ func GetProductByBarcodeHandler(conn *sqlx.DB) http.HandlerFunc {
 
 		// 4. product_master に見つからなかった場合、JCSHMSを検索
 		log.Printf("Product not in product_master, searching JCSHMS...")
-		jcshmsInfo, err := database.GetJcshmsInfoByGs1Code(conn, gtin14)
-		if err != nil {
-			log.Printf("Error searching JCSHMS by GS1 %s: %v", gtin14, err)
+
+		// ▼▼▼【ここから修正】JCSHMS検索も 13桁JAN / 14桁GS1 を振り分ける ▼▼▼
+		var jcshmsInfo *model.JcshmsInfo
+		var jcshmsErr error
+		var gtin14 string // GS1採用時に使用
+
+		if len(rawBarcode) <= 13 {
+			// 13桁以下 (JAN)
+			log.Printf("Barcode %s is JAN format. Searching JCSHMS by JAN...", rawBarcode)
+			jcshmsInfo, jcshmsErr = database.GetJcshmsInfoByJan(conn, rawBarcode)
+		} else {
+			// 14桁以上 (GS1)
+			parsed, parseErr := barcode.Parse(rawBarcode)
+			if parseErr != nil {
+				http.Error(w, fmt.Sprintf("バーコード解析エラー: %v", parseErr), http.StatusBadRequest)
+				return
+			}
+			gtin14 = parsed.Gtin14
+			if gtin14 == "" {
+				http.Error(w, "バーコードから製品コード(GTIN)が抽出できません", http.StatusBadRequest)
+				return
+			}
+			log.Printf("Barcode %s is GS1 format (GTIN: %s). Searching JCSHMS by GS1...", rawBarcode, gtin14)
+			jcshmsInfo, jcshmsErr = database.GetJcshmsInfoByGs1Code(conn, gtin14)
+		}
+		// ▲▲▲【修正ここまで】▲▲▲
+
+		if jcshmsErr != nil {
+			log.Printf("Error searching JCSHMS by Barcode %s: %v", rawBarcode, jcshmsErr)
 			http.Error(w, "JCSHMSマスターの検索中にエラーが発生しました", http.StatusInternalServerError)
 			return
 		}
 
 		// 5. JCSHMS にも見つからなかった場合
-		if jcshmsInfo ==
-			nil {
-			log.Printf("Product not found in JCSHMS for GS1 %s", gtin14)
+		if jcshmsInfo == nil {
+			log.Printf("Product not found in JCSHMS for Barcode %s", rawBarcode)
 			http.Error(w, "どのマスターにも製品が見つかりませんでした", http.StatusNotFound)
 			return
 		}
@@ -204,10 +216,14 @@ func GetProductByBarcodeHandler(conn *sqlx.DB) http.HandlerFunc {
 		// 6. JCSHMS に見つかった場合、product_masterに新規作成
 		log.Printf("Found product in JCSHMS: %s. Creating new master...", jcshmsInfo.ProductName)
 
-		// ▼▼▼【ここから修正】mappers.FromJcshmsToProductMaster -> mastermanager.JcshmsToProductMasterInput ▼▼▼
 		input := mastermanager.JcshmsToProductMasterInput(jcshmsInfo)
-		input.Gs1Code = gtin14 // 解析で得たGTIN-14をセット
-		// ▲▲▲【修正ここまで】▲▲▲
+
+		// ▼▼▼【ここから追加】14桁GS1の場合、Gs1Codeをセットする ▼▼▼
+		if gtin14 != "" && input.Gs1Code == "" {
+			input.Gs1Code = gtin14
+			log.Printf("Setting Gs1Code from parsed barcode: %s", gtin14)
+		}
+		// ▲▲▲【追加ここまで】▲▲▲
 
 		tx, err := conn.Beginx()
 		if err != nil {
@@ -217,14 +233,12 @@ func GetProductByBarcodeHandler(conn *sqlx.DB) http.HandlerFunc {
 		}
 		defer tx.Rollback() // In case of panic or error
 
-		// ▼▼▼【ここから修正】database.InsertProductMaster -> mastermanager.UpsertProductMasterSqlx ▼▼▼
-		newMaster, err := mastermanager.UpsertProductMasterSqlx(tx, input) // Upsert を呼び出し、 *model.ProductMaster を受け取る
+		newMaster, err := mastermanager.UpsertProductMasterSqlx(tx, input)
 		if err != nil {
 			log.Printf("Failed to insert new master from JCSHMS: %v", err)
 			http.Error(w, "マスターの新規作成に失敗しました", http.StatusInternalServerError)
 			return
 		}
-		// ▲▲▲【修正ここまで】▲▲▲
 
 		if err := tx.Commit(); err != nil {
 			log.Printf("Failed to commit transaction to create master: %v", err)
@@ -238,6 +252,8 @@ func GetProductByBarcodeHandler(conn *sqlx.DB) http.HandlerFunc {
 		json.NewEncoder(w).Encode(masterView)
 	}
 }
+
+// ▲▲▲【修正ここまで】▲▲▲
 
 func AdoptMasterHandler(conn *sqlx.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
