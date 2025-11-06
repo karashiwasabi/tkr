@@ -19,12 +19,13 @@ import (
 	"tkr/config"
 	"tkr/dat"
 	"tkr/database"
+	"tkr/deadstock" // ▼▼▼【ここに追加】▼▼▼
 	"tkr/inout"
 	"tkr/inventoryadjustment"
 	"tkr/loader"
 	"tkr/masteredit"
 	"tkr/product"
-	"tkr/reprocess" // ▼▼▼【ここに追加】▼▼▼
+	"tkr/reprocess"
 	"tkr/units"
 	"tkr/usage"
 )
@@ -120,7 +121,8 @@ func main() {
 				return
 			}
 			for _, file := range files {
-				if file != "search_form_group.html" && file != "common_search_modal.html" {
+				// ▼▼▼【修正】共通テンプレートを除外するリストに追加 ▼▼▼
+				if file != "search_form_group.html" && file != "common_search_modal.html" && file != "common_input_modal.html" {
 					viewFiles = append(viewFiles, file)
 				}
 			}
@@ -247,7 +249,6 @@ func main() {
 	mux.HandleFunc("/api/wholesalers/create", CreateWholesalerHandler(dbConn))
 	mux.HandleFunc("/api/wholesalers/delete/", DeleteWholesalerHandler(dbConn))
 
-	// ▼▼▼【ここから追加】得意先リスト取得API (WASABI: client/handlers.go  より) ▼▼▼
 	mux.HandleFunc("/api/clients", func(w http.ResponseWriter, r *http.Request) {
 		clients, err := database.GetAllClients(dbConn)
 		if err != nil {
@@ -257,7 +258,6 @@ func main() {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(clients)
 	})
-	// ▲▲▲【追加ここまで】▲▲▲
 
 	mux.HandleFunc("/api/config", func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
@@ -272,8 +272,10 @@ func main() {
 
 	mux.HandleFunc("/api/units/map", units.GetTaniMapHandler())
 
-	// ▼▼▼【ここに追加】全取引再計算APIエンドポイント ▼▼▼
 	mux.HandleFunc("/api/reprocess/all", reprocess.ProcessTransactionsHandler(dbConn))
+
+	// ▼▼▼【ここに追加】不動在庫APIエンドポイント ▼▼▼
+	mux.HandleFunc("/api/deadstock/list", deadstock.ListDeadStockHandler(dbConn))
 	// ▲▲▲【追加ここまで】▲▲▲
 
 	port := ":8080"

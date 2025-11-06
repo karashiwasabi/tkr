@@ -6,13 +6,14 @@ import { initUsageUpload, fetchAndRenderUsage } from './usage.js';
 import { initInventoryAdjustment } from './inventory_adjustment_logic.js';
 import { initSearchModal } from './search_modal.js';
 import { loadMasterData } from './master_data.js';
-// ▼▼▼【ここに追加】▼▼▼
 import { initInOut, resetInOutView } from './inout.js';
+// ▼▼▼【ここに追加】▼▼▼
+import { initDeadStockView } from './deadstock.js';
 // ▲▲▲【追加ここまで】▲▲▲
 
 let loadingOverlay, loadingMessage, notificationBox;
 // ▼▼▼【ここに追加】▼▼▼
-let views, datViewBtn, usageViewBtn, inventoryAdjustmentViewBtn, masterEditViewBtn, configViewBtn, inoutViewBtn, reprocessBtn;
+let views, datViewBtn, usageViewBtn, inventoryAdjustmentViewBtn, masterEditViewBtn, configViewBtn, inoutViewBtn, reprocessBtn, deadStockViewBtn;
 // ▲▲▲【追加ここまで】▲▲▲
 const initializedViews = {
     dat: false,
@@ -20,8 +21,9 @@ const initializedViews = {
     inventoryAdjustment: false,
     masterEdit: false,
     config: false,
-    // ▼▼▼【ここに追加】▼▼▼
     inout: false,
+    // ▼▼▼【ここに追加】▼▼▼
+    deadstock: false,
     // ▲▲▲【追加ここまで】▲▲▲
 };
 window.showLoading = (message = '処理中...') => {
@@ -96,7 +98,6 @@ function setActiveView(targetId) {
             }
             loadConfigAndWholesalers();
             break;
-        // ▼▼▼【ここに追加】▼▼▼
         case 'inout-view':
             if (!initializedViews.inout) {
                 console.log("Initializing In/Out view...");
@@ -105,11 +106,19 @@ function setActiveView(targetId) {
             }
             resetInOutView();
             break;
+        // ▼▼▼【ここに追加】▼▼▼
+        case 'deadstock-view':
+            if (!initializedViews.deadstock) {
+                console.log("Initializing DeadStock view...");
+                initDeadStockView();
+                initializedViews.deadstock = true;
+            }
+            // (ビュー表示時のデフォルトロード処理はなし)
+            break;
         // ▲▲▲【追加ここまで】▲▲▲
     }
 }
 
-// ▼▼▼【ここから追加】全取引再計算処理 ▼▼▼
 async function handleReprocessAll() {
     if (!confirm('全ての取引データを、最新のマスター情報に基づいて再計算します。\nこの処理はデータ量に応じて時間がかかります。\n実行しますか？')) {
         return;
@@ -134,7 +143,6 @@ async function handleReprocessAll() {
         window.hideLoading();
     }
 }
-// ▲▲▲【追加ここまで】▲▲▲
 
 document.addEventListener('DOMContentLoaded', async () => {
     console.log('TKR App Initialized.');
@@ -148,17 +156,17 @@ document.addEventListener('DOMContentLoaded', async () => {
     inventoryAdjustmentViewBtn = document.getElementById('inventoryAdjustmentViewBtn');
     masterEditViewBtn = document.getElementById('masterEditViewBtn');
     configViewBtn = document.getElementById('configViewBtn'); 
-    // ▼▼▼【ここに追加】▼▼▼
     inoutViewBtn = document.getElementById('inOutViewBtn');
     reprocessBtn = document.getElementById('reprocessBtn');
+    // ▼▼▼【ここに追加】▼▼▼
+    deadStockViewBtn = document.getElementById('deadStockViewBtn');
     // ▲▲▲【追加ここまで】▲▲▲
 
     await loadMasterData();
 
     initSearchModal();
 
-    if 
- (datViewBtn) {
+    if (datViewBtn) {
         datViewBtn.addEventListener('click', () => setActiveView('dat-upload-view'));
     }
     if (usageViewBtn) {
@@ -174,12 +182,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (configViewBtn) {
         configViewBtn.addEventListener('click', () => setActiveView('config-view'));
     }
-    // ▼▼▼【ここに追加】▼▼▼
     if (inoutViewBtn) {
         inoutViewBtn.addEventListener('click', () => setActiveView('inout-view'));
     }
     if (reprocessBtn) {
         reprocessBtn.addEventListener('click', handleReprocessAll);
+    }
+    // ▼▼▼【ここに追加】▼▼▼
+    if (deadStockViewBtn) {
+        deadStockViewBtn.addEventListener('click', () => setActiveView('deadstock-view'));
     }
     // ▲▲▲【追加ここまで】▲▲▲
 

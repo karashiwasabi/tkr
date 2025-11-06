@@ -1,0 +1,50 @@
+/* C:\Users\wasab\OneDrive\デスクトップ\TKR\static\css\deadstock.css */
+
+.deadstock-controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px 16px;
+    padding: 10px;
+    border: 1px solid #ccc;
+    background-color: #f7f7f7;
+    align-items: flex-end;
+    margin-bottom: 15px;
+}
+
+.deadstock-controls .form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.deadstock-controls .form-group label {
+    font-size: 10px;
+    font-weight: bold;
+}
+.deadstock-controls .form-group input {
+    padding: 3px;
+    border: 1px solid #ccc;
+    font-size: inherit;
+    min-width: 150px;
+}
+.deadstock-controls .form-actions {
+    margin-left: auto;
+}
+
+/* 不動在庫テーブル */
+#deadstock-table {
+    margin-top: 10px;
+}
+
+/* ▼▼▼【ここから修正】列定義を変更 ▼▼▼ */
+#deadstock-table th.col-ds-key { width: 25%; } /* PackageKey */
+#deadstock-table th.col-ds-name { width: 25%; } /* 製品名 */
+/* (包装仕様を削除) */
+#deadstock-table th.col-ds-qty { width: 10%; } /* 現在庫 */
+#deadstock-table th.col-ds-details { width: 40%; } /* 棚卸明細 (幅を拡大) */
+/* ▲▲▲【修正ここまで】▲▲▲ */
+
+#deadstock-table .lot-details-list {
+    font-size: 0.9em;
+    padding-left: 15px;
+    margin: 0;
+}

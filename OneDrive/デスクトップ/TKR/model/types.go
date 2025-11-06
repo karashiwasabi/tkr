@@ -244,7 +244,6 @@ type DeadStockRecord struct {
 	LotNumber        string  `json:"lotNumber"`
 }
 
-// ▼▼▼【ここから追加】▼▼▼
 // PackageStock は package_stock テーブルのレコードです。
 type PackageStock struct {
 	PackageKey        string  `db:"package_key"`
@@ -253,4 +252,28 @@ type PackageStock struct {
 	LastInventoryDate string  `db:"last_inventory_date"`
 }
 
-// ▲▲▲【追加ここまで】▲▲▲
+// DeadStockItem は不動在庫リストの表示用構造体です。
+type DeadStockItem struct {
+	PackageKey      string      `db:"package_key" json:"packageKey"`
+	YjCode          string      `db:"yj_code" json:"yjCode"`
+	StockQuantityYj float64     `db:"stock_quantity_yj" json:"stockQuantityYj"`
+	ProductName     string      `db:"product_name" json:"productName"` // 代表品名
+	PackageSpec     string      `db:"package_spec" json:"packageSpec"` // 代表包装仕様
+	LotDetails      []LotDetail `json:"lotDetails"`                    // 棚卸明細
+	// ▼▼▼【ここから追加】ソート用カラム ▼▼▼
+	KanaName            string `db:"kana_name"`
+	UsageClassification string `db:"usage_classification"`
+	// ▲▲▲【追加ここまで】▲▲▲
+}
+
+// LotDetail は棚卸時のロット・期限・JAN数量の明細です。
+type LotDetail struct {
+	// ▼▼▼【ここから修正】JanUnitName を追加 ▼▼▼
+	JanCode     string  `db:"jan_code" json:"JanCode"`
+	PackageSpec string  `db:"package_spec" json:"PackageSpec"`
+	ExpiryDate  string  `db:"expiry_date" json:"ExpiryDate"`
+	LotNumber   string  `db:"lot_number" json:"LotNumber"`
+	JanQuantity float64 `db:"jan_quantity" json:"JanQuantity"`
+	JanUnitName string  `db:"jan_unit_name" json:"JanUnitName"` // 追加
+	// ▲▲▲【修正ここまで】▲▲▲
+}

@@ -1,5 +1,5 @@
 // C:\Users\wasab\OneDrive\デスクトップ\TKR\static\js\utils.js
-// ▼▼▼【ここに追加】common_table.js から関数をインポート ▼▼▼
+// ▼▼▼【ここから追加】common_table.js から関数をインポート ▼▼▼
 import { renderTransactionTableHTML, renderEmptyTableHTML } from './common_table.js';
 // ▲▲▲【追加ここまで】▲▲▲
 
@@ -10,13 +10,16 @@ export function hiraganaToKatakana(str) {
 		return String.fromCharCode(charCode);
 	});
 }
-export function getLocalDateString() {
-	const today = new Date();
+
+// ▼▼▼【ここから修正】引数(date)を尊重するように修正 ▼▼▼
+export function getLocalDateString(date = null) {
+	const today = date instanceof Date ? date : new Date(); // 引数がなければ new Date() を使う
 	const yyyy = today.getFullYear();
 	const mm = String(today.getMonth() + 1).padStart(2, '0');
 	const dd = String(today.getDate()).padStart(2, '0');
 	return `${yyyy}-${mm}-${dd}`;
 }
+// ▲▲▲【修正ここまで】▲▲▲
 
 export function parseBarcode(code) {
 	const length = code.length;
@@ -118,7 +121,7 @@ export function toHalfWidthKatakana(str) {
  */
 export async function handleFileUpload(apiEndpoint, files, fileInput, uploadResultContainer, dataTable, loadingMessage) {
     if (!files || files.length === 0) {
-        return;
+         return;
     }
 
     if (uploadResultContainer) uploadResultContainer.innerHTML = '<p>ファイルをアップロード中...</p>';
@@ -149,7 +152,7 @@ export async function handleFileUpload(apiEndpoint, files, fileInput, uploadResu
                 const statusText = fileResult.success ? '成功' : 'エラー';
                 const errorDetail = fileResult.error ? `: ${fileResult.error}` : '';
                 const parsed = fileResult.records_parsed || 0;
-                const inserted = fileResult.records_inserted || 0;
+                 const inserted = fileResult.records_inserted || 0;
 
                 summaryHtml += `<li><strong>${fileResult.filename}:</strong> `;
                 summaryHtml += `<span class="${statusClass}">${statusText}</span> (パース: ${parsed}件, 登録: ${inserted}件)${errorDetail}`;
@@ -158,7 +161,6 @@ export async function handleFileUpload(apiEndpoint, files, fileInput, uploadResu
             summaryHtml += '</ul>';
         }
         if (uploadResultContainer) uploadResultContainer.innerHTML = summaryHtml;
-        
         // ▼▼▼【修正】result.tableHTML を削除し、result.records を共通関数に渡す ▼▼▼
         if (dataTable && result.records && result.records.length > 0) { 
             dataTable.innerHTML = renderTransactionTableHTML(result.records);
