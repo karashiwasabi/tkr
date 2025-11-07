@@ -25,6 +25,7 @@ import (
 	"tkr/masteredit"
 	"tkr/product"
 	"tkr/reprocess"
+	"tkr/stock"
 	"tkr/units"
 	"tkr/usage"
 )
@@ -274,6 +275,13 @@ func main() {
 	mux.HandleFunc("/api/deadstock/list", deadstock.ListDeadStockHandler(dbConn))
 	mux.HandleFunc("/api/deadstock/upload", deadstock.UploadDeadStockCSVHandler(dbConn))
 	mux.HandleFunc("/api/deadstock/export", deadstock.ExportDeadStockHandler(dbConn))
+
+	mux.HandleFunc("/api/stock/export/current", stock.ExportCurrentStockHandler(dbConn))
+
+	// ▼▼▼【ここに追加】在庫移行インポートAPI ▼▼▼
+	mux.HandleFunc("/api/stock/import/external", stock.ImportExternalStockCSVHandler(dbConn))
+	mux.HandleFunc("/api/stock/import/tkr", stock.ImportTKRStockCSVHandler(dbConn))
+	// ▲▲▲【追加ここまで】▲▲▲
 
 	port := ":8080"
 	log.Printf("Starting server on http://localhost%s", port)

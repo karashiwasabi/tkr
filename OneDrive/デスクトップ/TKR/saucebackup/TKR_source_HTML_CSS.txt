@@ -122,18 +122,16 @@
     min-width: 150px;
 }
 .deadstock-controls .form-actions {
-    /* ▼▼▼【修正】display: flex と margin-left: auto を追加 ▼▼▼ */
     display: flex;
     gap: 10px;
     margin-left: auto;
-    /* ▲▲▲【修正ここまで】▲▲▲ */
 }
 
 /* ▼▼▼【追加】アップロード専用エリアのスタイル ▼▼▼ */
 .deadstock-upload-area {
-    background-color: #f0f4f8; /* 少し色を変える */
+    background-color: #f0f4f8; 
     border-color: #cce;
-    margin-top: -10px; /* 上のコントロールにくっつける */
+    margin-top: -10px; 
 }
 /* ▲▲▲【追加ここまで】▲▲▲ */
 
@@ -142,16 +140,33 @@
     margin-top: 10px;
 }
 
-#deadstock-table th.col-ds-key { width: 25%; } /* PackageKey */
-#deadstock-table th.col-ds-name { width: 25%; } /* 製品名 */
-#deadstock-table th.col-ds-qty { width: 10%; } /* 現在庫 */
-#deadstock-table th.col-ds-details { width: 40%; } /* 棚卸明細 (幅を拡大) */
+/* ▼▼▼【ここから修正】列幅を調整 ▼▼▼ */
+#deadstock-table th.col-ds-action { width: 10%; } /* ★追加 */
+#deadstock-table th.col-ds-key { width: 20%; } /* 25% -> 20% */
+#deadstock-table th.col-ds-name { width: 25%; } /* 変更なし */
+#deadstock-table th.col-ds-qty { width: 10%; } /* 変更なし */
+#deadstock-table th.col-ds-details { width: 35%; } /* 40% -> 35% */
+/* ▲▲▲【修正ここまで】▲▲▲ */
 
 #deadstock-table .lot-details-list {
     font-size: 0.9em;
     padding-left: 15px;
     margin: 0;
 }
+
+/* ▼▼▼【ここから追加】ボタンのスタイル ▼▼▼ */
+#deadstock-table .adjust-inventory-btn {
+    padding: 1px 4px;
+    font-size: 9px;
+    background-color: #e6f7ff;
+    border-color: #17a2b8;
+    color: #17a2b8;
+}
+#deadstock-table .adjust-inventory-btn:hover {
+    background-color: #17a2b8;
+    color: #fff;
+}
+/* ▲▲▲【追加ここまで】▲▲▲ */
 
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\css\inout.css -----
 /* C:\Users\wasab\OneDrive\デスクトップ\TKR\static\css\inout.css */
@@ -1052,61 +1067,74 @@ body {
                 <legend>検索条件</legend>
                 
                 <div class="search-grid-top">
+     
                     <div class="form-group">
                         <label for="modal-search-gs1">GS1バーコードスキャン:</label>
                          <form id="modal-search-gs1-form">
                             <input type="text" id="modal-search-gs1" autocomplete="off" placeholder="GS1-128スキャン...">
+ 
                         </form>
                     </div>
                 </div>
                 <div class="search-grid-bottom">
                     <div class="form-group">
-                         <label>内外注区分:</label>
+   
+                        <label>内外注区分:</label>
                        <div class="radio-group" id="modal-search-usage-class">
                             <label><input type="radio" name="modal_usage_class" value="" checked> 全</label>
+                    
                             <label><input type="radio" name="modal_usage_class" value="内"> 内</label>
                             <label><input type="radio" name="modal_usage_class" value="外"> 外</label>
                             <label><input type="radio" name="modal_usage_class" value="注"> 注</label>
+                        
                             <label><input type="radio" name="modal_usage_class" value="他"> 他</label>
                          </div>
                     </div>
+                    
                     <div class="form-group">
                          <label for="modal-search-kana">カナ名 (前方一致):</label>
                          <input type="text" id="modal-search-kana" autocomplete="off">
                     </div>
                     <div class="form-group">
                          <label for="modal-search-generic">一般名 (部分一致):</label>
-                         <input type="text" id="modal-search-generic" autocomplete="off">
+   
+                          <input type="text" id="modal-search-generic" autocomplete="off">
                     </div>
                     <div class="form-group">
                          <label for="modal-search-shelf">棚番 (部分一致):</label>
-                         <input type="text" id="modal-search-shelf" autocomplete="off">
+       
+                        <input type="text" id="modal-search-shelf" autocomplete="off">
                     </div>
-                </div>
+                    </div>
                  <div class="form-actions">
                     <button id="product-search-btn" class="btn">この条件で検索</button>
-                </div>
+   
+                 </div>
             </fieldset>
         </div>
         <div id="search-results-container" class="table-container">
             <table id="search-results-table" class="data-table">
                 <thead>
                     <tr>
+       
                         <th class="col-modal-product">製品名</th>
                         <th class="col-modal-maker">メーカー</th>
                         <th class="col-modal-spec">包装仕様</th>
                         <th class="col-modal-yj">YJコード</th>
+       
                         <th class="col-modal-jan">JANコード</th>
                         <th class="col-modal-action">選択</th>
                     </tr>
                 </thead>
                  <tbody>
+    
                     <tr>
                         <td colspan="6" class="center">検索ボタンを押してください。</td>
                     </tr>
                  </tbody>
             </table>
         </div>
+ 
         <div class="form-actions">
             <button type="button" id="closeSearchModalBtn" class="btn">閉じる</button>
         </div>
@@ -1122,18 +1150,21 @@ body {
         <div class="config-form-container">
             <div class="form-row">
                 <div class="form-group">
-                     <label for="config-dat-folder-path">伝票取込フォルダパス (DAT):</label>
+   
+                    <label for="config-dat-folder-path">伝票取込フォルダパス (DAT):</label>
                     <input type="text" id="config-dat-folder-path" autocomplete="off">
                 </div>
                 <div class="form-group">
                     <label for="config-usage-folder-path">処方取込フォルダパス (CSV):</label>
-                     <input type="text" id="config-usage-folder-path" autocomplete="off">
+  
+                    <input type="text" id="config-usage-folder-path" autocomplete="off">
                 </div>
             </div>
             <div class="form-actions">
                 <button id="configSavePathBtn" class="btn">パス保存</button>
             </div>
-        </div>
+       
+     </div>
     </section>
  
     <section class="config-section">
@@ -1142,6 +1173,7 @@ body {
             <div class="form-row">
                  <div class="form-group flex-150">
                     <label for="config-calculation-days">在庫集計期間 (日数):</label>
+                  
                     <input type="number" id="config-calculation-days" autocomplete="off" value="90">
                 </div>
             </div>
@@ -1152,39 +1184,108 @@ body {
     </section>
 
     <section class="config-section">
-        <h2>卸コード管理</h2>
+     
+       <h2>卸コード管理</h2>
         <div class="config-form-container">
             <fieldset>
                  <legend>新規卸コード追加</legend>
                  <div class="form-row">
                     <div class="form-group flex-150">
-                        <label for="config-wholesaler-code">卸コード:</label>
+                   
+           <label for="config-wholesaler-code">卸コード:</label>
                          <input type="text" id="config-wholesaler-code" autocomplete="off" maxlength="10">
                     </div>
                      <div class="form-group flex-300">
-                        <label for="config-wholesaler-name">卸名:</label>
+                      
+           <label for="config-wholesaler-name">卸名:</label>
                         <input type="text" id="config-wholesaler-name" autocomplete="off">
                     </div>
                      <div class="form-actions">
                         <button id="configAddWholesalerBtn" class="btn">追加</button>
-                    </div>
+  
+                     </div>
                  </div>
             </fieldset>
         </div>
          <div id="wholesalerListContainer" class="table-container">
             <table id="wholesalerListTable" class="data-table">
                 <thead>
+    
                     <tr>
                          <th class="col-config-code">卸コード</th>
                          <th class="col-config-name">卸名</th>
                         <th class="col-config-action">操作</th>
-                    </tr>
+       
+                     </tr>
                 </thead>
                  <tbody>
                 </tbody>
              </table>
         </div>
     </section>
+
+    <section class="config-section">
+        <h2>在庫データ移行</h2>
+        
+        <div class="config-form-container">
+            <fieldset>
+                <legend>A. 現在在庫のエクスポート (TKR独自形式)</legend>
+                <div class="form-row">
+                    <div class="form-group flex-full">
+                        <p style="font-size: 10px; margin: 0 0 5px 0;">
+                            現在の在庫（最新の棚卸明細）をTKR独自形式 (PackageKey, JAN数量) でCSVエクスポートします。
+                        </p>
+                    </div>
+                </div>
+                <div class="form-actions" style="margin-top: 5px;">
+                    <button id="exportTkrStockBtn" class="btn">TKR独自CSV エクスポート</button>
+                </div>
+            </fieldset>
+        </div>
+
+        <div class="config-form-container">
+            <fieldset>
+                <legend>B. TKR独自CSVインポート (差分更新)</legend>
+                <div class="form-row">
+                     <div class="form-group flex-full">
+                        <p style="font-size: 10px; margin: 0 0 5px 0;">
+                            上記(A)でエクスポートしたTKR独自CSVを読み込み、記載されている PackageKey の在庫のみを更新（差分更新）します。
+                        </p>
+                        <input type="file" id="importTkrStockInput" class="hidden" accept=".csv,.CSV">
+                    </div>
+                </div>
+                <div class="form-actions" style="margin-top: 5px;">
+                    <button id="importTkrStockBtn" class="btn">TKR独自CSV（差分）読込</button>
+                </div>
+            </fieldset>
+        </div>
+
+        <div class="config-form-container">
+            <fieldset>
+                <legend>C. 外部用CSVインポート (全洗い替え)</legend>
+                <div class="form-row">
+                     <div class="form-group flex-full">
+                        <p style="font-size: 10px; margin: 0 0 5px 0; color: #dc3545; font-weight: bold;">
+                            警告: この操作は既存の在庫をすべて削除し、CSVの内容で上書き（洗い替え）します。<br>
+                            CSV形式: JANコード, JAN数量, 期限(任意), ロット(任意)
+                        </p>
+                    </div>
+                    <div class="form-group">
+                        <label for="importExternalStockDate" style="font-size: 10px; font-weight: bold;">棚卸日 (CSV適用日):</label>
+                        <input type="date" id="importExternalStockDate" style="padding: 3px;">
+                    </div>
+                     <div class="form-group">
+                        <label for="importExternalStockInput" style="font-size: 10px; font-weight: bold;">CSVファイル:</label>
+                        <input type="file" id="importExternalStockInput" accept=".csv,.CSV">
+                    </div>
+                </div>
+                <div class="form-actions" style="margin-top: 5px;">
+                    <button id="importExternalStockBtn" class="btn">外部用CSV（洗い替え）読込</button>
+                </div>
+            </fieldset>
+        </div>
+    </section>
+
 </div>
 
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\views\dat_view.html -----
@@ -1555,7 +1656,8 @@ body {
     <link rel="stylesheet" href="/static/css/styles.css">
     <link rel="stylesheet" href="/static/css/table.css">
     <link rel="stylesheet" href="/static/css/masteredit.css">
-    <link rel="stylesheet" href="/static/css/config.css">
+  
+     <link rel="stylesheet" href="/static/css/config.css">
     <link rel="stylesheet" href="/static/css/inventory_adjustment.css">
     <link rel="stylesheet" href="/static/css/search_modal.css">
     <link rel="stylesheet" href="/static/css/search_form_group.css">
@@ -1570,7 +1672,8 @@ body {
         <button id="inOutViewBtn" class="btn">入出庫</button>
         <button id="inventoryAdjustmentViewBtn" class="btn">棚卸調整</button>
         <button id="deadStockViewBtn" class="btn">不動在庫</button>
-        <button id="masterEditViewBtn" class="btn">マスタ編集</button>
+  
+         <button id="masterEditViewBtn" class="btn">マスタ編集</button>
         <button id="reprocessBtn" class="btn">全取引再計算</button>
         <button id="configViewBtn" class="btn">設定</button>
     
@@ -1582,7 +1685,8 @@ body {
              {{range .Views}}
                  {{.}}
             {{end}}
-        {{else}}
+        
+         {{else}}
             <div id="dat-upload-view" class="view active">DATビュー</div>
          
            <div id="usage-upload-view" class="view">USAGEビュー</div>
@@ -1592,6 +1696,7 @@ body {
              <div id="master-edit-view" class="view">マスタ編集ビュー</div>
            
              <div id="config-view" class="view">設定ビュー</div>
+     
              <div id="deadstock-view" class="view">不動在庫ビュー</div>
              {{end}}
         </main>
@@ -1602,9 +1707,10 @@ body {
     </div>
     <div id="notification-box"></div>
 
- {{ template "common_search_modal" . }}
+ {{ template "common_search_modal" .
+ }}
  {{ template "common_input_modal" . }}
-    <script type="module" src="/static/js/app.js"></script>
-</body>
+    <script type="module" src="/static/js/app.js?v=2025110701"></script>
+    </body>
 </html>
 

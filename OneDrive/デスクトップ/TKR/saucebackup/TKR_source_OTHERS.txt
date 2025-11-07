@@ -1473,12 +1473,13 @@ package database
 
 import (
 	"fmt"
+	"strconv"
+	"strings"
 	"tkr/model"
 
 	"github.com/jmoiron/sqlx"
 )
 
-// UpsertPackageStockInTx は、包装キー単位の在庫データを挿入または更新します。
 func UpsertPackageStockInTx(tx *sqlx.Tx, packageKey string, yjCode string, quantityYj float64, inventoryDate string) error {
 	const q = `
 		INSERT INTO package_stock (package_key, yj_code, stock_quantity_yj, last_inventory_date)
@@ -1490,19 +1491,19 @@ func UpsertPackageStockInTx(tx *sqlx.Tx, packageKey string, yjCode string, quant
 	`
 	_, err := tx.Exec(q, packageKey, yjCode, quantityYj, inventoryDate)
 	if err != nil {
+		// ▼▼▼【ここを修正】文字列の改行を削除 ▼▼▼
 		return fmt.Errorf("failed to upsert package_stock for key %s: %w", packageKey, err)
 	}
 	return nil
 }
 
-// GetPackageStockByYjCode は、YJコードに紐づく全ての包装在庫レコードを取得します。
 func GetPackageStockByYjCode(dbtx DBTX, yjCode string) (map[string]model.PackageStock, error) {
 	var stocks []model.PackageStock
 	const q = `
 		SELECT package_key, yj_code, stock_quantity_yj, last_inventory_date
 		FROM package_stock
 		WHERE yj_code = ?
-	`
+ `
 	err := dbtx.Select(&stocks, q, yjCode)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get package_stock by yj_code %s: %w", yjCode, err)
@@ -1513,6 +1514,32 @@ func GetPackageStockByYjCode(dbtx DBTX, yjCode string) (map[string]model.Package
 		stockMap[s.PackageKey] = s
 	}
 	return stockMap, nil
+}
+
+type ParsedPackageKey struct {
+	YjCode          string
+	PackageForm     string
+	JanPackInnerQty float64
+	YjUnitName      string
+}
+
+func ParsePackageKey(key string) (*ParsedPackageKey, error) {
+	parts := strings.Split(key, "|")
+	if len(parts) != 4 {
+		return nil, fmt.Errorf("invalid package key format: %s", key)
+	}
+
+	innerQty, err := strconv.ParseFloat(parts[2], 64)
+	if err != nil {
+		return nil, fmt.Errorf("invalid JanPackInnerQty in package key (%s): %w", parts[2], err)
+	}
+
+	return &ParsedPackageKey{
+		YjCode:          parts[0],
+		PackageForm:     parts[1],
+		JanPackInnerQty: innerQty,
+		YjUnitName:      parts[3],
+	}, nil
 }
 
 
@@ -1526,7 +1553,7 @@ import (
 	"tkr/barcode"
 	"tkr/model"
 
-	"github.com/jmoiron/sqlx" // ▼▼▼【追加】▼▼▼
+	"github.com/jmoiron/sqlx"
 )
 
 type DBTX interface {
@@ -1534,21 +1561,18 @@ type DBTX interface {
 	Select(dest interface{}, query string, args ...interface{}) error
 	NamedExec(query string, arg interface{}) (sql.Result, error)
 	Query(query string, args ...interface{}) (*sql.Rows, error)
-	// ▼▼▼【追加】▼▼▼
 	QueryRow(query string, args ...interface{}) *sql.Row
 	Rebind(query string) string
-	// ▲▲▲【追加】▲▲▲
 }
 
-// GetAllProductMasters (reprocessハンドラ用)
 func GetAllProductMasters(dbtx DBTX) ([]*model.ProductMaster, error) {
-	// ... (変更なし) ...
 	var masters []*model.ProductMaster
 	query := `SELECT * FROM product_master`
 	err := dbtx.Select(&masters, query)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return []*model.ProductMaster{}, nil
+			return []*model.ProductMaster{},
+				nil
 		}
 		return nil, fmt.Errorf("failed to select all product masters: %w", err)
 	}
@@ -1559,7 +1583,6 @@ func GetAllProductMasters(dbtx DBTX) ([]*model.ProductMaster, error) {
 }
 
 func GetFilteredProductMasters(dbtx DBTX, usageClass, kanaName, genericName, shelfNumber string) ([]model.ProductMaster, error) {
-	// ... (変更なし) ...
 	var masters []model.ProductMaster
 
 	query := `SELECT * FROM product_master`
@@ -1573,14 +1596,19 @@ func GetFilteredProductMasters(dbtx DBTX, usageClass, kanaName, genericName, she
 		return []model.ProductMaster{}, nil
 	}
 
+	var nameConditions []string
 	if len(kanaName) > 0 {
-		mustConditions = append(mustConditions, "kana_name LIKE ?")
+		nameConditions = append(nameConditions, "kana_name LIKE ?")
 		args = append(args, kanaName+"%")
 	}
 
 	if len(genericName) > 0 {
-		mustConditions = append(mustConditions, "generic_name LIKE ?")
+		nameConditions = append(nameConditions, "generic_name LIKE ?")
 		args = append(args, "%"+genericName+"%")
+	}
+
+	if len(nameConditions) > 0 {
+		mustConditions = append(mustConditions, "("+strings.Join(nameConditions, " OR ")+")")
 	}
 
 	if len(shelfNumber) > 0 {
@@ -1589,6 +1617,7 @@ func GetFilteredProductMasters(dbtx DBTX, usageClass, kanaName, genericName, she
 	}
 
 	if len(mustConditions) > 0 {
+		// ▼▼▼【ここを修正】文字列の途中で改行していたのを修正 ▼▼▼
 		query += " WHERE " + strings.Join(mustConditions, " AND ")
 	} else {
 		return []model.ProductMaster{}, fmt.Errorf("usage class filter is required")
@@ -1612,7 +1641,6 @@ func GetFilteredProductMasters(dbtx DBTX, usageClass, kanaName, genericName, she
 }
 
 func GetProductMasterByCode(dbtx DBTX, code string) (*model.ProductMaster, error) {
-	// ... (変更なし) ...
 	var master model.ProductMaster
 	query := `SELECT * FROM product_master WHERE product_code = ?`
 	err := dbtx.Get(&master, query, code)
@@ -1622,8 +1650,8 @@ func GetProductMasterByCode(dbtx DBTX, code string) (*model.ProductMaster, error
 	return &master, nil
 }
 
+// ▼▼▼【ここを修正】開き括弧 { をシグネチャと同じ行に移動 ▼▼▼
 func GetProductMasterByGs1Code(dbtx DBTX, gs1Code string) (*model.ProductMaster, error) {
-	// ... (変更なし) ...
 	var master model.ProductMaster
 	query := `SELECT * FROM product_master WHERE gs1_code = ?`
 	err := dbtx.Get(&master, query, gs1Code)
@@ -1634,7 +1662,6 @@ func GetProductMasterByGs1Code(dbtx DBTX, gs1Code string) (*model.ProductMaster,
 }
 
 func GetProductMasterByBarcode(dbtx DBTX, barcodeStr string) (*model.ProductMaster, error) {
-	// ... (変更なし) ...
 	if barcodeStr == "" {
 		return nil, fmt.Errorf("バーコードが空です")
 	}
@@ -1657,9 +1684,9 @@ func GetProductMasterByBarcode(dbtx DBTX, barcodeStr string) (*model.ProductMast
 }
 
 func GetProductMastersByYjCode(dbtx DBTX, yjCode string) ([]*model.ProductMaster, error) {
-	// ... (変更なし) ...
 	var masters []*model.ProductMaster
-	query := `SELECT * FROM product_master WHERE yj_code = ? ORDER BY product_code`
+	query := `SELECT * FROM product_master WHERE yj_code = 
+ ? ORDER BY product_code`
 	err := dbtx.Select(&masters, query, yjCode)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -1673,7 +1700,6 @@ func GetProductMastersByYjCode(dbtx DBTX, yjCode string) ([]*model.ProductMaster
 	return masters, nil
 }
 
-// ▼▼▼【ここから追加】指定されたYJコード群に紐づくすべての製品コードを取得 ▼▼▼
 func GetProductCodesByYjCodes(dbtx DBTX, yjCodes []string) ([]string, error) {
 	if len(yjCodes) == 0 {
 		return []string{}, nil
@@ -1690,10 +1716,7 @@ func GetProductCodesByYjCodes(dbtx DBTX, yjCodes []string) ([]string, error) {
 	return codes, nil
 }
 
-// ▲▲▲【追加ここまで】▲▲▲
-
 func GetProductMasterByKanaNameShort(dbtx DBTX, kanaNameShort string) (*model.ProductMaster, error) {
-	// ... (変更なし) ...
 	var master model.ProductMaster
 	query := `SELECT * FROM product_master WHERE kana_name_short = ?`
 	err := dbtx.Get(&master, query, kanaNameShort)
@@ -1710,7 +1733,8 @@ INSERT INTO product_master (
  package_form, 
     yj_unit_name, yj_pack_unit_qty, jan_pack_inner_qty, jan_unit_code, jan_pack_unit_qty, 
     origin, nhi_price, purchase_price, flag_poison, flag_deleterious, flag_narcotic, 
-    flag_psychotropic, flag_stimulant, flag_stimulant_raw, is_order_stopped, 
+    
+ flag_psychotropic, flag_stimulant, flag_stimulant_raw, is_order_stopped, 
     supplier_wholesale, group_code, shelf_number, category, user_notes
 ) VALUES (
     :product_code, :yj_code, :gs1_code, :product_name, :kana_name, :kana_name_short, 
@@ -1822,6 +1846,133 @@ func InitializeSequenceFromMaxProductCode(tx *sqlx.Tx) error {
 		return err
 	}
 	return nil
+}
+
+// ▲▲▲【追加ここまで】▲▲▲
+
+
+----- C:\Users\wasab\OneDrive\デスクトップ\TKR\database\stock_migration.go -----
+// C:\Users\wasab\OneDrive\デスクトップ\TKR\database\stock_migration.go
+package database
+
+import (
+	"database/sql"
+	"fmt"
+	"tkr/model"
+
+	"github.com/jmoiron/sqlx"
+)
+
+func ClearAllPackageStockInTx(tx *sqlx.Tx) error {
+	_, err := tx.Exec("DELETE FROM package_stock")
+	if err != nil {
+		return fmt.Errorf("failed to clear package_stock: %w", err)
+	}
+	_, err = tx.Exec("DELETE FROM transaction_records WHERE flag = 0")
+	if err != nil {
+		return fmt.Errorf("failed to clear old inventory transactions (flag=0): %w", err)
+	}
+	return nil
+}
+
+func GetAllPackageStock(db *sqlx.DB) ([]model.PackageStock, error) {
+	var stocks []model.PackageStock
+	const q = `
+		SELECT package_key, yj_code, stock_quantity_yj, last_inventory_date
+		FROM package_stock
+		WHERE stock_quantity_yj > 0
+		ORDER BY yj_code
+	`
+	err := db.Select(&stocks, q)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get all package_stock: %w", err)
+	}
+	return stocks, nil
+}
+
+func GetRepresentativeProductNameMap(db *sqlx.DB) (map[string]string, error) {
+	var results []struct {
+		YjCode      string `db:"yj_code"`
+		ProductName string `db:"product_name"`
+	}
+
+	const q = `
+		SELECT yj_code, product_name
+		FROM product_master
+		WHERE (yj_code, origin = 'JCSHMS') IN (
+			SELECT yj_code, MAX(origin = 'JCSHMS')
+			FROM product_master
+			WHERE yj_code != ''
+			GROUP BY yj_code
+		)
+	`
+	err := db.Select(&results, q)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get representative product names: %w", err)
+	}
+
+	nameMap := make(map[string]string)
+	for _, r := range results {
+		nameMap[r.YjCode] = r.ProductName
+	}
+	return nameMap, nil
+}
+
+// ▼▼▼【ここから追加】不足していた GetCurrentStockDetails 関数 ▼▼▼
+
+// StockDetailItem はCSVエクスポート用の在庫明細構造体です。
+type StockDetailItem struct {
+	JanCode     string  `db:"jan_code"`
+	Gs1Code     string  `db:"gs1_code"`
+	ProductName string  `db:"product_name"`
+	JanQuantity float64 `db:"jan_quantity"`
+	ExpiryDate  string  `db:"expiry_date"`
+	LotNumber   string  `db:"lot_number"`
+}
+
+// GetCurrentStockDetails は、最新の棚卸実績(flag=0)のうち、在庫が0より大きい明細を取得します。
+func GetCurrentStockDetails(db *sqlx.DB) ([]StockDetailItem, error) {
+	var items []StockDetailItem
+
+	// 1. 最新の棚卸日を取得
+	var latestInventoryDate string
+	err := db.Get(&latestInventoryDate, `
+		SELECT MAX(last_inventory_date) 
+		FROM package_stock
+	`)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return items, nil // 棚卸履歴なし
+		}
+		return nil, fmt.Errorf("failed to get latest inventory date from package_stock: %w", err)
+	}
+
+	if latestInventoryDate == "" {
+		return items, nil // 棚卸履歴なし
+	}
+
+	// 2. 最新棚卸日の flag=0 かつ jan_quantity > 0 の取引明細を、master と JOIN して取得
+	query := `
+		SELECT 
+			T.jan_code, 
+			COALESCE(P.gs1_code, '') AS gs1_code, 
+			T.product_name, 
+			T.jan_quantity, 
+			T.expiry_date, 
+			T.lot_number
+		FROM transaction_records AS T
+		LEFT JOIN product_master AS P ON T.jan_code = P.product_code
+		WHERE T.flag = 0 
+		  AND T.transaction_date = ?
+		  AND T.jan_quantity > 0
+		ORDER BY P.kana_name, T.jan_code, T.expiry_date, T.lot_number
+	`
+
+	if err := db.Select(&items, query, latestInventoryDate); err != nil {
+		return nil, fmt.Errorf("failed to select current stock details: %w", err)
+	}
+
+	return items, nil
 }
 
 // ▲▲▲【追加ここまで】▲▲▲
@@ -3577,15 +3728,14 @@ func ConvertToView(yjGroups []model.StockLedgerYJGroup) []StockLedgerYJGroupView
 
 
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\masteredit\handler.go -----
-// C:\Users\wasab\OneDrive\デスクトップ\TKR\masteredit\handler.go
 package masteredit
 
 import (
 	"encoding/json"
-	"fmt" // ★ fmt をインポート
+	"fmt"
 	"log"
 	"net/http"
-	"strings" // ★ strings をインポート
+	"strings"
 	"tkr/database"
 	"tkr/mastermanager"
 	"tkr/model"
@@ -3650,7 +3800,8 @@ func renderMasterListHTML(masters []model.ProductMaster, statusMessage string) s
             <th class="col-gs1">GS1コード</th>
             <th class="col-jan">JANコード</th>
           
-           <th class="col-product">製品名</th>
+   
+            <th class="col-product">製品名</th>
             <th class="col-kana">カナ名</th>
             <th class="col-maker">メーカー</th>
             <th class="col-generic">一般名</th>
@@ -3666,7 +3817,8 @@ func renderMasterListHTML(masters []model.ProductMaster, statusMessage string) s
 	} else {
 		for _, master := range masters {
 			sb.WriteString(fmt.Sprintf(`<tr data-product-code="%s">`, master.ProductCode))
-			sb.WriteString(fmt.Sprintf(`<td class="center col-action"><button class="edit-master-btn btn" data-code="%s">編集</button></td>`, master.ProductCode))
+			sb.WriteString(fmt.Sprintf(`<td class="center col-action"><button class="edit-master-btn 
+ btn" data-code="%s">編集</button></td>`, master.ProductCode))
 			sb.WriteString(fmt.Sprintf(`<td class="col-yj">%s</td>`, master.YjCode))
 			sb.WriteString(fmt.Sprintf(`<td class="col-gs1">%s</td>`,
 				master.Gs1Code))
@@ -3729,33 +3881,6 @@ func UpdateMasterHandler(db *sqlx.DB) http.HandlerFunc {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{"message": "Saved successfully."})
 	}
-}
-
-func SearchJCSHMSHandler(db *sqlx.DB) http.HandlerFunc {
-    return func(w http.ResponseWriter, r *http.Request) {
-        query := r.URL.Query().Get("q")
-
-        // 空のクエリの場合は空のリストを返す
-        if query == "" {
-            w.Header().Set("Content-Type", "application/json")
-            json.NewEncoder(w).Encode([]model.JcshmsInfo{})
-            return
-        }
-
-        // GetFilteredJcshmsInfo を使って検索
-        // usageClassは空文字、kanaNameとgenericNameに同じクエリ文字列を渡してOR検索のように振る舞わせる
-        results, err := database.GetFilteredJcshmsInfo(db, "", query, query)
-        if err != nil {
-            log.Printf("Error searching JCSHMS: %v", err)
-            http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-            return
-        }
-
-        w.Header().Set("Content-Type", "application/json")
-        if err := json.NewEncoder(w).Encode(results); err != nil {
-            log.Printf("Error encoding JCSHMS search results: %v", err)
-        }
-    }
 }
 
 
@@ -4509,57 +4634,27 @@ func ParseDat(r io.Reader) ([]model.DatRecord, error) {
 package parsers
 
 import (
-	"bufio"
 	"encoding/csv"
 	"fmt"
 	"io"
 	"log"
 	"strconv"
 	"strings"
-	// TKRのモデルを参照
 )
 
-// ParsedDeadStockCSVRecord はCSVから読み取った棚卸明細です。
 type ParsedDeadStockCSVRecord struct {
-	// ▼▼▼【ここから修正】CSVの6列に対応 ▼▼▼
-	ProductCode string  // JANコード
-	Gs1Code     string  // GS1コード
-	ProductName string  // 品名
-	JanQuantity float64 // JAN数量
-	ExpiryDate  string  // 期限
-	LotNumber   string  // ロット
-	// ▲▲▲【修正ここまで】▲▲▲
+	ProductCode string
+	Gs1Code     string
+	ProductName string
+	JanQuantity float64
+	ExpiryDate  string
+	LotNumber   string
 }
 
-func skipBOM(r io.Reader) io.Reader {
-	br := bufio.NewReader(r)
-	bom := []byte{0xEF, 0xBB, 0xBF}
-	peeked, err := br.Peek(3)
-	if err != nil {
-		// BOMである可能性がない（3バイトない）ため、そのままリーダーを返す
-		return br
-	}
-	// 3バイトがBOMと一致するか確認
-	isBOM := true
-	for i, b := range bom {
-		if peeked[i] != b {
-			isBOM = false
-			break
-		}
-	}
-
-	if isBOM {
-		br.Read(make([]byte, 3)) // 3バイト（BOM）を読み飛ばす
-	}
-	return br // BOMが除去された（またはBOMでなかった）リーダーを返す
-}
-
-// ParseDeadStockCSV は不動在庫CSVを解析し、ParsedDeadStockCSVRecordのスライスを返します。
 func ParseDeadStockCSV(r io.Reader) ([]ParsedDeadStockCSVRecord, error) {
 	reader := csv.NewReader(skipBOM(r))
 	reader.LazyQuotes = true
 
-	// ヘッダー行を読み取り、列インデックスをマップする
 	header, err := reader.Read()
 	if err == io.EOF {
 		return nil, fmt.Errorf("CSVファイルが空です")
@@ -4573,14 +4668,12 @@ func ParseDeadStockCSV(r io.Reader) ([]ParsedDeadStockCSVRecord, error) {
 		colIndex[strings.TrimSpace(colName)] = i
 	}
 
-	// ▼▼▼【ここから修正】必須ヘッダーを日本語に変更 ▼▼▼
 	requiredHeaders := []string{"JANコード", "JAN数量"}
 	for _, req := range requiredHeaders {
 		if _, ok := colIndex[req]; !ok {
 			return nil, fmt.Errorf("必須ヘッダーが見つかりません: %s", req)
 		}
 	}
-	// ▲▲▲【修正ここまで】▲▲▲
 
 	var records []ParsedDeadStockCSVRecord
 	line := 1
@@ -4596,7 +4689,6 @@ func ParseDeadStockCSV(r io.Reader) ([]ParsedDeadStockCSVRecord, error) {
 			continue
 		}
 
-		// ▼▼▼【ここから修正】ヘルパー関数 get を修正 ▼▼▼
 		get := func(key string) string {
 			if idx, ok := colIndex[key]; ok && idx < len(rec) {
 				val := strings.TrimSpace(rec[idx])
@@ -4604,7 +4696,6 @@ func ParseDeadStockCSV(r io.Reader) ([]ParsedDeadStockCSVRecord, error) {
 			}
 			return ""
 		}
-		// ▲▲▲【修正ここまで】▲▲▲
 
 		getFloat := func(key string) float64 {
 			s := get(key)
@@ -4612,7 +4703,6 @@ func ParseDeadStockCSV(r io.Reader) ([]ParsedDeadStockCSVRecord, error) {
 			return f
 		}
 
-		// ▼▼▼【ここから修正】JAN数量が 0 または空の場合はスキップ ▼▼▼
 		janQty := getFloat("JAN数量")
 		if janQty == 0 {
 			continue
@@ -4627,11 +4717,196 @@ func ParseDeadStockCSV(r io.Reader) ([]ParsedDeadStockCSVRecord, error) {
 			LotNumber:   get("ロット"),
 		}
 
-		// ProductCodeが空の場合はGS1コードで代替（マスタ検索用）
 		if parsedRec.ProductCode == "" {
 			parsedRec.ProductCode = parsedRec.Gs1Code
 		}
-		// ▲▲▲【修正ここまで】▲▲▲
+
+		records = append(records, parsedRec)
+	}
+	return records, nil
+}
+
+
+----- C:\Users\wasab\OneDrive\デスクトップ\TKR\parsers\parser_utils.go -----
+// C:\Users\wasab\OneDrive\デスクトップ\TKR\parsers\parser_utils.go
+package parsers
+
+import (
+	"bufio"
+	"fmt"
+	"io"
+	"strings"
+)
+
+// skipBOM はUTF-8 BOMをスキップします。
+func skipBOM(r io.Reader) io.Reader {
+	br := bufio.NewReader(r)
+	bom := []byte{0xEF, 0xBB, 0xBF}
+	peeked, err := br.Peek(3)
+	if err != nil {
+		return br
+	}
+	isBOM := true
+	for i, b := range bom {
+		if peeked[i] != b {
+			isBOM = false
+			break
+		}
+	}
+	if isBOM {
+		br.Read(make([]byte, 3))
+	}
+	return br
+}
+
+// getColIndex はヘッダー名から列インデックスを取得するヘルパーです。
+func getColIndex(header []string, required []string) (map[string]int, error) {
+	colIndex := make(map[string]int)
+	for i, colName := range header {
+		colIndex[strings.TrimSpace(colName)] = i
+	}
+	for _, req := range required {
+		if _, ok := colIndex[req]; !ok {
+			return nil, fmt.Errorf("必須ヘッダーが見つかりません: %s", req)
+		}
+	}
+	return colIndex, nil
+}
+
+
+----- C:\Users\wasab\OneDrive\デスクトップ\TKR\parsers\stock_csv_parser.go -----
+// C:\Users\wasab\OneDrive\デスクトップ\TKR\parsers\stock_csv_parser.go
+package parsers
+
+import (
+	"encoding/csv"
+	"fmt"
+	"io"
+	"log"
+	"strconv"
+	"strings"
+)
+
+type ParsedExternalStockCSVRecord struct {
+	JanCode     string
+	JanQuantity float64
+	ExpiryDate  string
+	LotNumber   string
+}
+
+type ParsedTKRStockCSVRecord struct {
+	PackageKey  string
+	ProductName string
+	JanQuantity float64
+}
+
+func ParseExternalStockCSV(r io.Reader) ([]ParsedExternalStockCSVRecord, error) {
+	reader := csv.NewReader(skipBOM(r))
+	reader.LazyQuotes = true
+
+	header, err := reader.Read()
+	if err == io.EOF {
+		return nil, fmt.Errorf("CSVファイルが空です")
+	}
+	if err != nil {
+		return nil, fmt.Errorf("CSVヘッダーの読み取りに失敗: %w", err)
+	}
+
+	requiredHeaders := []string{"JANコード", "JAN数量"}
+	colIndex, err := getColIndex(header, requiredHeaders)
+	if err != nil {
+		return nil, err
+	}
+
+	idxExpiry, hasExpiry := colIndex["期限"]
+	idxLot, hasLot := colIndex["ロット"]
+
+	var records []ParsedExternalStockCSVRecord
+	line := 1
+	for {
+		line++
+		rec, err := reader.Read()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			log.Printf("WARN: CSV %d行目の読み取りエラー (スキップ): %v", line, err)
+			continue
+		}
+
+		get := func(idx int) string {
+			if idx < len(rec) {
+				return strings.TrimSpace(rec[idx])
+			}
+			return ""
+		}
+
+		janQty, _ := strconv.ParseFloat(get(colIndex["JAN数量"]), 64)
+		if janQty <= 0 {
+			continue
+		}
+
+		parsedRec := ParsedExternalStockCSVRecord{
+			JanCode:     get(colIndex["JANコード"]),
+			JanQuantity: janQty,
+		}
+
+		if hasExpiry {
+			parsedRec.ExpiryDate = get(idxExpiry)
+		}
+		if hasLot {
+			parsedRec.LotNumber = get(idxLot)
+		}
+
+		records = append(records, parsedRec)
+	}
+	return records, nil
+}
+
+func ParseTKRStockCSV(r io.Reader) ([]ParsedTKRStockCSVRecord, error) {
+	reader := csv.NewReader(skipBOM(r))
+	reader.LazyQuotes = true
+
+	header, err := reader.Read()
+	if err == io.EOF {
+		return nil, fmt.Errorf("CSVファイルが空です")
+	}
+	if err != nil {
+		return nil, fmt.Errorf("CSVヘッダーの読み取りに失敗: %w", err)
+	}
+
+	requiredHeaders := []string{"PackageKey", "JAN数量"}
+	colIndex, err := getColIndex(header, requiredHeaders)
+	if err != nil {
+		return nil, err
+	}
+
+	var records []ParsedTKRStockCSVRecord
+	line := 1
+	for {
+		line++
+		rec, err := reader.Read()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			log.Printf("WARN: CSV %d行目の読み取りエラー (スキップ): %v", line, err)
+			continue
+		}
+
+		get := func(idx int) string {
+			if idx < len(rec) {
+				return strings.TrimSpace(rec[idx])
+			}
+			return ""
+		}
+
+		janQty, _ := strconv.ParseFloat(get(colIndex["JAN数量"]), 64)
+
+		parsedRec := ParsedTKRStockCSVRecord{
+			PackageKey:  get(colIndex["PackageKey"]),
+			JanQuantity: janQty,
+		}
 
 		records = append(records, parsedRec)
 	}
@@ -5305,6 +5580,307 @@ func ProcessTransactionsHandler(conn *sqlx.DB) http.HandlerFunc {
 }
 
 
+----- C:\Users\wasab\OneDrive\デスクトップ\TKR\stock\handler.go -----
+// C:\Users\wasab\OneDrive\デスクトップ\TKR\stock\handler.go
+package stock
+
+import (
+	"bytes"
+	"database/sql"
+	"encoding/json"
+	"fmt"
+	"log"
+	"net/http"
+	"net/url"
+	"strings"
+	"time"
+	"tkr/database"
+	"tkr/mappers"
+	"tkr/mastermanager"
+	"tkr/model"
+	"tkr/parsers"
+	"tkr/units"
+
+	"github.com/jmoiron/sqlx"
+)
+
+func quoteAll(s string) string {
+	return `"` + strings.ReplaceAll(s, `"`, `""`) + `"`
+}
+
+func ExportCurrentStockHandler(db *sqlx.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+
+		// 1. 在庫起点テーブル (package_stock) から全在庫データを取得
+		stocks, err := database.GetAllPackageStock(db)
+		if err != nil {
+			http.Error(w, "Failed to get all package stock: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		// 2. YJコードと代表品名のマップを取得
+		nameMap, err := database.GetRepresentativeProductNameMap(db)
+		if err != nil {
+			http.Error(w, "Failed to get representative product names: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		var buf bytes.Buffer
+		buf.Write([]byte{0xEF, 0xBB, 0xBF}) // UTF-8 BOM
+
+		// 3. ヘッダーを PackageKey, ProductName, JAN数量 に変更
+		header := []string{
+			"PackageKey",
+			"ProductName",
+			"JAN数量",
+		}
+		buf.WriteString(strings.Join(header, ",") + "\r\n")
+
+		// 4. データをCSV行に変換
+		for _, pkg := range stocks {
+			// PackageKey を解析して JanPackInnerQty を取得
+			parsedKey, err := database.ParsePackageKey(pkg.PackageKey)
+			if err != nil {
+				log.Printf("WARN: Skipping invalid PackageKey in export: %s", pkg.PackageKey)
+				continue
+			}
+
+			// YJ数量 を JAN数量 に換算
+			var janQty float64
+			if parsedKey.JanPackInnerQty > 0 {
+				janQty = pkg.StockQuantityYj / parsedKey.JanPackInnerQty
+			} else {
+				janQty = 0 // 内入数が0ならJAN数量も0
+			}
+
+			// 代表品名を取得
+			productName := nameMap[pkg.YjCode]
+
+			record := []string{
+				quoteAll(pkg.PackageKey),
+				quoteAll(productName),
+				quoteAll(fmt.Sprintf("%.2f", janQty)),
+			}
+			buf.WriteString(strings.Join(record, ",") + "\r\n")
+		}
+
+		today := time.Now().Format("20060102")
+		filename := fmt.Sprintf("TKR在庫データ_%s.csv", today) // ファイル名を変更
+
+		w.Header().Set("Content-Type", "text/csv; charset=utf-8")
+		w.Header().Set("Content-Disposition", "attachment; filename*=UTF-8''"+url.PathEscape(filename))
+
+		w.Write(buf.Bytes())
+	}
+}
+
+func ImportExternalStockCSVHandler(db *sqlx.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		file, _, err := r.FormFile("file")
+		if err != nil {
+			http.Error(w, "CSVファイルの読み取りに失敗: "+err.Error(), http.StatusBadRequest)
+			return
+		}
+		defer file.Close()
+
+		records, err := parsers.ParseExternalStockCSV(file)
+		if err != nil {
+			http.Error(w, "CSVファイルの解析に失敗: "+err.Error(), http.StatusBadRequest)
+			return
+		}
+		if len(records) == 0 {
+			http.Error(w, "読み込むデータがありません（JAN数量が0以下のデータは無視されます）。", http.StatusBadRequest)
+			return
+		}
+
+		// ▼▼▼【ここから修正】time.Now() をやめ、フォームから 'date' を受け取る ▼▼▼
+		date := r.FormValue("date") // YYYYMMDD形式
+		if date == "" || len(date) != 8 {
+			http.Error(w, "日付(YYYYMMDD)が不正です。", http.StatusBadRequest)
+			return
+		}
+
+		var dateYYMMDD string
+		if len(date) >= 8 {
+			dateYYMMDD = date[2:8] // "20251107" -> "251107"
+		} else {
+			dateYYMMDD = date //
+		}
+		receiptNumber := "MIG_EXT_" + dateYYMMDD
+		// ▲▲▲【修正ここまで】▲▲▲
+
+		tx, err := db.Beginx()
+		if err != nil {
+			http.Error(w, "データベーストランザクションの開始に失敗: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		defer tx.Rollback()
+
+		if err := database.ClearAllPackageStockInTx(tx); err != nil {
+			http.Error(w, "既存在庫のリセットに失敗: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		packageStockTotalsYj := make(map[string]float64)
+		var transactionsToInsert []model.TransactionRecord
+
+		for i, rec := range records {
+			master, err := mastermanager.FindOrCreateMaster(tx, rec.JanCode, "")
+			if err != nil {
+				http.Error(w, fmt.Sprintf("マスターの特定/作成に失敗 (JAN: %s): %v", rec.JanCode, err), http.StatusInternalServerError)
+				return
+			}
+
+			janQty := rec.JanQuantity
+			yjQty := janQty * master.JanPackInnerQty
+
+			packageKey := fmt.Sprintf("%s|%s|%g|%s", master.YjCode, master.PackageForm, master.JanPackInnerQty, units.ResolveName(master.YjUnitName))
+			packageStockTotalsYj[packageKey] += yjQty
+
+			tr := model.TransactionRecord{
+				TransactionDate: date,
+				Flag:            0,
+				ReceiptNumber:   receiptNumber,
+				LineNumber:      fmt.Sprintf("%d", i+1),
+				JanCode:         master.ProductCode,
+				JanQuantity:     janQty,
+				YjQuantity:      yjQty,
+				ExpiryDate:      rec.ExpiryDate,
+				LotNumber:       rec.LotNumber,
+				UnitPrice:       master.NhiPrice,
+				Subtotal:        yjQty * master.NhiPrice,
+			}
+			mappers.MapMasterToTransaction(&tr, master)
+			transactionsToInsert = append(transactionsToInsert, tr)
+		}
+
+		if err := database.PersistTransactionRecordsInTx(tx, transactionsToInsert); err != nil {
+			http.Error(w, "棚卸明細の挿入に失敗: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		for key, totalYjQty := range packageStockTotalsYj {
+			yjCode := strings.Split(key, "|")[0]
+			if err := database.UpsertPackageStockInTx(tx, key, yjCode, totalYjQty, date); err != nil {
+				http.Error(w, "在庫起点の更新に失敗: "+err.Error(), http.StatusInternalServerError)
+				return
+			}
+		}
+
+		if err := tx.Commit(); err != nil {
+			http.Error(w, "データベースのコミットに失敗: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"message": fmt.Sprintf("在庫の洗い替えが完了しました。%d件の明細が登録されました。", len(transactionsToInsert)),
+		})
+	}
+}
+
+func ImportTKRStockCSVHandler(db *sqlx.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		file, _, err := r.FormFile("file")
+		if err != nil {
+			http.Error(w, "CSVファイルの読み取りに失敗: "+err.Error(), http.StatusBadRequest)
+			return
+		}
+		defer file.Close()
+
+		records, err := parsers.ParseTKRStockCSV(file)
+		if err != nil {
+			http.Error(w, "CSVファイルの解析に失敗: "+err.Error(), http.StatusBadRequest)
+			return
+		}
+		if len(records) == 0 {
+			http.Error(w, "読み込むデータがありません。", http.StatusBadRequest)
+			return
+		}
+
+		date := time.Now().Format("20060102")
+		dateYYMMDD := time.Now().Format("060102")
+		receiptNumber := "MIG_TKR_" + dateYYMMDD
+
+		tx, err := db.Beginx()
+		if err != nil {
+			http.Error(w, "データベーストランザクションの開始に失敗: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		defer tx.Rollback()
+
+		for i, rec := range records {
+			parsedKey, err := database.ParsePackageKey(rec.PackageKey)
+			if err != nil {
+				log.Printf("WARN: Skipping invalid PackageKey: %s", rec.PackageKey)
+				continue
+			}
+
+			janQty := rec.JanQuantity
+			yjQty := janQty * parsedKey.JanPackInnerQty
+
+			if err := database.UpsertPackageStockInTx(tx, rec.PackageKey, parsedKey.YjCode, yjQty, date); err != nil {
+				http.Error(w, "在庫起点の差分更新に失敗: "+err.Error(), http.StatusInternalServerError)
+				return
+			}
+
+			var master *model.ProductMaster
+			err = tx.Get(&master, "SELECT * FROM product_master WHERE yj_code = ? AND package_form = ? ORDER BY origin = 'JCSHMS' DESC, product_code ASC LIMIT 1", parsedKey.YjCode, parsedKey.PackageForm)
+			if err != nil {
+				if err == sql.ErrNoRows {
+					log.Printf("WARN: No master found for PackageKey %s, skipping transaction record.", rec.PackageKey)
+					continue
+				}
+				http.Error(w, "代表マスターの検索に失敗: "+err.Error(), http.StatusInternalServerError)
+				return
+			}
+
+			_, err = tx.Exec("DELETE FROM transaction_records WHERE flag = 0 AND transaction_date = ? AND yj_code = ?", date, parsedKey.YjCode)
+			if err != nil {
+				http.Error(w, "既存棚卸明細の削除に失敗: "+err.Error(), http.StatusInternalServerError)
+				return
+			}
+
+			tr := model.TransactionRecord{
+				TransactionDate: date,
+				Flag:            0,
+				ReceiptNumber:   fmt.Sprintf("%s-%d", receiptNumber, i+1),
+				LineNumber:      "1",
+				JanCode:         master.ProductCode,
+				JanQuantity:     janQty,
+				YjQuantity:      yjQty,
+				UnitPrice:       master.NhiPrice,
+				Subtotal:        yjQty * master.NhiPrice,
+			}
+			mappers.MapMasterToTransaction(&tr, master)
+
+			if err := database.InsertTransactionRecord(tx, tr); err != nil {
+				http.Error(w, "棚卸明細の挿入に失敗: "+err.Error(), http.StatusInternalServerError)
+				return
+			}
+		}
+
+		if err := tx.Commit(); err != nil {
+			http.Error(w, "データベースのコミットに失敗: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"message": fmt.Sprintf("在庫の差分更新が完了しました。%d件のPackageKeyが処理されました。", len(records)),
+		})
+	}
+}
+
+
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\units\handler.go -----
 // C:\Users\wasab\OneDrive\デスクトップ\TKR\units\handler.go
 package units
@@ -5704,7 +6280,6 @@ func validateFolderPath(path string) error {
 
 
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\main.go -----
-// C:\Users\wasab\OneDrive\デスクトップ\TKR\main.go
 package main
 
 import (
@@ -5732,19 +6307,18 @@ import (
 	"tkr/masteredit"
 	"tkr/product"
 	"tkr/reprocess"
+	"tkr/stock"
 	"tkr/units"
 	"tkr/usage"
 )
 
 var (
-	// ... (変更なし) ...
 	appTemplate   *template.Template
 	viewsFS       fs.FS
 	searchFormsFS fs.FS
 )
 
 func main() {
-	// ... (変更なし) ...
 	log.Println("Connecting to database...")
 	dbConn, err := sqlx.Open("sqlite3", "./tkr.db?_journal_mode=WAL&_busy_timeout=5000")
 	if err != nil {
@@ -5815,7 +6389,6 @@ func main() {
 		http.FileServer(http.Dir("./static"))))
 
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		// ... (変更なし) ...
 		if r.URL.Path != "/" {
 			http.NotFound(w, r)
 			return
@@ -5892,7 +6465,6 @@ func main() {
 	})
 
 	mux.HandleFunc("/api/jcshms/", func(w http.ResponseWriter, r *http.Request) {
-		// ... (変更なし) ...
 		janCode := strings.TrimPrefix(r.URL.Path, "/api/jcshms/")
 		if janCode == "" {
 			http.Error(w, "JAN code is required", http.StatusBadRequest)
@@ -5923,14 +6495,12 @@ func main() {
 	mux.HandleFunc("/api/dat/search", dat.SearchDatHandler(dbConn))
 	mux.HandleFunc("/api/usage/upload", usage.UploadUsageHandler(dbConn))
 
-	// In-Out (入出庫) Handlers
 	mux.HandleFunc("/api/receipts/by_date", inout.GetReceiptNumbersByDateHandler(dbConn))
 	mux.HandleFunc("/api/transaction/", inout.GetTransactionsByReceiptNumberHandler(dbConn))
 	mux.HandleFunc("/api/inout/save", inout.SaveInOutHandler(dbConn))
 	mux.HandleFunc("/api/transaction/delete/", inout.DeleteTransactionHandler(dbConn))
 	mux.HandleFunc("/api/masters", masteredit.ListMastersHandler(dbConn))
 	mux.HandleFunc("/api/masters/update", masteredit.UpdateMasterHandler(dbConn))
-	mux.HandleFunc("/api/search/jcshms", masteredit.SearchJCSHMSHandler(dbConn))
 
 	mux.HandleFunc("/api/inventory/adjust/data", inventoryadjustment.GetInventoryDataHandler(dbConn))
 	mux.HandleFunc("/api/inventory/adjust/save", inventoryadjustment.SaveInventoryDataHandler(dbConn))
@@ -5940,7 +6510,6 @@ func main() {
 
 	mux.HandleFunc("/api/product/by_barcode/", product.GetProductByBarcodeHandler(dbConn))
 	mux.HandleFunc("/api/master/by_code/", func(w http.ResponseWriter, r *http.Request) {
-		// ... (変更なし) ...
 		janCode := strings.TrimPrefix(r.URL.Path, "/api/master/by_code/")
 		if janCode == "" {
 			http.Error(w, "JAN code is required", http.StatusBadRequest)
@@ -5961,7 +6530,6 @@ func main() {
 	mux.HandleFunc("/api/wholesalers/delete/", DeleteWholesalerHandler(dbConn))
 
 	mux.HandleFunc("/api/clients", func(w http.ResponseWriter, r *http.Request) {
-		// ... (変更なし) ...
 		clients, err := database.GetAllClients(dbConn)
 		if err != nil {
 			http.Error(w, "Failed to get clients", http.StatusInternalServerError)
@@ -5972,7 +6540,6 @@ func main() {
 	})
 
 	mux.HandleFunc("/api/config", func(w http.ResponseWriter, r *http.Request) {
-		// ... (変更なし) ...
 		switch r.Method {
 		case http.MethodGet:
 			GetConfigHandler()(w, r)
@@ -5989,8 +6556,13 @@ func main() {
 
 	mux.HandleFunc("/api/deadstock/list", deadstock.ListDeadStockHandler(dbConn))
 	mux.HandleFunc("/api/deadstock/upload", deadstock.UploadDeadStockCSVHandler(dbConn))
-	// ▼▼▼【ここに追加】不動在庫CSVエクスポートAPI ▼▼▼
 	mux.HandleFunc("/api/deadstock/export", deadstock.ExportDeadStockHandler(dbConn))
+
+	mux.HandleFunc("/api/stock/export/current", stock.ExportCurrentStockHandler(dbConn))
+
+	// ▼▼▼【ここに追加】在庫移行インポートAPI ▼▼▼
+	mux.HandleFunc("/api/stock/import/external", stock.ImportExternalStockCSVHandler(dbConn))
+	mux.HandleFunc("/api/stock/import/tkr", stock.ImportTKRStockCSVHandler(dbConn))
 	// ▲▲▲【追加ここまで】▲▲▲
 
 	port := ":8080"
@@ -6004,7 +6576,6 @@ func main() {
 }
 
 func openBrowser(url string) {
-	// ... (変更なし) ...
 	var err error
 	switch runtime.GOOS {
 	case "windows":

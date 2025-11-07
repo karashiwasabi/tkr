@@ -13,7 +13,8 @@ export function hiraganaToKatakana(str) {
 
 // ▼▼▼【ここから修正】引数(date)を尊重するように修正 ▼▼▼
 export function getLocalDateString(date = null) {
-	const today = date instanceof Date ? date : new Date(); // 引数がなければ new Date() を使う
+	const today = date instanceof Date ? date : new Date();
+	// 引数がなければ new Date() を使う
 	const yyyy = today.getFullYear();
 	const mm = String(today.getMonth() + 1).padStart(2, '0');
 	const dd = String(today.getDate()).padStart(2, '0');
@@ -121,7 +122,7 @@ export function toHalfWidthKatakana(str) {
  */
 export async function handleFileUpload(apiEndpoint, files, fileInput, uploadResultContainer, dataTable, loadingMessage) {
     if (!files || files.length === 0) {
-         return;
+      return;
     }
 
     if (uploadResultContainer) uploadResultContainer.innerHTML = '<p>ファイルをアップロード中...</p>';
@@ -138,7 +139,22 @@ export async function handleFileUpload(apiEndpoint, files, fileInput, uploadResu
             method: 'POST',
             body: formData,
         });
-        const result = await response.json(); 
+        
+        // ▼▼▼【ここから修正】JSONパース失敗に備える ▼▼▼
+        const responseText = await response.text();
+        let result;
+        try {
+            result = JSON.parse(responseText);
+        } catch (jsonError) {
+            // JSONパースに失敗した場合 (サーバーがプレーンテキストのエラーを返した)
+            if (!response.ok) {
+                // サーバーエラー (400, 500) かつ JSON ではない
+                throw new Error(responseText || `サーバーエラー (HTTP ${response.status})`);
+            }
+            // サーバー 200 OK だが JSON ではない (通常ありえないが念のため)
+            result = { message: responseText };
+        }
+        // ▲▲▲【修正ここまで】▲▲▲
 
         if (!response.ok) {
             throw new Error(result.message || `サーバーエラー (HTTP ${response.status})`);
@@ -152,7 +168,7 @@ export async function handleFileUpload(apiEndpoint, files, fileInput, uploadResu
                 const statusText = fileResult.success ? '成功' : 'エラー';
                 const errorDetail = fileResult.error ? `: ${fileResult.error}` : '';
                 const parsed = fileResult.records_parsed || 0;
-                 const inserted = fileResult.records_inserted || 0;
+                const inserted = fileResult.records_inserted || 0;
 
                 summaryHtml += `<li><strong>${fileResult.filename}:</strong> `;
                 summaryHtml += `<span class="${statusClass}">${statusText}</span> (パース: ${parsed}件, 登録: ${inserted}件)${errorDetail}`;

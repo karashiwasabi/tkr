@@ -74,7 +74,6 @@ function renderDeadStockTable(items) {
         return;
     }
 
-    // ▼▼▼【ここから修正】ヘッダーに「操作」列を追加 ▼▼▼
     const header = `
         <table id="deadstock-table" class="data-table">
             <thead>
@@ -89,10 +88,9 @@ function renderDeadStockTable(items) {
             </thead>
             <tbody>
     `;
-    // ▲▲▲【修正ここまで】▲▲▲
 
     const body = items.map(item => {
-        let lotHtml = '棚卸履歴なし'; // デフォルト（在庫0の場合）
+        let lotHtml = '棚卸履歴なし'; 
         if (item.lotDetails && item.lotDetails.length > 0) {
             lotHtml = '<ul class="lot-details-list">';
             lotHtml += item.lotDetails.map(lot => {
@@ -103,7 +101,7 @@ function renderDeadStockTable(items) {
                 const lotNum = lot.LotNumber || '(ロットなし)';
                 const expiry = lot.ExpiryDate || '(期限なし)';
                 const unitName 
- = lot.JanUnitName || ''; // 単位名
+ = lot.JanUnitName || ''; 
                 
                 return `<li>${janCode} / ${pkgSpec} / ${janQty} ${unitName} / ${expiry} / ${lotNum}</li>`;
             }).join('');
@@ -115,10 +113,8 @@ function renderDeadStockTable(items) {
 
         const stockQty = (item.stockQuantityYj || 0).toFixed(2);
         
-        // ▼▼▼【ここから修正】ボタンのHTMLを追加 ▼▼▼
         const buttonHtml = item.yjCode ? 
             `<button class="btn adjust-inventory-btn" data-yj-code="${item.yjCode}">棚卸調整</button>` : '';
-        // ▲▲▲【修正ここまで】▲▲▲
 
         return `
             <tr>
@@ -158,7 +154,7 @@ async function handleCsvUpload() {
 
     const formData = new FormData();
     formData.append('file', file);
-    formData.append('date', date.replace(/-/g, '')); // YYYYMMDD形式で送信
+    formData.append('date', date.replace(/-/g, '')); 
 
     window.showLoading('棚卸CSVを登録中...');
     try {
@@ -174,13 +170,11 @@ async function handleCsvUpload() {
         const result = await response.json();
         window.showNotification(result.message || '棚卸CSVを登録しました。', 'success');
 
-        // 登録が成功したら、リストを再検索する
         fetchAndRenderDeadStock();
     } catch (error) {
         console.error('Failed to upload dead stock CSV:', error);
         window.showNotification(`CSV登録エラー: ${error.message}`, 'error');
     } finally {
-        // ファイル入力をリセット
         if (csvFileInput) csvFileInput.value = '';
         window.hideLoading();
     }
@@ -205,7 +199,6 @@ async function handleCsvExport() {
             throw new Error(errorText || `サーバーエラー (HTTP ${response.status})`);
         }
 
-        // ファイル名を設定
         const contentDisposition = response.headers.get('content-disposition');
         let filename = `不動在庫リスト_${startDate}-${endDate}.csv`;
         if (contentDisposition) {
@@ -214,10 +207,7 @@ async function handleCsvExport() {
                 filename = filenameMatch[1];
             }
         }
-
-        // CSVデータをBlobとして取得
         const blob = await response.blob();
-        // ダウンロードリンクを作成してクリック
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
@@ -266,7 +256,6 @@ export function initDeadStockView() {
         exportCsvBtn.addEventListener('click', handleCsvExport);
     }
 
-    // ▼▼▼【ここから追加】棚卸調整ボタンのイベントリスナー ▼▼▼
     if (resultContainer) {
         resultContainer.addEventListener('click', (e) => {
             if (e.target.classList.contains('adjust-inventory-btn')) {
@@ -276,7 +265,6 @@ export function initDeadStockView() {
                     return;
                 }
                 
-                // 1. 棚卸調整ビューに切り替える
                 const inventoryBtn = document.getElementById('inventoryAdjustmentViewBtn');
                 if (inventoryBtn) {
                     inventoryBtn.click();
@@ -285,19 +273,15 @@ export function initDeadStockView() {
                     return;
                 }
 
-                // 2. YJコードを渡してデータロードをトリガーする
-                // (app.jsのsetActiveViewがinventory-adjustment-viewを初期化するのを待つ)
                 setTimeout(() => {
                     document.dispatchEvent(new CustomEvent('loadInventoryAdjustment', {
                         detail: { yjCode: yjCode }
                     }));
-                }, 100); // 念のため遅延実行
+                }, 100); 
             }
         });
     }
-    // ▲▲▲【追加ここまで】▲▲▲
     
-    // デフォルト日付を設定
     setDefaultDates();
     console.log("DeadStock View Initialized.");
 }

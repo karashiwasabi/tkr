@@ -1,243 +1,371 @@
 // C:\Users\wasab\OneDrive\デスクトップ\TKR\static\js\config.js
-// ▼▼▼【修正】インポート先を変更 ▼▼▼
-// import { fetchWholesalers } from './utils.js'; // 削除
-import { wholesalerMap, refreshWholesalerMap } from './master_data.js'; // 変更
-// ▲▲▲【修正ここまで】▲▲▲
+import { handleFileUpload } from './utils.js';
+import { refreshWholesalerMap, wholesalerMap } from './master_data.js';
 
-let usageFolderPathInput;
-let datFolderPathInput;
-let calculationDaysInput;
-let savePathBtn;
-let saveDaysBtn;
-
+let configSavePathBtn, datFolderPathInput, usageFolderPathInput;
+let configSaveDaysBtn, calculationDaysInput;
+let configAddWholesalerBtn, wholesalerCodeInput, wholesalerNameInput;
 let wholesalerListTableBody;
-let newWholesalerCodeInput, newWholesalerNameInput, addWholesalerBtn;
+let exportTkrStockBtn, importTkrStockBtn, importTkrStockInput;
+let importExternalStockBtn, importExternalStockInput;
 
-// --- 1. 設定 (パス・期間) ---
+// (TKR独自CSV, 外部CSVインポートの結果表示コンテナは暫定的に DAT のものを借用)
+// TODO: config_view.html 側に専用のコンテナを配置したほうが望ましい
+let migrationUploadResultContainer; 
 
-export async function loadConfigAndWholesalers() {
-    await loadConfig();
-    await loadWholesalers(); // 変更
+/**
+ * 卸一覧テーブルを描画します。
+ */
+function renderWholesalerList() {
+    if (!wholesalerListTableBody) return;
+    wholesalerListTableBody.innerHTML = '';
+    
+    if (wholesalerMap.size === 0) {
+        wholesalerListTableBody.innerHTML = '<tr><td colspan="3">登録されている卸はありません。</td></tr>';
+        return;
+    }
+
+    wholesalerMap.forEach((name, code) => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+            <td class="col-config-code">${code}</td>
+            <td class="left col-config-name">${name}</td>
+            <td class="center col-config-action">
+                <button class="btn delete-wholesaler-btn" data-code="${code}">削除</button>
+            </td>
+        `;
+        wholesalerListTableBody.appendChild(tr);
+    });
 }
 
+/**
+ * 設定ファイル (tkr_config.json) をAPIから読み込み、フォームに反映します。
+ */
 async function loadConfig() {
     try {
         const response = await fetch('/api/config');
         if (!response.ok) {
-            throw new Error(`設定の読み込みに失敗しました: ${response.statusText}`);
+            throw new Error('設定の読み込みに失敗しました。');
         }
         const config = await response.json();
-        if (usageFolderPathInput) {
-            usageFolderPathInput.value = config.usageFolderPath || '';
-        }
         if (datFolderPathInput) {
             datFolderPathInput.value = config.datFolderPath || '';
+        }
+        if (usageFolderPathInput) {
+            usageFolderPathInput.value = config.usageFolderPath || '';
         }
         if (calculationDaysInput) {
             calculationDaysInput.value = config.calculationPeriodDays || 90;
         }
     } catch (error) {
-        console.error("Error loading config:", error);
         window.showNotification(error.message, 'error');
     }
 }
 
-async function saveConfig() {
-    const usagePath = usageFolderPathInput ? usageFolderPathInput.value : '';
-    const datPath = datFolderPathInput ? datFolderPathInput.value : '';
-    const calcDays = calculationDaysInput ? parseInt(calculationDaysInput.value, 10) : 90;
-    
+/**
+ * 卸マスタと設定の両方を読み込みます。
+ */
+export async function loadConfigAndWholesalers() {
+    window.showLoading('設定情報を読み込み中...');
+    try {
+        // 卸マスタを(再)読み込み
+        await refreshWholesalerMap();
+        // 読み込んだマスタでテーブルを描画
+        renderWholesalerList();
+        // 設定ファイルを読み込み
+        await loadConfig();
+    } catch (error) {
+        window.showNotification(error.message, 'error');
+    } finally {
+        window.hideLoading();
+    }
+}
+
+/**
+ * パス設定を保存します。
+ */
+async function handleSavePaths() {
+    const newConfig = {
+        datFolderPath: datFolderPathInput.value,
+        usageFolderPath: usageFolderPathInput.value,
+        calculationPeriodDays: parseInt(calculationDaysInput.value, 10) || 90
+    };
+    await saveConfig(newConfig, 'パス設定を保存しました。');
+}
+
+/**
+ * 集計期間設定を保存します。
+ */
+async function handleSaveDays() {
+    const newConfig = {
+        datFolderPath: datFolderPathInput.value,
+        usageFolderPath: usageFolderPathInput.value,
+        calculationPeriodDays: parseInt(calculationDaysInput.value, 10) || 90
+    };
+    await saveConfig(newConfig, '集計期間を保存しました。');
+}
+
+/**
+ * 共通の config 保存ロジック
+ */
+async function saveConfig(configData, successMessage) {
     window.showLoading('設定を保存中...');
     try {
         const response = await fetch('/api/config', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ 
-                usageFolderPath: usagePath,
-                datFolderPath: datPath,
-                calculationPeriodDays: calcDays 
-            }),
+            body: JSON.stringify(configData),
         });
-        if (!response.ok) {
-            let errorText = `サーバーエラー (HTTP ${response.status})`;
-            try {
-                const text = await response.text();
-                errorText = text || errorText;
-            } catch (e) {}
-            throw new Error(errorText);
-        }
-        
         const result = await response.json();
-        window.showNotification(result.message || '設定を保存しました。', 'success');
+        if (!response.ok) {
+            throw new Error(result.message || '設定の保存に失敗しました。');
+        }
+        window.showNotification(successMessage, 'success');
+        await loadConfig(); // 保存後に再読み込み
     } catch (error) {
-        console.error("Error saving config:", error);
-        window.showNotification(`設定の保存に失敗しました: ${error.message}`, 'error');
+        window.showNotification(error.message, 'error');
     } finally {
         window.hideLoading();
     }
 }
 
-// --- 2. 卸コード管理 ---
 
-// ▼▼▼【修正】loadWholesalers をキャッシュマップ参照に変更 ▼▼▼
-async function loadWholesalers() {
-    if (!wholesalerListTableBody) return;
-    wholesalerListTableBody.innerHTML = '<tr><td colspan="3">読み込み中...</td></tr>';
-    
-    try {
-        // APIを叩く代わりに、ロード済みのマップを描画する
-        renderWholesalerTable(wholesalerMap);
-    } catch (error) {
-        console.error("Error loading wholesalers:", error);
-        wholesalerListTableBody.innerHTML = `<tr><td colspan="3" class="status-error">${error.message}</td></tr>`;
-    }
-}
-// ▲▲▲【修正ここまで】▲▲▲
-
-// ▼▼▼【修正】renderWholesalerTable を Map 対応に変更 ▼▼▼
-function renderWholesalerTable(map) {
-    if (!wholesalerListTableBody) return;
-    if (!map || map.size === 0) {
-        wholesalerListTableBody.innerHTML = '<tr><td colspan="3">登録されている卸コードはありません。</td></tr>';
-        return;
-    }
-    
-    let tableHtml = '';
-    // Mapをイテレート
-    map.forEach((name, code) => {
-        tableHtml += `
-            <tr data-code="${code}">
-                <td class="left">${code}</td>
-                <td class="left">${name}</td>
-                <td class="center">
-                    <button class="delete-wholesaler-btn btn" data-code="${code}">削除</button>
-                </td>
-            </tr>
-        `;
-    });
-    wholesalerListTableBody.innerHTML = tableHtml;
-}
-// ▲▲▲【修正ここまで】▲▲▲
-
+/**
+ * 新しい卸を追加します。
+ */
 async function handleAddWholesaler() {
-    const code = newWholesalerCodeInput ? newWholesalerCodeInput.value.trim() : '';
-    const name = newWholesalerNameInput ? newWholesalerNameInput.value.trim() : '';
-
+    const code = wholesalerCodeInput.value.trim();
+    const name = wholesalerNameInput.value.trim();
     if (!code || !name) {
-        window.showNotification('卸コードと卸名の両方を入力してください。', 'warning');
+        window.showNotification('卸コードと卸名は必須です。', 'warning');
         return;
     }
-    
-    window.showLoading('卸コードを追加中...');
+    window.showLoading('卸を追加中...');
     try {
         const response = await fetch('/api/wholesalers/create', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ code: code, name: name }),
+            body: JSON.stringify({ code, name }),
         });
-        if (!response.ok) {
-            let errorText = `サーバーエラー (HTTP ${response.status})`;
-            try {
-                const text = await response.text();
-                errorText = text || errorText;
-            } catch (e) {}
-            throw new Error(errorText);
-        }
-
         const result = await response.json();
-        window.showNotification(result.message || '追加しました。', 'success');
-        if (newWholesalerCodeInput) newWholesalerCodeInput.value = '';
-        if (newWholesalerNameInput) newWholesalerNameInput.value = '';
-        
-        // ▼▼▼【修正】マップを更新してから再描画 ▼▼▼
-        await refreshWholesalerMap(); // グローバルマップを更新
-        loadWholesalers(); // テーブルを再読み込み (キャッシュから)
-        // ▲▲▲【修正ここまで】▲▲▲
-        
+        if (!response.ok) {
+            throw new Error(result.message || '卸の追加に失敗しました。');
+        }
+        window.showNotification(result.message, 'success');
+        wholesalerCodeInput.value = '';
+        wholesalerNameInput.value = '';
+        await refreshWholesalerMap(); // 内部マップを更新
+        renderWholesalerList(); // テーブルを再描画
     } catch (error) {
-        console.error("Error adding wholesaler:", error);
-        window.showNotification(`追加に失敗しました: ${error.message}`, 'error');
+        window.showNotification(error.message, 'error');
     } finally {
         window.hideLoading();
     }
 }
 
+/**
+ * 卸を削除します。
+ */
 async function handleDeleteWholesaler(code) {
     if (!code) return;
-    if (!confirm(`卸コード「${code}」を削除しますか？`)) {
-        return;
-    }
-    
-    window.showLoading('卸コードを削除中...');
+    if (!confirm(`卸コード「${code}」を削除しますか？`)) return;
+
+    window.showLoading('卸を削除中...');
     try {
         const response = await fetch(`/api/wholesalers/delete/${code}`, {
             method: 'DELETE',
         });
-        if (!response.ok) {
-            let errorText = `サーバーエラー (HTTP ${response.status})`;
-            try {
-                const text = await response.text();
-                errorText = text || errorText;
-            } catch (e) {}
-            throw new Error(errorText);
-        }
-
         const result = await response.json();
-        window.showNotification(result.message || '削除しました。', 'success');
-
-        // ▼▼▼【修正】マップを更新してから再描画 ▼▼▼
-        await refreshWholesalerMap(); // グローバルマップを更新
-        loadWholesalers(); // テーブルを再読み込み (キャッシュから)
-        // ▲▲▲【修正ここまで】▲▲▲
-        
+        if (!response.ok) {
+            throw new Error(result.message || '卸の削除に失敗しました。');
+        }
+        window.showNotification(result.message, 'success');
+        await refreshWholesalerMap(); // 内部マップを更新
+        renderWholesalerList(); // テーブルを再描画
     } catch (error) {
-        console.error("Error deleting wholesaler:", error);
-        window.showNotification(`削除に失敗しました: ${error.message}`, 'error');
+        window.showNotification(error.message, 'error');
     } finally {
         window.hideLoading();
     }
 }
 
-// --- 3. 初期化 ---
+/**
+ * TKR独自CSVをエクスポートします。
+ */
+async function handleExportTkrStock() {
+    window.showLoading('TKR在庫CSVをエクスポート中...');
+    try {
+        const response = await fetch('/api/stock/export/current');
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(errorText || `サーバーエラー (HTTP ${response.status})`);
+        }
 
+        const contentDisposition = response.headers.get('content-disposition');
+        let filename = 'TKR在庫データ.csv';
+        if (contentDisposition) {
+            // "filename*=UTF-8''..."
+            const filenameMatch = contentDisposition.match(/filename\*=UTF-8''(.+)/);
+            if (filenameMatch && filenameMatch[1]) {
+                filename = decodeURIComponent(filenameMatch[1]);
+            } else {
+                // "filename=..."
+                const filenameMatchFallback = contentDisposition.match(/filename="(.+?)"/);
+                if (filenameMatchFallback && filenameMatchFallback[1]) {
+                    filename = filenameMatchFallback[1];
+                }
+            }
+        }
+        
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        window.URL.revokeObjectURL(url);
+        
+        window.showNotification('TKR在庫CSVをエクスポートしました。', 'success');
+    } catch (error) {
+        console.error('Failed to export TKR stock CSV:', error);
+        window.showNotification(`CSVエクスポートエラー: ${error.message}`, 'error');
+    } finally {
+        window.hideLoading();
+    }
+}
+
+
+/**
+ * Configビューのイベントリスナーを初期化します。
+ */
 export function initConfigView() {
-    // パス設定
-    usageFolderPathInput = document.getElementById('config-usage-folder-path');
+    configSavePathBtn = document.getElementById('configSavePathBtn');
     datFolderPathInput = document.getElementById('config-dat-folder-path');
-    savePathBtn = document.getElementById('configSavePathBtn');
-
-    // 集計期間
+    usageFolderPathInput = document.getElementById('config-usage-folder-path');
+    
+    configSaveDaysBtn = document.getElementById('configSaveDaysBtn');
     calculationDaysInput = document.getElementById('config-calculation-days');
-    saveDaysBtn = document.getElementById('configSaveDaysBtn');
 
-    // 卸管理
-    const wholesalerListTable = document.getElementById('wholesalerListTable');
-    wholesalerListTableBody = wholesalerListTable ? wholesalerListTable.querySelector('tbody') : null;
-    newWholesalerCodeInput = document.getElementById('config-wholesaler-code');
-    newWholesalerNameInput = document.getElementById('config-wholesaler-name');
-    addWholesalerBtn = document.getElementById('configAddWholesalerBtn');
+    configAddWholesalerBtn = document.getElementById('configAddWholesalerBtn');
+    wholesalerCodeInput = document.getElementById('config-wholesaler-code');
+    wholesalerNameInput = document.getElementById('config-wholesaler-name');
+    wholesalerListTableBody = document.getElementById('wholesalerListTable')?.querySelector('tbody');
 
-    // イベントリスナー
-    if (savePathBtn) {
-        savePathBtn.addEventListener('click', saveConfig);
-    }
-    if (saveDaysBtn) {
-        saveDaysBtn.addEventListener('click', saveConfig); // 同じ保存関数を呼ぶ
-    }
+    exportTkrStockBtn = document.getElementById('exportTkrStockBtn');
+    importTkrStockBtn = document.getElementById('importTkrStockBtn');
+    importTkrStockInput = document.getElementById('importTkrStockInput');
     
-    if (addWholesalerBtn) {
-        addWholesalerBtn.addEventListener('click', handleAddWholesaler);
+    importExternalStockBtn = document.getElementById('importExternalStockBtn');
+    importExternalStockInput = document.getElementById('importExternalStockInput');
+
+    // 結果表示コンテナ（DATビューのものを暫定利用）
+    migrationUploadResultContainer = document.getElementById('datUploadResultContainer');
+
+    // --- イベントリスナー設定 ---
+    if (configSavePathBtn) {
+        configSavePathBtn.addEventListener('click', handleSavePaths);
     }
-    
-    if (wholesalerListTable) {
-        wholesalerListTable.addEventListener('click', (event) => {
-            if (event.target.classList.contains('delete-wholesaler-btn')) {
-                handleDeleteWholesaler(event.target.dataset.code);
+    if (configSaveDaysBtn) {
+        configSaveDaysBtn.addEventListener('click', handleSaveDays);
+    }
+    if (configAddWholesalerBtn) {
+        configAddWholesalerBtn.addEventListener('click', handleAddWholesaler);
+    }
+    if (wholesalerListTableBody) {
+        wholesalerListTableBody.addEventListener('click', (e) => {
+            if (e.target.classList.contains('delete-wholesaler-btn')) {
+                handleDeleteWholesaler(e.target.dataset.code);
             }
         });
     }
-    
-    // 画面表示時のロード処理は app.js の setActiveView に移管
+
+    // A. TKR独自CSVエクスポート
+    if (exportTkrStockBtn) {
+        exportTkrStockBtn.addEventListener('click', handleExportTkrStock);
+    }
+
+    // B. TKR独自CSVインポート (差分更新)
+    if (importTkrStockBtn && importTkrStockInput) {
+        importTkrStockBtn.addEventListener('click', () => importTkrStockInput.click());
+        importTkrStockInput.addEventListener('change', (event) => {
+            handleFileUpload(
+                '/api/stock/import/tkr',
+                event.target.files,
+                importTkrStockInput,
+                migrationUploadResultContainer, // 暫定
+                null, // 差分更新はテーブルを描画しない
+                'TKR独自CSV（差分）を処理中...'
+            );
+        });
+    }
+
+    // C. 外部用CSVインポート (洗い替え)
+    if (importExternalStockBtn && importExternalStockInput) {
+        importExternalStockBtn.addEventListener('click', () => importExternalStockInput.click());
+        importExternalStockInput.addEventListener('change', async (event) => {
+            const files = event.target.files;
+            const dateInput = document.getElementById('importExternalStockDate');
+            if (!files || files.length === 0) {
+                return;
+            }
+            if (!dateInput || !dateInput.value) {
+                window.showNotification('棚卸日(CSV適用日)を選択してください。', 'warning');
+                event.target.value = ''; // Reset file input
+                return;
+            }
+            if (!confirm('【警告】外部用CSVを読み込み、現在の在庫をすべて洗い替えます。\nこの操作は取り消せません。\nよろしいですか？')) {
+                event.target.value = ''; // 中止
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('file', files[0]);
+            formData.append('date', dateInput.value.replace(/-/g, '')); // YYYYMMDD形式で日付を追加
+
+            const apiEndpoint = '/api/stock/import/external';
+            const loadingMessage = '外部CSVを読み込み、在庫を洗い替え中...';
+
+            if (migrationUploadResultContainer) migrationUploadResultContainer.innerHTML = '<p>ファイルをアップロード中...</p>';
+            window.showLoading(loadingMessage);
+
+            try {
+                const response = await fetch(apiEndpoint, {
+                    method: 'POST',
+                    body: formData,
+                });
+
+                const responseText = await response.text();
+                let result;
+                try {
+                    result = JSON.parse(responseText);
+                } catch (jsonError) {
+                    if (!response.ok) {
+                        throw new Error(responseText || `サーバーエラー (HTTP ${response.status})`);
+                    }
+                    result = { message: responseText };
+                }
+
+                if (!response.ok) {
+                    throw new Error(result.message || `サーバーエラー (HTTP ${response.status})`);
+                }
+                
+                if (migrationUploadResultContainer) {
+                    migrationUploadResultContainer.innerHTML = `<h3>${result.message || '処理が完了しました。'}</h3>`;
+                }
+
+                window.showNotification(result.message || 'ファイルの処理が完了しました。', 'success');
+            } catch (error) {
+                console.error('Upload failed:', error);
+                window.showNotification(`エラー: ${error.message}`, 'error');
+                if (migrationUploadResultContainer) migrationUploadResultContainer.innerHTML = `<p style="color: red;">エラーが発生しました: ${error.message}</p>`;
+            } finally {
+                window.hideLoading();
+                if (importExternalStockInput) importExternalStockInput.value = '';
+            }
+        });
+    }
 
     console.log("Config View Initialized.");
 }
