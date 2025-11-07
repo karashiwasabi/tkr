@@ -1,5 +1,4 @@
 import { hiraganaToKatakana } from './utils.js';
-
 let activeCallback = null;
 let activeRowElement = null;
 
@@ -20,14 +19,20 @@ function handleResultClick(event) {
 
   const product = JSON.parse(event.target.dataset.product);
 
+  if (modal && modal.dataset.copyOnly === 'true') {
+    if (typeof activeCallback === 'function') {
+      activeCallback(product, activeRowElement);
+    }
+    hideModal();
+    return;
+  }
+
   if (product.isAdopted) {
-    // 既に採用済みの場合は、そのままコールバックを呼ぶ
     if (typeof activeCallback === 'function') {
       activeCallback(product, activeRowElement);
     }
     hideModal();
   } else {
-    // 未採用の場合は、バックエンドで採用処理を行う
     if (!confirm(`「${product.productName}」をマスターに新規採用します。よろしいですか？`)) {
         return;
     }
@@ -42,19 +47,20 @@ function handleResultClick(event) {
             return res.text().then(text => { throw new Error(text || '採用処理に失敗しました') });
         }
         return res.json();
-    })
+   
+     })
     .then(adoptedMaster => {
         window.hideLoading();
         window.showNotification(`「${adoptedMaster.productName}」をマスターに採用しました。`, 'success');
         if (typeof activeCallback === 'function') {
-            // 新しく採用されたマスター情報をコールバックに渡す
             activeCallback(adoptedMaster, activeRowElement);
         }
         hideModal();
     })
     .catch(err => {
         window.hideLoading();
-        window.showNotification(`エラー: ${err.message}`, 'error');
+   
+         window.showNotification(`エラー: ${err.message}`, 'error');
     });
   }
 }
@@ -75,7 +81,8 @@ function renderSearchResults(products) {
         <td class="left">${spec}</td>
         <td>${p.yjCode || ''}</td>
         <td>${p.productCode || ''}</td>
-        <td><button type="button" class="select-product-btn btn" data-product='${productData.replace(/'/g, "&apos;")}'>選択</button></td>
+   
+         <td><button type="button" class="select-product-btn btn" data-product='${productData.replace(/'/g, "&apos;")}'>選択</button></td>
       </tr>
     `;
   });
@@ -94,6 +101,7 @@ async function performSearch() {
     params.append('genericName', genericName);
     params.append('shelfNumber', shelfNumber);
     params.append('dosageForm', usageClass);
+
     if (modal.dataset.searchMode) {
         params.append('searchMode', modal.dataset.searchMode);
     }
@@ -126,9 +134,18 @@ async function handleGs1Search(event) {
         const res = await fetch(`/api/product/by_barcode/${barcode}`);
         if (!res.ok) {
              const errText = await res.text();
-             throw new Error(errText || '製品の検索に失敗しました。');
+            throw new Error(errText || '製品の検索に失敗しました。');
         }
         const master = await res.json();
+
+        if (modal && modal.dataset.copyOnly === 'true') {
+            if (typeof activeCallback === 'function') {
+                activeCallback(master, activeRowElement);
+            }
+            hideModal();
+            return;
+        }
+
         if (typeof activeCallback === 'function') {
             activeCallback(master, activeRowElement);
         }
@@ -146,12 +163,14 @@ export function initSearchModal() {
   modal = document.getElementById('tkr-search-modal-overlay');
   closeModalBtn = document.getElementById('closeSearchModalBtn');
   const searchResultsTable = document.getElementById('search-results-table');
-  searchResultsBody = searchResultsTable ? searchResultsTable.querySelector('tbody') : null;
+  searchResultsBody = searchResultsTable ?
+  searchResultsTable.querySelector('tbody') : null;
   
   searchBtn = document.getElementById('product-search-btn');
   modalGs1Form = document.getElementById('modal-search-gs1-form');
   modalGs1Input = document.getElementById('modal-search-gs1');
   modalUsageClassRadios = document.getElementById('modal-search-usage-class');
+  
   modalKanaInput = document.getElementById('modal-search-kana');
   modalGenericInput = document.getElementById('modal-search-generic');
   modalShelfInput = document.getElementById('modal-search-shelf');
@@ -177,7 +196,9 @@ export function showModal(rowElement, callback, options = {}) {
   document.body.classList.add('modal-open');
   activeRowElement = rowElement;
   activeCallback = callback; 
-  modal.dataset.searchMode = options.searchMode || ''; // searchModeを保存
+  
+  modal.dataset.searchMode = options.searchMode || '';
+  modal.dataset.copyOnly = options.copyOnly || 'false';
   
   modal.classList.remove('hidden');
     

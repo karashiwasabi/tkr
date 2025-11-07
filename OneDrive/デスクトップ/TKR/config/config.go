@@ -33,7 +33,6 @@ func LoadConfig() (Config, error) {
 			return Config{
 				CalculationPeriodDays: 90,
 			}, nil
-			// ▲▲▲【修正ここまで】▲▲▲
 		}
 		return Config{}, err
 	}

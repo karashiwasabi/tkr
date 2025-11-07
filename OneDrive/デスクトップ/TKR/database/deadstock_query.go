@@ -152,7 +152,6 @@ func GetDeadStockList(db *sqlx.DB, startDate, endDate string) ([]model.DeadStock
 				  )
 				ORDER BY T.expiry_date, T.lot_number
 			`, item.YjCode, item.YjCode)
-			// ▲▲▲【修正ここまで】▲▲▲
 
 			if err != nil {
 				// 明細取得に失敗してもエラーにせず、リストは返す

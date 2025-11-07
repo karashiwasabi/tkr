@@ -3,9 +3,7 @@ import { getLocalDateString } from './utils.js';
 
 let startDateInput, endDateInput, searchBtn, resultContainer;
 let csvDateInput, csvFileInput, csvUploadBtn;
-// ▼▼▼【ここから修正】変数名を変更 ▼▼▼
 let exportCsvBtn;
-// ▲▲▲【修正ここまで】▲▲▲
 
 
 /**
@@ -33,7 +31,6 @@ function setDefaultDates() {
 async function fetchAndRenderDeadStock() {
     const startDate = startDateInput.value.replace(/-/g, '');
     const endDate = endDateInput.value.replace(/-/g, '');
-
     if (!startDate || !endDate) {
         window.showNotification('開始日と終了日を指定してください。', 'warning');
         return;
@@ -47,11 +44,11 @@ async function fetchAndRenderDeadStock() {
         const response = await fetch(`/api/deadstock/list?${params.toString()}`);
 
         if (!response.ok) {
-            const errorText = await response.text(); // Get the plain text error
+            const errorText = await response.text(); 
             throw new Error(errorText || `サーバーエラー (HTTP ${response.status})`);
         }
         
-        const data = await response.json(); // Now it's safe to parse JSON
+        const data = await response.json(); 
 
         if (data.errors && data.errors.length > 0) {
             window.showNotification(data.errors.join('\n'), 'error');
@@ -77,45 +74,58 @@ function renderDeadStockTable(items) {
         return;
     }
 
+    // ▼▼▼【ここから修正】ヘッダーに「操作」列を追加 ▼▼▼
     const header = `
         <table id="deadstock-table" class="data-table">
             <thead>
                 <tr>
+                    <th class="col-ds-action">操作</th>
                     <th class="col-ds-key">PackageKey</th>
                     <th class="col-ds-name">製品名</th>
+            
                     <th class="col-ds-qty">現在庫(YJ)</th>
                     <th class="col-ds-details">棚卸明細 (JAN / 包装仕様 / 在庫数 / 単位 / 期限 / ロット)</th>
                     </tr>
             </thead>
             <tbody>
     `;
+    // ▲▲▲【修正ここまで】▲▲▲
 
     const body = items.map(item => {
         let lotHtml = '棚卸履歴なし'; // デフォルト（在庫0の場合）
         if (item.lotDetails && item.lotDetails.length > 0) {
             lotHtml = '<ul class="lot-details-list">';
-            // ▼▼▼【ここから修正】明細の表示内容を変更 ▼▼▼
             lotHtml += item.lotDetails.map(lot => {
                 const janQty = (lot.JanQuantity || 0).toFixed(2);
+  
                 const janCode = lot.JanCode || '(JANなし)';
                 const pkgSpec = lot.PackageSpec || '(仕様なし)';
                 const lotNum = lot.LotNumber || '(ロットなし)';
                 const expiry = lot.ExpiryDate || '(期限なし)';
-                const unitName = lot.JanUnitName || ''; // 単位名
+                const unitName 
+ = lot.JanUnitName || ''; // 単位名
                 
                 return `<li>${janCode} / ${pkgSpec} / ${janQty} ${unitName} / ${expiry} / ${lotNum}</li>`;
             }).join('');
-            // ▲▲▲【修正ここまで】▲▲▲
             lotHtml += '</ul>';
-        } else if (item.stockQuantityYj > 0) {
+        } else if (item.stockQuantityYj > 0) 
+ {
             lotHtml = '<span class="status-error">在庫あり (明細なし)</span>';
         }
 
         const stockQty = (item.stockQuantityYj || 0).toFixed(2);
+        
+        // ▼▼▼【ここから修正】ボタンのHTMLを追加 ▼▼▼
+        const buttonHtml = item.yjCode ? 
+            `<button class="btn adjust-inventory-btn" data-yj-code="${item.yjCode}">棚卸調整</button>` : '';
+        // ▲▲▲【修正ここまで】▲▲▲
+
         return `
             <tr>
+                <td class="center col-ds-action">${buttonHtml}</td>
                 <td class="left">${item.packageKey}</td>
-                <td class="left">${item.productName || '(品名不明)'}</td>
+                <td class="left">${item.productName ||
+ '(品名不明)'}</td>
                 <td class="right">${stockQty}</td>
                 <td class="left">${lotHtml}</td>
             </tr>
@@ -126,7 +136,6 @@ function renderDeadStockTable(items) {
             </tbody>
         </table>
     `;
-
     resultContainer.innerHTML = header + body + footer;
 }
 
@@ -152,13 +161,11 @@ async function handleCsvUpload() {
     formData.append('date', date.replace(/-/g, '')); // YYYYMMDD形式で送信
 
     window.showLoading('棚卸CSVを登録中...');
-    
     try {
         const response = await fetch('/api/deadstock/upload', {
             method: 'POST',
             body: formData,
         });
-
         if (!response.ok) {
             const errorText = await response.text();
             throw new Error(errorText || `サーバーエラー (HTTP ${response.status})`);
@@ -169,7 +176,6 @@ async function handleCsvUpload() {
 
         // 登録が成功したら、リストを再検索する
         fetchAndRenderDeadStock();
-
     } catch (error) {
         console.error('Failed to upload dead stock CSV:', error);
         window.showNotification(`CSV登録エラー: ${error.message}`, 'error');
@@ -180,11 +186,9 @@ async function handleCsvUpload() {
     }
 }
 
-// ▼▼▼【ここから修正】CSVエクスポート処理（IDと変数名を修正） ▼▼▼
 async function handleCsvExport() {
     const startDate = startDateInput.value.replace(/-/g, '');
     const endDate = endDateInput.value.replace(/-/g, '');
-
     if (!startDate || !endDate) {
         window.showNotification('開始日と終了日を指定してください。', 'warning');
         return;
@@ -213,7 +217,6 @@ async function handleCsvExport() {
 
         // CSVデータをBlobとして取得
         const blob = await response.blob();
-        
         // ダウンロードリンクを作成してクリック
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement('a');
@@ -233,7 +236,6 @@ async function handleCsvExport() {
         window.hideLoading();
     }
 }
-// ▲▲▲【修正ここまで】▲▲▲
 
 
 /**
@@ -245,9 +247,7 @@ export function initDeadStockView() {
     endDateInput = document.getElementById('ds-end-date');
     searchBtn = document.getElementById('ds-search-btn');
     resultContainer = document.getElementById('deadstock-result-container');
-    // ▼▼▼【ここから修正】IDと変数名を修正 ▼▼▼
-    exportCsvBtn = document.getElementById('ds-export-csv-btn'); 
-    // ▲▲▲【修正ここまで】▲▲▲
+    exportCsvBtn = document.getElementById('ds-export-csv-btn');
 
     // CSVアップロード
     csvDateInput = document.getElementById('ds-csv-date');
@@ -262,11 +262,40 @@ export function initDeadStockView() {
         csvUploadBtn.addEventListener('click', handleCsvUpload);
     }
 
-    // ▼▼▼【ここから修正】変数名を修正 ▼▼▼
     if (exportCsvBtn) {
         exportCsvBtn.addEventListener('click', handleCsvExport);
     }
-    // ▲▲▲【修正ここまで】▲▲▲
+
+    // ▼▼▼【ここから追加】棚卸調整ボタンのイベントリスナー ▼▼▼
+    if (resultContainer) {
+        resultContainer.addEventListener('click', (e) => {
+            if (e.target.classList.contains('adjust-inventory-btn')) {
+                const yjCode = e.target.dataset.yjCode;
+                if (!yjCode) {
+                    window.showNotification('YJコードが見つかりません。', 'error');
+                    return;
+                }
+                
+                // 1. 棚卸調整ビューに切り替える
+                const inventoryBtn = document.getElementById('inventoryAdjustmentViewBtn');
+                if (inventoryBtn) {
+                    inventoryBtn.click();
+                } else {
+                    window.showNotification('棚卸調整ビューへの切り替えボタンが見つかりません。', 'error');
+                    return;
+                }
+
+                // 2. YJコードを渡してデータロードをトリガーする
+                // (app.jsのsetActiveViewがinventory-adjustment-viewを初期化するのを待つ)
+                setTimeout(() => {
+                    document.dispatchEvent(new CustomEvent('loadInventoryAdjustment', {
+                        detail: { yjCode: yjCode }
+                    }));
+                }, 100); // 念のため遅延実行
+            }
+        });
+    }
+    // ▲▲▲【追加ここまで】▲▲▲
     
     // デフォルト日付を設定
     setDefaultDates();

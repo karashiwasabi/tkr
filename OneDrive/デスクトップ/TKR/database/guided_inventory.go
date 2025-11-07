@@ -87,11 +87,9 @@ func SaveGuidedInventoryData(tx *sqlx.Tx, date string, yjCode string, allPackagi
 
 	newSeq := lastSeq + 1
 	receiptNumber := fmt.Sprintf("%s%05d", prefix, newSeq) // 14桁 (ADJ + 6 + 5)
-	// ▲▲▲【修正ここまで】▲▲▲
 
 	// ▼▼▼【削除】productCodesWithInventory (dead_stock_list 用) は不要 ▼▼▼
 	// var productCodesWithInventory []string
-	// ▲▲▲【削除ここまで】▲▲▲
 
 	// ▼▼▼【ここから修正】packageStockTotalsYj（在庫起点用）の集計を deadStockData から inventoryData（合計マップ）基準に変更 ▼▼▼
 	packageStockTotalsYj := make(map[string]float64) //
@@ -108,7 +106,6 @@ func SaveGuidedInventoryData(tx *sqlx.Tx, date string, yjCode string, allPackagi
 		packageKey := fmt.Sprintf("%s|%s|%g|%s", master.YjCode, master.PackageForm, master.JanPackInnerQty, units.ResolveName(master.YjUnitName)) //
 		packageStockTotalsYj[packageKey] += yjQty                                                                                                 //
 	}
-	// ▲▲▲【修正ここまで】▲▲▲
 
 	// ▼▼▼【ここから修正】2. deadStockData (明細) を基準に transaction_records(flag=0) を挿入 ▼▼▼
 	// (JSが0の行も送信するようになったため、0の履歴も保存される)

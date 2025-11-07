@@ -24,7 +24,6 @@ func signedYjQty(flag int, yjQty float64) float64 { //
 		return -yjQty
 	default: // 棚卸(0), その他
 		return 0
-		// ▲▲▲【修正ここまで】▲▲▲
 	}
 }
 
@@ -79,7 +78,6 @@ func GetStockLedger(conn *sqlx.DB, filters model.AggregationFilters) ([]model.St
 		for _, m := range mastersInYjGroup { //
 			// ▼▼▼【修正】units.ResolveName を使ってキーを生成 ▼▼▼
 			key := fmt.Sprintf("%s|%s|%g|%s", m.YjCode, m.PackageForm, m.JanPackInnerQty, units.ResolveName(m.YjUnitName)) // [cite: 780]
-			// ▲▲▲【修正ここまで】▲▲▲
 			mastersByPackageKey[key] = append(mastersByPackageKey[key], m)
 		}
 		var allPackageLedgers []model.StockLedgerPackageGroup
@@ -111,7 +109,6 @@ func GetStockLedger(conn *sqlx.DB, filters model.AggregationFilters) ([]model.St
 					if t.TransactionDate > stockStartDate && t.TransactionDate <= filters.EndDate { //
 						netChangeAfterStockDate += signedYjQty(t.Flag, t.YjQuantity) //
 					}
-					// ▲▲▲【修正ここまで】▲▲▲
 				}
 			}
 
@@ -139,8 +136,6 @@ func GetStockLedger(conn *sqlx.DB, filters model.AggregationFilters) ([]model.St
 
 			// 期首在庫 = 現在の理論在庫 - 期間内の増減
 			periodStartingBalance := currentTheoreticalStock - netChangeInPeriod //
-
-			// ▲▲▲【修正ここまで】在庫起点の計算 ▲▲▲
 
 			// ▼▼▼【ここから修正】台帳表示ロジック (期首在庫を起点にする) ▼▼▼
 			var transactionsInPeriod []model.LedgerTransaction
@@ -184,7 +179,6 @@ func GetStockLedger(conn *sqlx.DB, filters model.AggregationFilters) ([]model.St
 			if inventorySum, ok := periodInventorySums[lastProcessedDate]; ok { // [cite: 785]
 				runningBalance = inventorySum //
 			}
-			// ▲▲▲【修正ここまで】台帳表示ロジック ▲▲▲
 
 			pkg := model.StockLedgerPackageGroup{
 				PackageKey:      key,
@@ -233,8 +227,6 @@ func GetStockLedger(conn *sqlx.DB, filters model.AggregationFilters) ([]model.St
 	})
 	return result, nil
 }
-
-// ▲▲▲【修正ここまで】▲▲▲
 
 // ▼▼▼【ここから修正】GetFilteredMastersAndYjCodes の kanaName フィルタロジックを変更 ▼▼▼
 func GetFilteredMastersAndYjCodes(conn *sqlx.DB, filters model.AggregationFilters) (map[string][]*model.ProductMaster, []string, error) {
@@ -296,8 +288,6 @@ func GetFilteredMastersAndYjCodes(conn *sqlx.DB, filters model.AggregationFilter
 
 	return mastersByYjCode, yjCodes, nil
 }
-
-// ▲▲▲【修正ここまで】▲▲▲
 
 // ... (getAllProductCodesForYjCodes [cite: 790-791] は変更なし) ...
 func getAllProductCodesForYjCodes(conn *sqlx.DB, yjCodes []string) ([]string, error) { //

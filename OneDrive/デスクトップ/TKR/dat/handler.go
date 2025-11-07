@@ -46,9 +46,6 @@ func UploadDatHandler(db *sqlx.DB) http.HandlerFunc {
 			log.Printf("Processing file: %s", fileHeader.Filename)
 			processedFiles = append(processedFiles, fileHeader.Filename)
 			fileResult := map[string]interface{}{"filename": fileHeader.Filename}
-			// ▼▼▼【削除】使用しない変数を削除 ▼▼▼
-			// var currentFileTransactions []model.TransactionRecord //
-			// ▲▲▲【削除ここまで】▲▲▲
 			file, openErr := fileHeader.Open()
 			if openErr != nil {
 				log.Printf("Failed to open uploaded file %s: %v", fileHeader.Filename, openErr)
@@ -129,7 +126,6 @@ func ProcessDatRecords(tx *sqlx.Tx, parsedRecords []model.DatRecord) ([]model.Tr
 				// ▼▼▼【ここを修正】合成キー(999...)を生成せず、元のキー(0x13)をそのまま使う ▼▼▼
 				key = rec.JanCode // ( "0000000000000" または "" が key になる)
 				log.Printf("No master found by kana_name_short for '%s', using original key: %s", rec.ProductName, key)
-				// ▲▲▲【修正ここまで】▲▲▲
 			}
 		}
 
@@ -158,13 +154,11 @@ func ProcessDatRecords(tx *sqlx.Tx, parsedRecords []model.DatRecord) ([]model.Tr
 		// 2. YjQuantity は (DAT数量 * JAN包装内入数) で計算
 		// (もし JanPackInnerQty が 0 なら YjQuantity も 0 になるが、それはマスタ設定の問題)
 		transaction.YjQuantity = rec.DatQuantity * master.JanPackInnerQty
-		// ▲▲▲【修正ここまで】▲▲▲
 
 		if transaction.UnitPrice == 0 {
 			transaction.UnitPrice = master.NhiPrice
 			// ▼▼▼【ここを修正】金額計算も YjQuantity を基準にする ▼▼▼
 			transaction.Subtotal = transaction.YjQuantity * transaction.UnitPrice
-			// ▲▲▲【修正ここまで】▲▲▲
 		}
 
 		mappers.MapMasterToTransaction(&transaction, master)

@@ -103,7 +103,6 @@ func GetInventoryDataHandler(conn *sqlx.DB) http.HandlerFunc {
 				LotNumber:        tx.LotNumber,
 			}
 		}
-		// ▲▲▲【修正ここまで】▲▲▲
 
 		// 6. レスポンスを構築
 		response := mappers.ResponseDataView{

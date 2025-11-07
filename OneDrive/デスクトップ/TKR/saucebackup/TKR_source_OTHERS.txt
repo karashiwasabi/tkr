@@ -25,7 +25,6 @@ func signedYjQty(flag int, yjQty float64) float64 { //
 		return -yjQty
 	default: // 棚卸(0), その他
 		return 0
-		// ▲▲▲【修正ここまで】▲▲▲
 	}
 }
 
@@ -80,7 +79,6 @@ func GetStockLedger(conn *sqlx.DB, filters model.AggregationFilters) ([]model.St
 		for _, m := range mastersInYjGroup { //
 			// ▼▼▼【修正】units.ResolveName を使ってキーを生成 ▼▼▼
 			key := fmt.Sprintf("%s|%s|%g|%s", m.YjCode, m.PackageForm, m.JanPackInnerQty, units.ResolveName(m.YjUnitName)) // [cite: 780]
-			// ▲▲▲【修正ここまで】▲▲▲
 			mastersByPackageKey[key] = append(mastersByPackageKey[key], m)
 		}
 		var allPackageLedgers []model.StockLedgerPackageGroup
@@ -112,7 +110,6 @@ func GetStockLedger(conn *sqlx.DB, filters model.AggregationFilters) ([]model.St
 					if t.TransactionDate > stockStartDate && t.TransactionDate <= filters.EndDate { //
 						netChangeAfterStockDate += signedYjQty(t.Flag, t.YjQuantity) //
 					}
-					// ▲▲▲【修正ここまで】▲▲▲
 				}
 			}
 
@@ -140,8 +137,6 @@ func GetStockLedger(conn *sqlx.DB, filters model.AggregationFilters) ([]model.St
 
 			// 期首在庫 = 現在の理論在庫 - 期間内の増減
 			periodStartingBalance := currentTheoreticalStock - netChangeInPeriod //
-
-			// ▲▲▲【修正ここまで】在庫起点の計算 ▲▲▲
 
 			// ▼▼▼【ここから修正】台帳表示ロジック (期首在庫を起点にする) ▼▼▼
 			var transactionsInPeriod []model.LedgerTransaction
@@ -185,7 +180,6 @@ func GetStockLedger(conn *sqlx.DB, filters model.AggregationFilters) ([]model.St
 			if inventorySum, ok := periodInventorySums[lastProcessedDate]; ok { // [cite: 785]
 				runningBalance = inventorySum //
 			}
-			// ▲▲▲【修正ここまで】台帳表示ロジック ▲▲▲
 
 			pkg := model.StockLedgerPackageGroup{
 				PackageKey:      key,
@@ -234,8 +228,6 @@ func GetStockLedger(conn *sqlx.DB, filters model.AggregationFilters) ([]model.St
 	})
 	return result, nil
 }
-
-// ▲▲▲【修正ここまで】▲▲▲
 
 // ▼▼▼【ここから修正】GetFilteredMastersAndYjCodes の kanaName フィルタロジックを変更 ▼▼▼
 func GetFilteredMastersAndYjCodes(conn *sqlx.DB, filters model.AggregationFilters) (map[string][]*model.ProductMaster, []string, error) {
@@ -297,8 +289,6 @@ func GetFilteredMastersAndYjCodes(conn *sqlx.DB, filters model.AggregationFilter
 
 	return mastersByYjCode, yjCodes, nil
 }
-
-// ▲▲▲【修正ここまで】▲▲▲
 
 // ... (getAllProductCodesForYjCodes [cite: 790-791] は変更なし) ...
 func getAllProductCodesForYjCodes(conn *sqlx.DB, yjCodes []string) ([]string, error) { //
@@ -546,7 +536,6 @@ func LoadConfig() (Config, error) {
 			return Config{
 				CalculationPeriodDays: 90,
 			}, nil
-			// ▲▲▲【修正ここまで】▲▲▲
 		}
 		return Config{}, err
 	}
@@ -644,9 +633,6 @@ func UploadDatHandler(db *sqlx.DB) http.HandlerFunc {
 			log.Printf("Processing file: %s", fileHeader.Filename)
 			processedFiles = append(processedFiles, fileHeader.Filename)
 			fileResult := map[string]interface{}{"filename": fileHeader.Filename}
-			// ▼▼▼【削除】使用しない変数を削除 ▼▼▼
-			// var currentFileTransactions []model.TransactionRecord //
-			// ▲▲▲【削除ここまで】▲▲▲
 			file, openErr := fileHeader.Open()
 			if openErr != nil {
 				log.Printf("Failed to open uploaded file %s: %v", fileHeader.Filename, openErr)
@@ -727,7 +713,6 @@ func ProcessDatRecords(tx *sqlx.Tx, parsedRecords []model.DatRecord) ([]model.Tr
 				// ▼▼▼【ここを修正】合成キー(999...)を生成せず、元のキー(0x13)をそのまま使う ▼▼▼
 				key = rec.JanCode // ( "0000000000000" または "" が key になる)
 				log.Printf("No master found by kana_name_short for '%s', using original key: %s", rec.ProductName, key)
-				// ▲▲▲【修正ここまで】▲▲▲
 			}
 		}
 
@@ -756,13 +741,11 @@ func ProcessDatRecords(tx *sqlx.Tx, parsedRecords []model.DatRecord) ([]model.Tr
 		// 2. YjQuantity は (DAT数量 * JAN包装内入数) で計算
 		// (もし JanPackInnerQty が 0 なら YjQuantity も 0 になるが、それはマスタ設定の問題)
 		transaction.YjQuantity = rec.DatQuantity * master.JanPackInnerQty
-		// ▲▲▲【修正ここまで】▲▲▲
 
 		if transaction.UnitPrice == 0 {
 			transaction.UnitPrice = master.NhiPrice
 			// ▼▼▼【ここを修正】金額計算も YjQuantity を基準にする ▼▼▼
 			transaction.Subtotal = transaction.YjQuantity * transaction.UnitPrice
-			// ▲▲▲【修正ここまで】▲▲▲
 		}
 
 		mappers.MapMasterToTransaction(&transaction, master)
@@ -1041,7 +1024,6 @@ func GetDeadStockList(db *sqlx.DB, startDate, endDate string) ([]model.DeadStock
 				  )
 				ORDER BY T.expiry_date, T.lot_number
 			`, item.YjCode, item.YjCode)
-			// ▲▲▲【修正ここまで】▲▲▲
 
 			if err != nil {
 				// 明細取得に失敗してもエラーにせず、リストは返す
@@ -1245,11 +1227,9 @@ func SaveGuidedInventoryData(tx *sqlx.Tx, date string, yjCode string, allPackagi
 
 	newSeq := lastSeq + 1
 	receiptNumber := fmt.Sprintf("%s%05d", prefix, newSeq) // 14桁 (ADJ + 6 + 5)
-	// ▲▲▲【修正ここまで】▲▲▲
 
 	// ▼▼▼【削除】productCodesWithInventory (dead_stock_list 用) は不要 ▼▼▼
 	// var productCodesWithInventory []string
-	// ▲▲▲【削除ここまで】▲▲▲
 
 	// ▼▼▼【ここから修正】packageStockTotalsYj（在庫起点用）の集計を deadStockData から inventoryData（合計マップ）基準に変更 ▼▼▼
 	packageStockTotalsYj := make(map[string]float64) //
@@ -1266,7 +1246,6 @@ func SaveGuidedInventoryData(tx *sqlx.Tx, date string, yjCode string, allPackagi
 		packageKey := fmt.Sprintf("%s|%s|%g|%s", master.YjCode, master.PackageForm, master.JanPackInnerQty, units.ResolveName(master.YjUnitName)) //
 		packageStockTotalsYj[packageKey] += yjQty                                                                                                 //
 	}
-	// ▲▲▲【修正ここまで】▲▲▲
 
 	// ▼▼▼【ここから修正】2. deadStockData (明細) を基準に transaction_records(flag=0) を挿入 ▼▼▼
 	// (JSが0の行も送信するようになったため、0の履歴も保存される)
@@ -3080,7 +3059,6 @@ func GetInventoryDataHandler(conn *sqlx.DB) http.HandlerFunc {
 				LotNumber:        tx.LotNumber,
 			}
 		}
-		// ▲▲▲【修正ここまで】▲▲▲
 
 		// 6. レスポンスを構築
 		response := mappers.ResponseDataView{
@@ -3753,6 +3731,33 @@ func UpdateMasterHandler(db *sqlx.DB) http.HandlerFunc {
 	}
 }
 
+func SearchJCSHMSHandler(db *sqlx.DB) http.HandlerFunc {
+    return func(w http.ResponseWriter, r *http.Request) {
+        query := r.URL.Query().Get("q")
+
+        // 空のクエリの場合は空のリストを返す
+        if query == "" {
+            w.Header().Set("Content-Type", "application/json")
+            json.NewEncoder(w).Encode([]model.JcshmsInfo{})
+            return
+        }
+
+        // GetFilteredJcshmsInfo を使って検索
+        // usageClassは空文字、kanaNameとgenericNameに同じクエリ文字列を渡してOR検索のように振る舞わせる
+        results, err := database.GetFilteredJcshmsInfo(db, "", query, query)
+        if err != nil {
+            log.Printf("Error searching JCSHMS: %v", err)
+            http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+            return
+        }
+
+        w.Header().Set("Content-Type", "application/json")
+        if err := json.NewEncoder(w).Encode(results); err != nil {
+            log.Printf("Error encoding JCSHMS search results: %v", err)
+        }
+    }
+}
+
 
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\mastermanager\manager.go -----
 // C:\Users\wasab\OneDrive\デスクトップ\TKR\mastermanager\manager.go
@@ -3777,6 +3782,11 @@ var yjCodeRegex = regexp.MustCompile(`^[0-9A-Z]{11,12}$`)
 // JANコードの判定は13桁の数字
 var janCodeRegex = regexp.MustCompile(`^[0-9]{13}$`)
 
+// ▼▼▼【ここに追加】GS1コード（14桁）の正規表現 ▼▼▼
+var gs1CodeRegex = regexp.MustCompile(`^[0-9]{14}$`)
+
+// ▲▲▲【追加ここまで】▲▲▲
+
 // ▼▼▼【ここに追加】MA2J形式の正規表現 ▼▼▼
 var ma2jCodeRegex = regexp.MustCompile(`^MA2J[0-9]{9}$`)
 
@@ -3792,22 +3802,29 @@ func FindOrCreateMaster(tx *sqlx.Tx, productCodeOrKey string, productName string
 
 	isJANKey := janCodeRegex.MatchString(productCodeOrKey)
 	isYJKey := yjCodeRegex.MatchString(productCodeOrKey)
-	// ▼▼▼【ここに追加】MA2J形式のチェック ▼▼▼
-	isMA2JKey := ma2jCodeRegex.MatchString(productCodeOrKey)
+	// ▼▼▼【ここに追加】GS1形式のチェック ▼▼▼
+	isGS1Key := gs1CodeRegex.MatchString(productCodeOrKey)
 	// ▲▲▲【追加ここまで】▲▲▲
+	isMA2JKey := ma2jCodeRegex.MatchString(productCodeOrKey)
 
-	// 1. DBで product_master を検索 (WASABIのロジック: YJコードを優先的に検索)
+	// 1. DBで product_master を検索
 	if isYJKey {
 		// YJコードなら yj_code カラムで検索
 		query := "SELECT * FROM product_master WHERE yj_code = ?"
 		err = tx.Get(&existingMaster, query, productCodeOrKey)
 		log.Printf("Searching master by YJ Code: %s", productCodeOrKey)
-	} else if isJANKey ||
-		isMA2JKey { // ▼▼▼【修正】MA2J も product_code で検索 ▼▼▼
-		// YJでヒットせず、JANなら product_code カラムで検索
+		// ▼▼▼【ここから修正】GS1Key も検索対象に追加 ▼▼▼
+	} else if isJANKey || isMA2JKey {
+		// JANまたはMA2Jなら product_code カラムで検索
 		query := "SELECT * FROM product_master WHERE product_code = ?"
 		err = tx.Get(&existingMaster, query, productCodeOrKey)
 		log.Printf("Searching master by JAN/MA2J Code (Product Code): %s", productCodeOrKey)
+	} else if isGS1Key {
+		// GS1なら gs1_code カラムで検索
+		query := "SELECT * FROM product_master WHERE gs1_code = ?"
+		err = tx.Get(&existingMaster, query, productCodeOrKey)
+		log.Printf("Searching master by GS1 Code (gs1_code): %s", productCodeOrKey)
+		// ▲▲▲【修正ここまで】▲▲▲
 	} else {
 		// どちらでもない場合（合成キーなど）は product_code で検索
 		query := "SELECT * FROM product_master WHERE product_code = ?"
@@ -3828,40 +3845,59 @@ func FindOrCreateMaster(tx *sqlx.Tx, productCodeOrKey string, productName string
 	// --- DB には見つからなかった場合の処理 (作成ロジック) ---
 	log.Printf("Product master not found in DB for key: %s. Attempting to create...", productCodeOrKey)
 
-	// 2. JCSHMS から作成を試みる (JANコードの場合のみ)
-	// ▼▼▼【修正】0x13 または "" の場合は JCSHMS を検索しない ▼▼▼
-	if isJANKey && !strings.HasPrefix(productCodeOrKey, "999") && productCodeOrKey != "0000000000000" && productCodeOrKey != "" {
+	// 2. JCSHMS から作成を試みる
+	// ▼▼▼【ここから修正】isJANKey または isGS1Key の場合に JCSHMS を検索 ▼▼▼
+	if (isJANKey || isGS1Key) && !strings.HasPrefix(productCodeOrKey, "999") && productCodeOrKey != "0000000000000" && productCodeOrKey != "" {
+
+		var jcshmsInfo *model.JcshmsInfo
+		var jcshmsErr error
+
+		if isJANKey {
+			// JANキーの場合
+			log.Printf("Key %s is JAN format. Searching JCSHMS by JAN...", productCodeOrKey)
+			jcshmsInfo, jcshmsErr = database.GetJcshmsInfoByJan(tx, productCodeOrKey)
+		} else {
+			// GS1キーの場合
+			log.Printf("Key %s is GS1 format. Searching JCSHMS by GS1...", productCodeOrKey)
+			jcshmsInfo, jcshmsErr = database.GetJcshmsInfoByGs1Code(tx, productCodeOrKey)
+		}
 		// ▲▲▲【修正ここまで】▲▲▲
-		jcshmsInfo, jcshmsErr := database.GetJcshmsInfoByJan(tx, productCodeOrKey)
+
 		if jcshmsErr != nil && jcshmsErr != sql.ErrNoRows {
-			return nil, fmt.Errorf("failed to query jcshms/jancode for JAN %s: %w", productCodeOrKey, jcshmsErr)
+			return nil, fmt.Errorf("failed to query jcshms/jancode for key %s: %w", productCodeOrKey, jcshmsErr)
 		}
 
 		if jcshmsInfo != nil {
-			log.Printf("Found info in JCSHMS for JAN: %s. Creating master...", productCodeOrKey)
+			log.Printf("Found info in JCSHMS for key: %s. Creating master...", productCodeOrKey)
 			input := JcshmsToProductMasterInput(jcshmsInfo)
+
+			// ▼▼▼【ここから追加】キーがGS1の場合、GS1コードをinputにセットする ▼▼▼
+			if isGS1Key && input.Gs1Code == "" {
+				input.Gs1Code = productCodeOrKey
+			}
+			// ▲▲▲【追加ここまで】▲▲▲
 
 			// JCSHMS由来でもYJコードがない場合、MA2Yで採番
 			if input.YjCode == "" {
 				newYj, seqErr := database.NextSequenceInTx(tx, "MA2Y", "MA2Y", 8)
 				if seqErr != nil {
-					return nil, fmt.Errorf("failed to get next MA2Y sequence for JCSHMS master (JAN: %s): %w", productCodeOrKey, seqErr)
+					return nil, fmt.Errorf("failed to get next MA2Y sequence for JCSHMS master (Key: %s): %w", productCodeOrKey, seqErr)
 				}
 				input.YjCode = newYj
-				log.Printf("Generated new YJ code %s for JAN %s from JCSHMS (original was empty)", newYj, productCodeOrKey)
+				log.Printf("Generated new YJ code %s for Key %s from JCSHMS (original was empty)", newYj, productCodeOrKey)
 			}
 
 			newMaster, upsertErr := UpsertProductMasterSqlx(tx, input)
 			if upsertErr != nil {
-				return nil, fmt.Errorf("failed to upsert master from JCSHMS for JAN %s: %w", productCodeOrKey, upsertErr)
+				return nil, fmt.Errorf("failed to upsert master from JCSHMS for Key %s: %w", productCodeOrKey, upsertErr)
 			}
-			log.Printf("Successfully created master from JCSHMS for JAN: %s (YJ: %s)", productCodeOrKey, newMaster.YjCode)
+			log.Printf("Successfully created master from JCSHMS for Key: %s (YJ: %s)", productCodeOrKey, newMaster.YjCode)
 			return newMaster, nil
 		}
 	}
 
-	// 3. JCSHMS にもない場合、またはJANでない場合は仮マスターを作成
-	log.Printf("Info not found in JCSHMS for key: %s (or it was not a valid JAN). Creating provisional master...", productCodeOrKey)
+	// 3. JCSHMS にもない場合、またはJAN/GS1でない場合は仮マスターを作成
+	log.Printf("Info not found in JCSHMS for key: %s (or it was not a valid JAN/GS1). Creating provisional master...", productCodeOrKey)
 
 	// 仮マスターの YJコードを決定
 	provisionalYjCode := productCodeOrKey
@@ -3874,17 +3910,17 @@ func FindOrCreateMaster(tx *sqlx.Tx, productCodeOrKey string, productName string
 		provisionalYjCode = newYj
 	}
 
-	// ▼▼▼【ここから修正】仮 ProductCode の生成ロジック変更 (0x13 と "" も MA2J 採番対象に) ▼▼▼
+	// ▼▼▼【ここから修正】仮 ProductCode の生成ロジック変更 (GS1形式も除外) ▼▼▼
 	provisionalProductCode := productCodeOrKey
-	// JAN形式でない、または 0x13、または "" の場合は MA2J を採番する
-	if !isJANKey || productCodeOrKey == "0000000000000" || productCodeOrKey == "" {
+	// JAN形式でもGS1形式でもない、または 0x13、または "" の場合は MA2J を採番する
+	if (!isJANKey && !isGS1Key) || productCodeOrKey == "0000000000000" || productCodeOrKey == "" {
 		// MA2Jシーケンスから新しい仮コードを採番 (13桁: MA2J + 9桁)
 		newPJCode, seqErr := database.NextSequenceInTx(tx, "MA2J", "MA2J", 9)
 		if seqErr != nil {
 			return nil, fmt.Errorf("failed to get next MA2J sequence for provisional master (Key: %s): %w", productCodeOrKey, seqErr)
 		}
 		provisionalProductCode = newPJCode
-		log.Printf("Original key was not JAN/MA2J or was 0x13 or empty, using synthetic Product Code: %s", provisionalProductCode)
+		log.Printf("Original key was not JAN/GS1 or was 0x13 or empty, using synthetic Product Code: %s", provisionalProductCode)
 	}
 	// ▲▲▲【修正ここまで】▲▲▲
 
@@ -3895,6 +3931,12 @@ func FindOrCreateMaster(tx *sqlx.Tx, productCodeOrKey string, productName string
 		Origin:              "PROVISIONAL",
 		UsageClassification: "他",
 	}
+
+	// ▼▼▼【ここから追加】キーがGS1の場合、GS1コードも仮マスターにセットする ▼▼▼
+	if isGS1Key {
+		provisionalInput.Gs1Code = productCodeOrKey
+	}
+	// ▲▲▲【追加ここまで】▲▲▲
 
 	// ▼▼▼【ここから修正】DATの0埋JAN(0x13)または空JAN("")の場合、KanaNameShortにも製品名をセット ▼▼▼
 	if productCodeOrKey == "0000000000000" || productCodeOrKey == "" {
@@ -3915,7 +3957,6 @@ func FindOrCreateMaster(tx *sqlx.Tx, productCodeOrKey string, productName string
 
 // JcshmsToProductMasterInput は JCSHMS の情報を model.ProductMasterInput に変換します。
 func JcshmsToProductMasterInput(jcshms *model.JcshmsInfo) model.ProductMasterInput {
-	// ... (変更なし) ...
 	var unitNhiPrice float64
 	// WASABI: mappers/jcshms_to_master.go のロジック
 	if jcshms.NhiPriceFactor > 0 {
@@ -3968,7 +4009,7 @@ func JcshmsToProductMasterInput(jcshms *model.JcshmsInfo) model.ProductMasterInp
 
 // UpsertProductMasterSqlx は product_master テーブルにデータを挿入または更新します。
 func UpsertProductMasterSqlx(tx *sqlx.Tx, input model.ProductMasterInput) (*model.ProductMaster, error) {
-	// ... (変更なし) ...
+	// ▼▼▼【ここを修正】 ':flag_deleteri'ous' -> ':flag_deleterious' ▼▼▼
 	query := `
 		INSERT INTO product_master (
 			product_code, yj_code, gs1_code, product_name, kana_name, kana_name_short, generic_name,
@@ -3995,10 +4036,12 @@ func UpsertProductMasterSqlx(tx *sqlx.Tx, input model.ProductMasterInput) (*mode
 			jan_pack_inner_qty=excluded.jan_pack_inner_qty, jan_unit_code=excluded.jan_unit_code, jan_pack_unit_qty=excluded.jan_pack_unit_qty,
 			origin=excluded.origin, nhi_price=excluded.nhi_price, purchase_price=excluded.purchase_price,
 			flag_poison=excluded.flag_poison, flag_deleterious=excluded.flag_deleterious, flag_narcotic=excluded.flag_narcotic,
-			flag_psychotropic=excluded.flag_psychotropic, flag_stimulant=excluded.flag_stimulant, flag_stimulant_raw=excluded.flag_stimulant_raw,
+			flag_psychotropic=excluded.flag_psychotropic, 
+flag_stimulant=excluded.flag_stimulant, flag_stimulant_raw=excluded.flag_stimulant_raw,
 			is_order_stopped=excluded.is_order_stopped, supplier_wholesale=excluded.supplier_wholesale,
 			group_code=excluded.group_code, shelf_number=excluded.shelf_number, category=excluded.category, user_notes=excluded.user_notes
 	`
+	// ▲▲▲【修正ここまで】▲▲▲
 
 	_, err := tx.NamedExec(query, input)
 	if err != nil {
@@ -4056,8 +4099,120 @@ func MasterToInput(m *model.ProductMaster) model.ProductMasterInput {
 // ▲▲▲【追加ここまで】▲▲▲
 
 
------ C:\Users\wasab\OneDrive\デスクトップ\TKR\model\types.go -----
-// C:\Users\wasab\OneDrive\デスクトップ\TKR\model\types.go
+----- C:\Users\wasab\OneDrive\デスクトップ\TKR\model\aggregation_types.go -----
+// C:\Users\wasab\OneDrive\デスクトップ\TKR\model\aggregation_types.go
+package model
+
+// AggregationFilters は集計時のフィルタ条件です。
+type AggregationFilters struct {
+	StartDate    string
+	EndDate      string
+	KanaName     string
+	DrugTypes    []string
+	DosageForm   string
+	Coefficient  float64
+	YjCode       string
+	MovementOnly bool
+	ShelfNumber  string
+	GenericName  string
+}
+
+// StockLedgerYJGroup はYJコード単位の集計グループです。
+type StockLedgerYJGroup struct {
+	YjCode          string                    `json:"yjCode"`
+	ProductName     string                    `json:"productName"`
+	YjUnitName      string                    `json:"yjUnitName"`
+	PackageLedgers  []StockLedgerPackageGroup `json:"packageLedgers"`
+	StartingBalance interface{}               `json:"startingBalance"`
+	NetChange       float64                   `json:"netChange"`
+	EndingBalance   interface{}               `json:"endingBalance"`
+	IsReorderNeeded bool                      `json:"isReorderNeeded"`
+}
+
+// StockLedgerPackageGroup は包装キー単位の集計グループです。
+type StockLedgerPackageGroup struct {
+	PackageKey      string              `json:"packageKey"`
+	JanUnitName     string              `json:"janUnitName"`
+	StartingBalance interface{}         `json:"startingBalance"`
+	Transactions    []LedgerTransaction `json:"transactions"`
+	NetChange       float64             `json:"netChange"`
+	EndingBalance   interface{}         `json:"endingBalance"`
+	Masters         []*ProductMaster    `json:"masters"`
+}
+
+// LedgerTransaction は台帳表示用の取引記録です。
+type LedgerTransaction struct {
+	TransactionRecord
+	RunningBalance float64 `json:"runningBalance"`
+}
+
+
+----- C:\Users\wasab\OneDrive\デスクトップ\TKR\model\domain_types.go -----
+// C:\Users\wasab\OneDrive\デスクトップ\TKR\model\domain_types.go
+package model
+
+type Client struct {
+	ClientCode string `db:"client_code" json:"clientCode"`
+	ClientName string `db:"client_name" json:"clientName"`
+}
+
+type Wholesaler struct {
+	WholesalerCode string `db:"wholesaler_code" json:"wholesalerCode"`
+	WholesalerName string `db:"wholesaler_name" json:"wholesalerName"`
+}
+
+
+----- C:\Users\wasab\OneDrive\デスクトップ\TKR\model\inventory_types.go -----
+// C:\Users\wasab\OneDrive\デスクトップ\TKR\model\inventory_types.go
+package model
+
+// DeadStockRecord はロット・期限・在庫（JAN単位）の記録です。
+type DeadStockRecord struct {
+	ID               int     `json:"id"`
+	ProductCode      string  `json:"productCode"`
+	YjCode           string  `json:"yjCode"`
+	PackageForm      string  `json:"packageForm"`
+	JanPackInnerQty  float64 `json:"janPackInnerQty"`
+	YjUnitName       string  `json:"yjUnitName"`
+	StockQuantityJan float64 `json:"stockQuantityJan"`
+	ExpiryDate       string  `json:"expiryDate"`
+	LotNumber        string  `json:"lotNumber"`
+}
+
+// PackageStock は package_stock テーブルのレコードです。
+type PackageStock struct {
+	PackageKey        string  `db:"package_key"`
+	YjCode            string  `db:"yj_code"`
+	StockQuantityYj   float64 `db:"stock_quantity_yj"`
+	LastInventoryDate string  `db:"last_inventory_date"`
+}
+
+// DeadStockItem は不動在庫リストの表示用構造体です。
+type DeadStockItem struct {
+	PackageKey          string      `db:"package_key" json:"packageKey"`
+	YjCode              string      `db:"yj_code" json:"yjCode"`
+	StockQuantityYj     float64     `db:"stock_quantity_yj" json:"stockQuantityYj"`
+	ProductName         string      `db:"product_name" json:"productName"` // 代表品名
+	PackageSpec         string      `db:"package_spec" json:"packageSpec"` // 代表包装仕様
+	LotDetails          []LotDetail `json:"lotDetails"`                    // 棚卸明細
+	KanaName            string      `db:"kana_name"`
+	UsageClassification string      `db:"usage_classification"`
+}
+
+// LotDetail は棚卸時のロット・期限・JAN数量の明細です。
+type LotDetail struct {
+	JanCode     string  `db:"jan_code" json:"JanCode"`
+	Gs1Code     string  `db:"gs1_code" json:"Gs1Code"`
+	PackageSpec string  `db:"package_spec" json:"PackageSpec"`
+	ExpiryDate  string  `db:"expiry_date" json:"ExpiryDate"`
+	LotNumber   string  `db:"lot_number" json:"LotNumber"`
+	JanQuantity float64 `db:"jan_quantity" json:"JanQuantity"`
+	JanUnitName string  `db:"jan_unit_name" json:"JanUnitName"`
+}
+
+
+----- C:\Users\wasab\OneDrive\デスクトップ\TKR\model\master_types.go -----
+// C:\Users\wasab\OneDrive\デスクトップ\TKR\model\master_types.go
 package model
 
 import "database/sql"
@@ -4163,6 +4318,18 @@ type ProductMasterInput struct {
 	UserNotes           string  `db:"user_notes" json:"userNotes"`
 }
 
+type ProductMasterView struct {
+	ProductMaster
+	FormattedPackageSpec string `json:"formattedPackageSpec"`
+	JanUnitName          string `json:"janUnitName"`
+	IsAdopted            bool   `json:"isAdopted,omitempty"`
+}
+
+
+----- C:\Users\wasab\OneDrive\デスクトップ\TKR\model\transaction_types.go -----
+// C:\Users\wasab\OneDrive\デスクトップ\TKR\model\transaction_types.go
+package model
+
 type DatRecord struct {
 	ClientCode    string
 	Flag          int
@@ -4219,16 +4386,6 @@ type TransactionRecord struct {
 	ProcessFlagMA       string  `db:"process_flag_ma" json:"processFlagMA"`
 }
 
-type Client struct {
-	ClientCode string `db:"client_code" json:"clientCode"`
-	ClientName string `db:"client_name" json:"clientName"`
-}
-
-type Wholesaler struct {
-	WholesalerCode string `db:"wholesaler_code" json:"wholesalerCode"`
-	WholesalerName string `db:"wholesaler_name" json:"wholesalerName"`
-}
-
 type UnifiedInputRecord struct {
 	Date        string
 	YjCode      string
@@ -4238,101 +4395,14 @@ type UnifiedInputRecord struct {
 	YjUnitName  string
 }
 
-type ProductMasterView struct {
-	ProductMaster
-	FormattedPackageSpec string `json:"formattedPackageSpec"`
-	JanUnitName          string `json:"janUnitName"`
-	IsAdopted            bool   `json:"isAdopted,omitempty"`
-}
 
-// AggregationFilters は集計時のフィルタ条件です。
-type AggregationFilters struct {
-	StartDate    string
-	EndDate      string
-	KanaName     string
-	DrugTypes    []string
-	DosageForm   string
-	Coefficient  float64
-	YjCode       string
-	MovementOnly bool
-	ShelfNumber  string
-	GenericName  string
-}
+----- C:\Users\wasab\OneDrive\デスクトップ\TKR\model\types.go -----
+// C:\Users\wasab\OneDrive\デスクトップ\TKR\model\types.go
+package model
 
-// StockLedgerYJGroup はYJコード単位の集計グループです。
-type StockLedgerYJGroup struct {
-	YjCode          string                    `json:"yjCode"`
-	ProductName     string                    `json:"productName"`
-	YjUnitName      string                    `json:"yjUnitName"`
-	PackageLedgers  []StockLedgerPackageGroup `json:"packageLedgers"`
-	StartingBalance interface{}               `json:"startingBalance"`
-	NetChange       float64                   `json:"netChange"`
-	EndingBalance   interface{}               `json:"endingBalance"`
-	IsReorderNeeded bool                      `json:"isReorderNeeded"`
-}
-
-// StockLedgerPackageGroup は包装キー単位の集計グループです。
-type StockLedgerPackageGroup struct {
-	PackageKey      string              `json:"packageKey"`
-	JanUnitName     string              `json:"janUnitName"`
-	StartingBalance interface{}         `json:"startingBalance"`
-	Transactions    []LedgerTransaction `json:"transactions"`
-	NetChange       float64             `json:"netChange"`
-	EndingBalance   interface{}         `json:"endingBalance"`
-	Masters         []*ProductMaster    `json:"masters"`
-}
-
-// LedgerTransaction は台帳表示用の取引記録です。
-type LedgerTransaction struct {
-	TransactionRecord
-	RunningBalance float64 `json:"runningBalance"`
-}
-
-// DeadStockRecord はロット・期限・在庫（JAN単位）の記録です。
-type DeadStockRecord struct {
-	ID               int     `json:"id"`
-	ProductCode      string  `json:"productCode"`
-	YjCode           string  `json:"yjCode"`
-	PackageForm      string  `json:"packageForm"`
-	JanPackInnerQty  float64 `json:"janPackInnerQty"`
-	YjUnitName       string  `json:"yjUnitName"`
-	StockQuantityJan float64 `json:"stockQuantityJan"`
-	ExpiryDate       string  `json:"expiryDate"`
-	LotNumber        string  `json:"lotNumber"`
-}
-
-// PackageStock は package_stock テーブルのレコードです。
-type PackageStock struct {
-	PackageKey        string  `db:"package_key"`
-	YjCode            string  `db:"yj_code"`
-	StockQuantityYj   float64 `db:"stock_quantity_yj"`
-	LastInventoryDate string  `db:"last_inventory_date"`
-}
-
-// DeadStockItem は不動在庫リストの表示用構造体です。
-type DeadStockItem struct {
-	PackageKey          string      `db:"package_key" json:"packageKey"`
-	YjCode              string      `db:"yj_code" json:"yjCode"`
-	StockQuantityYj     float64     `db:"stock_quantity_yj" json:"stockQuantityYj"`
-	ProductName         string      `db:"product_name" json:"productName"` // 代表品名
-	PackageSpec         string      `db:"package_spec" json:"packageSpec"` // 代表包装仕様
-	LotDetails          []LotDetail `json:"lotDetails"`                    // 棚卸明細
-	KanaName            string      `db:"kana_name"`
-	UsageClassification string      `db:"usage_classification"`
-}
-
-// LotDetail は棚卸時のロット・期限・JAN数量の明細です。
-type LotDetail struct {
-	// ▼▼▼【ここから修正】Gs1Code を追加 ▼▼▼
-	JanCode     string  `db:"jan_code" json:"JanCode"`
-	Gs1Code     string  `db:"gs1_code" json:"Gs1Code"`
-	PackageSpec string  `db:"package_spec" json:"PackageSpec"`
-	ExpiryDate  string  `db:"expiry_date" json:"ExpiryDate"`
-	LotNumber   string  `db:"lot_number" json:"LotNumber"`
-	JanQuantity float64 `db:"jan_quantity" json:"JanQuantity"`
-	JanUnitName string  `db:"jan_unit_name" json:"JanUnitName"`
-	// ▲▲▲【修正ここまで】▲▲▲
-}
+// このファイル内の型定義は、機能ごとに
+// master_types.go, transaction_types.go, aggregation_types.go,
+// inventory_types.go, domain_types.go に分割されました。
 
 
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\parsers\dat_parser.go -----
@@ -4632,10 +4702,10 @@ import (
 	"net/http"
 	"sort"
 	"strings"
-	"tkr/barcode"
+	"tkr/barcode" // ▼▼▼【ここに追加】barcode パッケージをインポート ▼▼▼
 	"tkr/database"
 	"tkr/mappers"       // Viewマッパー
-	"tkr/mastermanager" // ▼▼▼【ここに追加】▼▼▼
+	"tkr/mastermanager" //
 	"tkr/model"
 
 	"github.com/jmoiron/sqlx"
@@ -4764,35 +4834,22 @@ func SearchProductsHandler(conn *sqlx.DB) http.HandlerFunc {
 	}
 }
 
-// ▼▼▼【ここから修正】バーコード検索を単一APIに共通化（DB共通関数を使用） ▼▼▼
+// ▼▼▼【ここから修正】バーコード検索を 13桁JAN / 14桁GS1 両対応に修正 ▼▼▼
 func GetProductByBarcodeHandler(conn *sqlx.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		rawBarcode := strings.TrimPrefix(r.URL.Path, "/api/product/by_barcode/")
 		if rawBarcode == "" {
 			http.Error(w, "barcode is required", http.StatusBadRequest)
-
 			return
 		}
 
 		log.Printf("API: Received raw barcode: %s", rawBarcode)
 
-		// 1. バーコードを解析
-		parsed, err := barcode.Parse(rawBarcode)
-		if err != nil {
-			http.Error(w, fmt.Sprintf("バーコード解析エラー: %v", err), http.StatusBadRequest)
-			return
-		}
-		gtin14 := parsed.Gtin14
-		if gtin14 == "" {
-			http.Error(w, "バーコードから製品コード(GTIN)が抽出できません", http.StatusBadRequest)
-			return
-		}
-
-		// 2. まず product_master を検索
-		master, err := database.GetProductMasterByGs1Code(conn, gtin14)
+		// 1. まず product_master を検索 (13桁JAN/14桁GS1自動振り分け)
+		master, err := database.GetProductMasterByBarcode(conn, rawBarcode)
 		if err != nil && !errors.Is(err, sql.ErrNoRows) {
 			// データベース検索で「見つからない」以外のエラーが起きた場合
-			log.Printf("Error searching product_master by GS1 %s: %v", gtin14, err)
+			log.Printf("Error searching product_master by Barcode %s: %v", rawBarcode, err)
 			http.Error(w, "データベースエラーが発生しました", http.StatusInternalServerError)
 			return
 		}
@@ -4808,17 +4865,42 @@ func GetProductByBarcodeHandler(conn *sqlx.DB) http.HandlerFunc {
 
 		// 4. product_master に見つからなかった場合、JCSHMSを検索
 		log.Printf("Product not in product_master, searching JCSHMS...")
-		jcshmsInfo, err := database.GetJcshmsInfoByGs1Code(conn, gtin14)
-		if err != nil {
-			log.Printf("Error searching JCSHMS by GS1 %s: %v", gtin14, err)
+
+		// ▼▼▼【ここから修正】JCSHMS検索も 13桁JAN / 14桁GS1 を振り分ける ▼▼▼
+		var jcshmsInfo *model.JcshmsInfo
+		var jcshmsErr error
+		var gtin14 string // GS1採用時に使用
+
+		if len(rawBarcode) <= 13 {
+			// 13桁以下 (JAN)
+			log.Printf("Barcode %s is JAN format. Searching JCSHMS by JAN...", rawBarcode)
+			jcshmsInfo, jcshmsErr = database.GetJcshmsInfoByJan(conn, rawBarcode)
+		} else {
+			// 14桁以上 (GS1)
+			parsed, parseErr := barcode.Parse(rawBarcode)
+			if parseErr != nil {
+				http.Error(w, fmt.Sprintf("バーコード解析エラー: %v", parseErr), http.StatusBadRequest)
+				return
+			}
+			gtin14 = parsed.Gtin14
+			if gtin14 == "" {
+				http.Error(w, "バーコードから製品コード(GTIN)が抽出できません", http.StatusBadRequest)
+				return
+			}
+			log.Printf("Barcode %s is GS1 format (GTIN: %s). Searching JCSHMS by GS1...", rawBarcode, gtin14)
+			jcshmsInfo, jcshmsErr = database.GetJcshmsInfoByGs1Code(conn, gtin14)
+		}
+		// ▲▲▲【修正ここまで】▲▲▲
+
+		if jcshmsErr != nil {
+			log.Printf("Error searching JCSHMS by Barcode %s: %v", rawBarcode, jcshmsErr)
 			http.Error(w, "JCSHMSマスターの検索中にエラーが発生しました", http.StatusInternalServerError)
 			return
 		}
 
 		// 5. JCSHMS にも見つからなかった場合
-		if jcshmsInfo ==
-			nil {
-			log.Printf("Product not found in JCSHMS for GS1 %s", gtin14)
+		if jcshmsInfo == nil {
+			log.Printf("Product not found in JCSHMS for Barcode %s", rawBarcode)
 			http.Error(w, "どのマスターにも製品が見つかりませんでした", http.StatusNotFound)
 			return
 		}
@@ -4826,10 +4908,14 @@ func GetProductByBarcodeHandler(conn *sqlx.DB) http.HandlerFunc {
 		// 6. JCSHMS に見つかった場合、product_masterに新規作成
 		log.Printf("Found product in JCSHMS: %s. Creating new master...", jcshmsInfo.ProductName)
 
-		// ▼▼▼【ここから修正】mappers.FromJcshmsToProductMaster -> mastermanager.JcshmsToProductMasterInput ▼▼▼
 		input := mastermanager.JcshmsToProductMasterInput(jcshmsInfo)
-		input.Gs1Code = gtin14 // 解析で得たGTIN-14をセット
-		// ▲▲▲【修正ここまで】▲▲▲
+
+		// ▼▼▼【ここから追加】14桁GS1の場合、Gs1Codeをセットする ▼▼▼
+		if gtin14 != "" && input.Gs1Code == "" {
+			input.Gs1Code = gtin14
+			log.Printf("Setting Gs1Code from parsed barcode: %s", gtin14)
+		}
+		// ▲▲▲【追加ここまで】▲▲▲
 
 		tx, err := conn.Beginx()
 		if err != nil {
@@ -4839,14 +4925,12 @@ func GetProductByBarcodeHandler(conn *sqlx.DB) http.HandlerFunc {
 		}
 		defer tx.Rollback() // In case of panic or error
 
-		// ▼▼▼【ここから修正】database.InsertProductMaster -> mastermanager.UpsertProductMasterSqlx ▼▼▼
-		newMaster, err := mastermanager.UpsertProductMasterSqlx(tx, input) // Upsert を呼び出し、 *model.ProductMaster を受け取る
+		newMaster, err := mastermanager.UpsertProductMasterSqlx(tx, input)
 		if err != nil {
 			log.Printf("Failed to insert new master from JCSHMS: %v", err)
 			http.Error(w, "マスターの新規作成に失敗しました", http.StatusInternalServerError)
 			return
 		}
-		// ▲▲▲【修正ここまで】▲▲▲
 
 		if err := tx.Commit(); err != nil {
 			log.Printf("Failed to commit transaction to create master: %v", err)
@@ -4860,6 +4944,8 @@ func GetProductByBarcodeHandler(conn *sqlx.DB) http.HandlerFunc {
 		json.NewEncoder(w).Encode(masterView)
 	}
 }
+
+// ▲▲▲【修正ここまで】▲▲▲
 
 func AdoptMasterHandler(conn *sqlx.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -5616,8 +5702,6 @@ func validateFolderPath(path string) error {
 	return nil
 }
 
-// ▲▲▲【修正ここまで】▲▲▲
-
 
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\main.go -----
 // C:\Users\wasab\OneDrive\デスクトップ\TKR\main.go
@@ -5846,6 +5930,7 @@ func main() {
 	mux.HandleFunc("/api/transaction/delete/", inout.DeleteTransactionHandler(dbConn))
 	mux.HandleFunc("/api/masters", masteredit.ListMastersHandler(dbConn))
 	mux.HandleFunc("/api/masters/update", masteredit.UpdateMasterHandler(dbConn))
+	mux.HandleFunc("/api/search/jcshms", masteredit.SearchJCSHMSHandler(dbConn))
 
 	mux.HandleFunc("/api/inventory/adjust/data", inventoryadjustment.GetInventoryDataHandler(dbConn))
 	mux.HandleFunc("/api/inventory/adjust/save", inventoryadjustment.SaveInventoryDataHandler(dbConn))

@@ -100,7 +100,6 @@ async function onSelectProductClick() {
     const kanaInput = document.getElementById('ia_search-kana');
     const genericInput = document.getElementById('ia_search-generic');
     const shelfInput = document.getElementById('ia_search-shelf');
-    // ▲▲▲【修正ここまで】▲▲▲
     const selectedUsageRadio = document.querySelector('input[name="ia_usage_class"]:checked');
     
     const kanaName = kanaInput ? hiraganaToKatakana(kanaInput.value.trim()) : '';
@@ -179,7 +178,6 @@ async function loadAndRenderDetails(yjCode) {
                 updateFinalInventoryTotal(productCode);
             }
         });
-        // ▲▲▲【追加ここまで】▲▲▲
 
     } catch (err) {
         outputContainer.innerHTML = `<p style="color:red;">エラー: ${err.message}</p>`;
@@ -236,13 +234,11 @@ function reverseCalculateStock() {
         if (calculationErrorByProduct[productCode]) {
             // ▼▼▼【修正】style 属性を削除 ▼▼▼
             if (displaySpan) displaySpan.innerHTML = `<span class="status-error">${calculationErrorByProduct[productCode]}</span>`;
-            // ▲▲▲【修正ここまで】▲▲▲
          
             if (finalInput) finalInput.value = '';
         
             // ▼▼▼【修正】updateFinalInventoryTotal を呼び出す（readonlyでも実行） ▼▼▼
             updateFinalInventoryTotal(productCode);
-            // ▲▲▲【修正ここまで】▲▲▲
             return;
         }
         const physicalStockToday = parseFloat(input.value) || 0;
@@ -257,7 +253,6 @@ function reverseCalculateStock() {
             finalInput.value = calculatedPreviousDayStock.toFixed(2);
         }
         */
-        // ▲▲▲【削除ここまで】▲▲▲
     });
 }
 
@@ -350,7 +345,6 @@ i = 0; i < inventoryRows.length; i += 2) {
  
 lotNumber: lot // 空欄でもOK
             });
-            // ▲▲▲【修正ここまで】▲▲▲
         }
         inventoryData[productCode] = totalInputQuantity;
     });
@@ -363,7 +357,6 @@ lotNumber: lot // 空欄でもOK
 
     // ▼▼▼【ここから追加】デバッグログ ▼▼▼
     console.log("Saving inventory data. Payload:", payload);
-    // ▲▲▲【追加ここまで】▲▲▲
 
     window.showLoading();
     try {

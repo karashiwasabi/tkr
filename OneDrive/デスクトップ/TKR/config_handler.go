@@ -72,5 +72,3 @@ func validateFolderPath(path string) error {
 	}
 	return nil
 }
-
-// ▲▲▲【修正ここまで】▲▲▲

@@ -1,4 +1,3 @@
-// C:\Users\wasab\OneDrive\デスクトップ\TKR\main.go
 package main
 
 import (
@@ -31,14 +30,12 @@ import (
 )
 
 var (
-	// ... (変更なし) ...
 	appTemplate   *template.Template
 	viewsFS       fs.FS
 	searchFormsFS fs.FS
 )
 
 func main() {
-	// ... (変更なし) ...
 	log.Println("Connecting to database...")
 	dbConn, err := sqlx.Open("sqlite3", "./tkr.db?_journal_mode=WAL&_busy_timeout=5000")
 	if err != nil {
@@ -109,7 +106,6 @@ func main() {
 		http.FileServer(http.Dir("./static"))))
 
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		// ... (変更なし) ...
 		if r.URL.Path != "/" {
 			http.NotFound(w, r)
 			return
@@ -186,7 +182,6 @@ func main() {
 	})
 
 	mux.HandleFunc("/api/jcshms/", func(w http.ResponseWriter, r *http.Request) {
-		// ... (変更なし) ...
 		janCode := strings.TrimPrefix(r.URL.Path, "/api/jcshms/")
 		if janCode == "" {
 			http.Error(w, "JAN code is required", http.StatusBadRequest)
@@ -217,7 +212,6 @@ func main() {
 	mux.HandleFunc("/api/dat/search", dat.SearchDatHandler(dbConn))
 	mux.HandleFunc("/api/usage/upload", usage.UploadUsageHandler(dbConn))
 
-	// In-Out (入出庫) Handlers
 	mux.HandleFunc("/api/receipts/by_date", inout.GetReceiptNumbersByDateHandler(dbConn))
 	mux.HandleFunc("/api/transaction/", inout.GetTransactionsByReceiptNumberHandler(dbConn))
 	mux.HandleFunc("/api/inout/save", inout.SaveInOutHandler(dbConn))
@@ -233,7 +227,6 @@ func main() {
 
 	mux.HandleFunc("/api/product/by_barcode/", product.GetProductByBarcodeHandler(dbConn))
 	mux.HandleFunc("/api/master/by_code/", func(w http.ResponseWriter, r *http.Request) {
-		// ... (変更なし) ...
 		janCode := strings.TrimPrefix(r.URL.Path, "/api/master/by_code/")
 		if janCode == "" {
 			http.Error(w, "JAN code is required", http.StatusBadRequest)
@@ -254,7 +247,6 @@ func main() {
 	mux.HandleFunc("/api/wholesalers/delete/", DeleteWholesalerHandler(dbConn))
 
 	mux.HandleFunc("/api/clients", func(w http.ResponseWriter, r *http.Request) {
-		// ... (変更なし) ...
 		clients, err := database.GetAllClients(dbConn)
 		if err != nil {
 			http.Error(w, "Failed to get clients", http.StatusInternalServerError)
@@ -265,7 +257,6 @@ func main() {
 	})
 
 	mux.HandleFunc("/api/config", func(w http.ResponseWriter, r *http.Request) {
-		// ... (変更なし) ...
 		switch r.Method {
 		case http.MethodGet:
 			GetConfigHandler()(w, r)
@@ -282,9 +273,7 @@ func main() {
 
 	mux.HandleFunc("/api/deadstock/list", deadstock.ListDeadStockHandler(dbConn))
 	mux.HandleFunc("/api/deadstock/upload", deadstock.UploadDeadStockCSVHandler(dbConn))
-	// ▼▼▼【ここに追加】不動在庫CSVエクスポートAPI ▼▼▼
 	mux.HandleFunc("/api/deadstock/export", deadstock.ExportDeadStockHandler(dbConn))
-	// ▲▲▲【追加ここまで】▲▲▲
 
 	port := ":8080"
 	log.Printf("Starting server on http://localhost%s", port)
@@ -297,7 +286,6 @@ func main() {
 }
 
 func openBrowser(url string) {
-	// ... (変更なし) ...
 	var err error
 	switch runtime.GOOS {
 	case "windows":

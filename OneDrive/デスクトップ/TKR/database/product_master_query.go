@@ -7,7 +7,7 @@ import (
 	"tkr/barcode"
 	"tkr/model"
 
-	"github.com/jmoiron/sqlx" // ▼▼▼【追加】▼▼▼
+	"github.com/jmoiron/sqlx"
 )
 
 type DBTX interface {
@@ -15,21 +15,18 @@ type DBTX interface {
 	Select(dest interface{}, query string, args ...interface{}) error
 	NamedExec(query string, arg interface{}) (sql.Result, error)
 	Query(query string, args ...interface{}) (*sql.Rows, error)
-	// ▼▼▼【追加】▼▼▼
 	QueryRow(query string, args ...interface{}) *sql.Row
 	Rebind(query string) string
-	// ▲▲▲【追加】▲▲▲
 }
 
-// GetAllProductMasters (reprocessハンドラ用)
 func GetAllProductMasters(dbtx DBTX) ([]*model.ProductMaster, error) {
-	// ... (変更なし) ...
 	var masters []*model.ProductMaster
 	query := `SELECT * FROM product_master`
 	err := dbtx.Select(&masters, query)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return []*model.ProductMaster{}, nil
+			return []*model.ProductMaster{},
+				nil
 		}
 		return nil, fmt.Errorf("failed to select all product masters: %w", err)
 	}
@@ -40,7 +37,6 @@ func GetAllProductMasters(dbtx DBTX) ([]*model.ProductMaster, error) {
 }
 
 func GetFilteredProductMasters(dbtx DBTX, usageClass, kanaName, genericName, shelfNumber string) ([]model.ProductMaster, error) {
-	// ... (変更なし) ...
 	var masters []model.ProductMaster
 
 	query := `SELECT * FROM product_master`
@@ -54,14 +50,19 @@ func GetFilteredProductMasters(dbtx DBTX, usageClass, kanaName, genericName, she
 		return []model.ProductMaster{}, nil
 	}
 
+	var nameConditions []string
 	if len(kanaName) > 0 {
-		mustConditions = append(mustConditions, "kana_name LIKE ?")
+		nameConditions = append(nameConditions, "kana_name LIKE ?")
 		args = append(args, kanaName+"%")
 	}
 
 	if len(genericName) > 0 {
-		mustConditions = append(mustConditions, "generic_name LIKE ?")
+		nameConditions = append(nameConditions, "generic_name LIKE ?")
 		args = append(args, "%"+genericName+"%")
+	}
+
+	if len(nameConditions) > 0 {
+		mustConditions = append(mustConditions, "("+strings.Join(nameConditions, " OR ")+")")
 	}
 
 	if len(shelfNumber) > 0 {
@@ -70,6 +71,7 @@ func GetFilteredProductMasters(dbtx DBTX, usageClass, kanaName, genericName, she
 	}
 
 	if len(mustConditions) > 0 {
+		// ▼▼▼【ここを修正】文字列の途中で改行していたのを修正 ▼▼▼
 		query += " WHERE " + strings.Join(mustConditions, " AND ")
 	} else {
 		return []model.ProductMaster{}, fmt.Errorf("usage class filter is required")
@@ -93,7 +95,6 @@ func GetFilteredProductMasters(dbtx DBTX, usageClass, kanaName, genericName, she
 }
 
 func GetProductMasterByCode(dbtx DBTX, code string) (*model.ProductMaster, error) {
-	// ... (変更なし) ...
 	var master model.ProductMaster
 	query := `SELECT * FROM product_master WHERE product_code = ?`
 	err := dbtx.Get(&master, query, code)
@@ -103,8 +104,8 @@ func GetProductMasterByCode(dbtx DBTX, code string) (*model.ProductMaster, error
 	return &master, nil
 }
 
+// ▼▼▼【ここを修正】開き括弧 { をシグネチャと同じ行に移動 ▼▼▼
 func GetProductMasterByGs1Code(dbtx DBTX, gs1Code string) (*model.ProductMaster, error) {
-	// ... (変更なし) ...
 	var master model.ProductMaster
 	query := `SELECT * FROM product_master WHERE gs1_code = ?`
 	err := dbtx.Get(&master, query, gs1Code)
@@ -115,7 +116,6 @@ func GetProductMasterByGs1Code(dbtx DBTX, gs1Code string) (*model.ProductMaster,
 }
 
 func GetProductMasterByBarcode(dbtx DBTX, barcodeStr string) (*model.ProductMaster, error) {
-	// ... (変更なし) ...
 	if barcodeStr == "" {
 		return nil, fmt.Errorf("バーコードが空です")
 	}
@@ -138,9 +138,9 @@ func GetProductMasterByBarcode(dbtx DBTX, barcodeStr string) (*model.ProductMast
 }
 
 func GetProductMastersByYjCode(dbtx DBTX, yjCode string) ([]*model.ProductMaster, error) {
-	// ... (変更なし) ...
 	var masters []*model.ProductMaster
-	query := `SELECT * FROM product_master WHERE yj_code = ? ORDER BY product_code`
+	query := `SELECT * FROM product_master WHERE yj_code = 
+ ? ORDER BY product_code`
 	err := dbtx.Select(&masters, query, yjCode)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -154,7 +154,6 @@ func GetProductMastersByYjCode(dbtx DBTX, yjCode string) ([]*model.ProductMaster
 	return masters, nil
 }
 
-// ▼▼▼【ここから追加】指定されたYJコード群に紐づくすべての製品コードを取得 ▼▼▼
 func GetProductCodesByYjCodes(dbtx DBTX, yjCodes []string) ([]string, error) {
 	if len(yjCodes) == 0 {
 		return []string{}, nil
@@ -171,10 +170,7 @@ func GetProductCodesByYjCodes(dbtx DBTX, yjCodes []string) ([]string, error) {
 	return codes, nil
 }
 
-// ▲▲▲【追加ここまで】▲▲▲
-
 func GetProductMasterByKanaNameShort(dbtx DBTX, kanaNameShort string) (*model.ProductMaster, error) {
-	// ... (変更なし) ...
 	var master model.ProductMaster
 	query := `SELECT * FROM product_master WHERE kana_name_short = ?`
 	err := dbtx.Get(&master, query, kanaNameShort)
@@ -191,7 +187,8 @@ INSERT INTO product_master (
  package_form, 
     yj_unit_name, yj_pack_unit_qty, jan_pack_inner_qty, jan_unit_code, jan_pack_unit_qty, 
     origin, nhi_price, purchase_price, flag_poison, flag_deleterious, flag_narcotic, 
-    flag_psychotropic, flag_stimulant, flag_stimulant_raw, is_order_stopped, 
+    
+ flag_psychotropic, flag_stimulant, flag_stimulant_raw, is_order_stopped, 
     supplier_wholesale, group_code, shelf_number, category, user_notes
 ) VALUES (
     :product_code, :yj_code, :gs1_code, :product_name, :kana_name, :kana_name_short, 

@@ -1,12 +1,11 @@
-// C:\Users\wasab\OneDrive\デスクトップ\TKR\masteredit\handler.go
 package masteredit
 
 import (
 	"encoding/json"
-	"fmt" // ★ fmt をインポート
+	"fmt"
 	"log"
 	"net/http"
-	"strings" // ★ strings をインポート
+	"strings"
 	"tkr/database"
 	"tkr/mastermanager"
 	"tkr/model"
@@ -71,7 +70,8 @@ func renderMasterListHTML(masters []model.ProductMaster, statusMessage string) s
             <th class="col-gs1">GS1コード</th>
             <th class="col-jan">JANコード</th>
           
-           <th class="col-product">製品名</th>
+   
+            <th class="col-product">製品名</th>
             <th class="col-kana">カナ名</th>
             <th class="col-maker">メーカー</th>
             <th class="col-generic">一般名</th>
@@ -87,7 +87,8 @@ func renderMasterListHTML(masters []model.ProductMaster, statusMessage string) s
 	} else {
 		for _, master := range masters {
 			sb.WriteString(fmt.Sprintf(`<tr data-product-code="%s">`, master.ProductCode))
-			sb.WriteString(fmt.Sprintf(`<td class="center col-action"><button class="edit-master-btn btn" data-code="%s">編集</button></td>`, master.ProductCode))
+			sb.WriteString(fmt.Sprintf(`<td class="center col-action"><button class="edit-master-btn 
+ btn" data-code="%s">編集</button></td>`, master.ProductCode))
 			sb.WriteString(fmt.Sprintf(`<td class="col-yj">%s</td>`, master.YjCode))
 			sb.WriteString(fmt.Sprintf(`<td class="col-gs1">%s</td>`,
 				master.Gs1Code))

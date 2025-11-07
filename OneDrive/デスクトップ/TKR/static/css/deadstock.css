@@ -27,18 +27,16 @@
     min-width: 150px;
 }
 .deadstock-controls .form-actions {
-    /* ▼▼▼【修正】display: flex と margin-left: auto を追加 ▼▼▼ */
     display: flex;
     gap: 10px;
     margin-left: auto;
-    /* ▲▲▲【修正ここまで】▲▲▲ */
 }
 
 /* ▼▼▼【追加】アップロード専用エリアのスタイル ▼▼▼ */
 .deadstock-upload-area {
-    background-color: #f0f4f8; /* 少し色を変える */
+    background-color: #f0f4f8; 
     border-color: #cce;
-    margin-top: -10px; /* 上のコントロールにくっつける */
+    margin-top: -10px; 
 }
 /* ▲▲▲【追加ここまで】▲▲▲ */
 
@@ -47,13 +45,30 @@
     margin-top: 10px;
 }
 
-#deadstock-table th.col-ds-key { width: 25%; } /* PackageKey */
-#deadstock-table th.col-ds-name { width: 25%; } /* 製品名 */
-#deadstock-table th.col-ds-qty { width: 10%; } /* 現在庫 */
-#deadstock-table th.col-ds-details { width: 40%; } /* 棚卸明細 (幅を拡大) */
+/* ▼▼▼【ここから修正】列幅を調整 ▼▼▼ */
+#deadstock-table th.col-ds-action { width: 10%; } /* ★追加 */
+#deadstock-table th.col-ds-key { width: 20%; } /* 25% -> 20% */
+#deadstock-table th.col-ds-name { width: 25%; } /* 変更なし */
+#deadstock-table th.col-ds-qty { width: 10%; } /* 変更なし */
+#deadstock-table th.col-ds-details { width: 35%; } /* 40% -> 35% */
+/* ▲▲▲【修正ここまで】▲▲▲ */
 
 #deadstock-table .lot-details-list {
     font-size: 0.9em;
     padding-left: 15px;
     margin: 0;
 }
+
+/* ▼▼▼【ここから追加】ボタンのスタイル ▼▼▼ */
+#deadstock-table .adjust-inventory-btn {
+    padding: 1px 4px;
+    font-size: 9px;
+    background-color: #e6f7ff;
+    border-color: #17a2b8;
+    color: #17a2b8;
+}
+#deadstock-table .adjust-inventory-btn:hover {
+    background-color: #17a2b8;
+    color: #fff;
+}
+/* ▲▲▲【追加ここまで】▲▲▲ */
