@@ -16,11 +16,11 @@ import (
 	"tkr/database"
 	"tkr/mastermanager"
 	"tkr/model"
-	"tkr/parsers" // ▼▼▼【ここに追加】parsers パッケージをインポート ▼▼▼
+	"tkr/parsers"
 
 	"github.com/jmoiron/sqlx"
-	"golang.org/x/text/encoding/japanese"
-	"golang.org/x/text/transform"
+	// ★【残す】
+	// ★【残す】
 )
 
 // ヘッダーの定義 (TKR product_master の全カラム)
@@ -106,8 +106,10 @@ func ImportAllMastersHandler(db *sqlx.DB) http.HandlerFunc {
 		}
 		defer file.Close()
 
-		// Shift-JIS (またはBOM付きUTF-8) を想定してリーダーを準備
-		reader := csv.NewReader(parsers.SkipBOM(transform.NewReader(file, japanese.ShiftJIS.NewDecoder())))
+		// ▼▼▼【修正】Shift-JISデコーダーを削除し、UTF-8 BOMスキップのみを行う ▼▼▼
+		reader := csv.NewReader(parsers.SkipBOM(file))
+		// ▲▲▲【修正ここまで】▲▲▲
+
 		reader.LazyQuotes = true
 		reader.FieldsPerRecord = -1 // ヘッダー数と一致かチェックするため
 

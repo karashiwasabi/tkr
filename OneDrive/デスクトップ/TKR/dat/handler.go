@@ -137,30 +137,74 @@ func ProcessDatRecords(tx *sqlx.Tx, parsedRecords []model.DatRecord) ([]model.Tr
 	for _, rec := range recordsToProcess {
 		// ▲▲▲【修正ここまで】▲▲▲
 		key := rec.JanCode
-		if key == "" ||
-			key == "0000000000000" {
-			// ユーザーの要求: DATファイルの商品名をプロダクトマスタのkana_name_shortに照合
-			// なければ、DAT商品名をプロダクトマスタの商品名とkana_name_shortに記載
-			foundMaster, err := database.GetProductMasterByKanaNameShort(tx, rec.ProductName)
-			if err != nil && !errors.Is(err, sql.ErrNoRows) {
-				return nil, fmt.Errorf("failed to search product master by kana_name_short for %s: %w", rec.ProductName, err)
-			}
 
-			if foundMaster != nil {
-				// 照合できた場合、そのマスターのProductCodeを使用
-				key = foundMaster.ProductCode
-				log.Printf("Found existing master by kana_name_short for '%s', using ProductCode: %s", rec.ProductName, key)
-			} else {
-				// ▼▼▼【ここを修正】合成キー(999...)を生成せず、元のキー(0x13)をそのまま使う ▼▼▼
-				key = rec.JanCode // ( "0000000000000" または "" が key になる)
-				log.Printf("No master found by kana_name_short for '%s', using original key: %s", rec.ProductName, key)
-			}
-		}
+		// ▼▼▼【ここから修正】「キーが000...」の分岐を削除し、FindOrCreateMaster呼び出し後にOriginをチェックするロジックに変更 ▼▼▼
+		/*
+					if key == "" ||
+			key == "0000000000000" {
+						// ユーザーの要求: DATファイルの商品名をプロダクトマスタのkana_name_shortに照合
+						// なければ、DAT商品名をプロダクトマスタの商品名とkana_name_shortに記載
+						foundMaster, err := database.GetProductMasterByKanaNameShort(tx, rec.ProductName)
+						if err != nil && !errors.Is(err, sql.ErrNoRows) {
+							return nil, fmt.Errorf("failed to search product master by kana_name_short for %s: %w", rec.ProductName, err)
+						}
+
+						if foundMaster != nil {
+							// 照合できた場合、そのマスターのProductCodeを使用
+							key = foundMaster.ProductCode
+							log.Printf("Found existing master by kana_name_short for '%s', using ProductCode: %s", rec.ProductName, key)
+
+							// ▼▼▼【ここから修正】▼▼▼
+							// もし見つかったマスターがJCSHMS由来でなく (PROVISIONALなど)、
+							// かつ kana_name_short がDATの製品名と異なる場合、DATの製品名で更新する。
+							if foundMaster.Origin != "JCSHMS" && foundMaster.KanaNameShort != rec.ProductName {
+								log.Printf("Updating non-JCSHMS master (ProductCode: %s) KanaNameShort from '%s' to '%s'",
+									foundMaster.ProductCode, foundMaster.KanaNameShort, rec.ProductName)
+
+								input := mastermanager.MasterToInput(foundMaster)
+								input.KanaNameShort = rec.ProductName // DATの製品名で上書き
+
+								updatedMaster, upsertErr := mastermanager.UpsertProductMasterSqlx(tx, input)
+								if upsertErr != nil {
+									return nil, fmt.Errorf("failed to update kana_name_short for existing master %s: %w", foundMaster.ProductCode, upsertErr)
+								}
+								*foundMaster = *updatedMaster // 元のポインタが指す中身を更新
+							}
+							// ▲▲▲【修正ここまで】▲▲▲
+
+						} else {
+							// ▼▼▼【ここを修正】合成キー(999...)を生成せず、元のキー(0x13)をそのまま使う ▼▼▼
+							key = rec.JanCode // ( "0000000000000" または "" が key になる)
+							log.Printf("No master found by kana_name_short for '%s', using original key: %s", rec.ProductName, key)
+						}
+					}
+		*/
 
 		master, err := mastermanager.FindOrCreateMaster(tx, key, rec.ProductName)
 		if err != nil {
 			return nil, fmt.Errorf("master creation failed for key %s: %w", key, err)
 		}
+
+		// FindOrCreateMaster の結果、マスターがJCSHMS由来でなかった場合、
+		// DATファイルに記載の製品名 (rec.ProductName) を kana_name_short に設定（上書き）する。
+		if master.Origin != "JCSHMS" && master.KanaNameShort != rec.ProductName {
+			// (キーが "000..." の場合は FindOrCreateMaster 内部 で設定済みの可能性もあるが、
+			// 「有効なJANだがJCSHMSになく仮マスター作成」や「手動登録マスター」の場合、
+			// このブロックで kana_name_short がDAT製品名で更新される)
+
+			log.Printf("Updating non-JCSHMS master (ProductCode: %s) KanaNameShort from '%s' to '%s'",
+				master.ProductCode, master.KanaNameShort, rec.ProductName)
+
+			input := mastermanager.MasterToInput(master)
+			input.KanaNameShort = rec.ProductName // DATの製品名で上書き
+
+			updatedMaster, upsertErr := mastermanager.UpsertProductMasterSqlx(tx, input)
+			if upsertErr != nil {
+				return nil, fmt.Errorf("failed to update kana_name_short for existing master %s: %w", master.ProductCode, upsertErr)
+			}
+			*master = *updatedMaster // ポインタが指す中身を更新
+		}
+		// ▲▲▲【修正ここまで】▲▲▲
 
 		transaction := model.TransactionRecord{
 			TransactionDate: rec.Date,

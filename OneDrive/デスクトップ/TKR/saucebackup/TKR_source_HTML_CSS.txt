@@ -1068,48 +1068,60 @@ body {
                 
                 <div class="search-grid-top">
      
+
                     <div class="form-group">
                         <label for="modal-search-gs1">GS1バーコードスキャン:</label>
                          <form id="modal-search-gs1-form">
-                            <input type="text" id="modal-search-gs1" autocomplete="off" placeholder="GS1-128スキャン...">
+                            
+<input type="text" id="modal-search-gs1" autocomplete="off" placeholder="GS1-128スキャン...">
  
                         </form>
                     </div>
                 </div>
                 <div class="search-grid-bottom">
-                    <div class="form-group">
+                  
+  <div class="form-group">
    
                         <label>内外注区分:</label>
                        <div class="radio-group" id="modal-search-usage-class">
                             <label><input type="radio" name="modal_usage_class" value="" checked> 全</label>
-                    
+            
+        
                             <label><input type="radio" name="modal_usage_class" value="内"> 内</label>
                             <label><input type="radio" name="modal_usage_class" value="外"> 外</label>
+                            
+<label><input type="radio" name="modal_usage_class" value="歯"> 歯</label>
                             <label><input type="radio" name="modal_usage_class" value="注"> 注</label>
                         
+                            <label><input type="radio" name="modal_usage_class" value="機"> 機</label>
                             <label><input type="radio" name="modal_usage_class" value="他"> 他</label>
                          </div>
-                    </div>
+               
+     </div>
                     
                     <div class="form-group">
                          <label for="modal-search-kana">カナ名 (前方一致):</label>
-                         <input type="text" id="modal-search-kana" autocomplete="off">
+                         <input type="text" 
+id="modal-search-kana" autocomplete="off">
                     </div>
                     <div class="form-group">
                          <label for="modal-search-generic">一般名 (部分一致):</label>
    
-                          <input type="text" id="modal-search-generic" autocomplete="off">
+                          <input type="text" 
+id="modal-search-generic" autocomplete="off">
                     </div>
                     <div class="form-group">
                          <label for="modal-search-shelf">棚番 (部分一致):</label>
        
-                        <input type="text" id="modal-search-shelf" autocomplete="off">
+                        
+<input type="text" id="modal-search-shelf" autocomplete="off">
                     </div>
                     </div>
                  <div class="form-actions">
                     <button id="product-search-btn" class="btn">この条件で検索</button>
    
-                 </div>
+              
+   </div>
             </fieldset>
         </div>
         <div id="search-results-container" class="table-container">
@@ -1117,23 +1129,27 @@ body {
                 <thead>
                     <tr>
        
-                        <th class="col-modal-product">製品名</th>
+          
+              <th class="col-modal-product">製品名</th>
                         <th class="col-modal-maker">メーカー</th>
                         <th class="col-modal-spec">包装仕様</th>
                         <th class="col-modal-yj">YJコード</th>
        
-                        <th class="col-modal-jan">JANコード</th>
+   
+                     <th class="col-modal-jan">JANコード</th>
                         <th class="col-modal-action">選択</th>
                     </tr>
                 </thead>
-                 <tbody>
+                 
+<tbody>
     
                     <tr>
                         <td colspan="6" class="center">検索ボタンを押してください。</td>
                     </tr>
                  </tbody>
             </table>
-        </div>
+ 
+       </div>
  
         <div class="form-actions">
             <button type="button" id="closeSearchModalBtn" class="btn">閉じる</button>
@@ -1287,8 +1303,55 @@ class="btn">集計期間保存</button>
         </div>
 
     </section>
+    
+    <section class="config-section">
+        <h2>マスタデータ移行</h2>
+        
+        <div class="config-form-container">
+            <fieldset>
+                <legend>A. 製品マスタ エクスポート</legend>
+                <div class="form-row">
+                    <div class="form-group flex-full">
+                        <p style="font-size: 10px; margin: 0 0 5px 0;">
+                            現在の製品マスタ（product_master）の全項目（JCSHMS由来、ユーザー設定含む）をCSVに出力します。
+                        </p>
+                    </div>
+                </div>
+                <div class="form-actions" style="margin-top: 5px;">
+                    <button id="exportAllMastersBtn" class="btn">マスタCSV エクスポート</button>
+                </div>
+            </fieldset>
+        </div>
 
-</div>
+        <div class="config-form-container">
+            <fieldset>
+                <legend>B. 製品マスタ インポート (JCSHMSマージ/上書き)</legend>
+                <div class="form-row">
+                    <div class="form-group flex-full">
+                        <p style="font-size: 10px; margin: 0 0 5px 0; color: #dc3545; font-weight: bold;">
+                            警告: 既存の製品マスタをCSVの内容で上書き (Upsert) します。<br>
+                            CSV形式: 上記A. と同じ形式 (product_codeが必須)
+                        </p>
+                        <p style="font-size: 10px; margin: 0 0 5px 0;">
+                            <b>読込ルール:</b><br>
+                            1. CSVの品目がJCSHMSに存在する場合: JCSHMSの品名/薬価/規格等を優先し、CSVの棚番/仕入単価/メモ等をマージします。<br>
+                            2. JCSHMSに存在しない場合: CSVのすべての値を登録します。(YJコードが空なら自動採番されます)
+                        </p>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="importAllMastersInput" style="font-size: 10px; font-weight: bold;">マスタCSVファイル:</label>
+                        <input type="file" id="importAllMastersInput" class="hidden" accept=".csv,.CSV">
+                    </div>
+                    <div class="form-actions" style="margin-top: 5px;">
+                        <button id="importAllMastersBtn" class="btn">マスタCSV インポート実行</button>
+                    </div>
+                </div>
+            </fieldset>
+        </div>
+    </section>
+    </div>
 
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\views\dat_view.html -----
 <div id="dat-upload-view" class="view">
@@ -1587,12 +1650,14 @@ class="btn">集計期間保存</button>
         
         <div class="search-barcode-row">
             <div class="form-group">
-                <label for="{{ $inputID }}">バーコードスキャン:</label>
+ 
+               <label for="{{ $inputID }}">バーコードスキャン:</label>
            
              <form id="{{ $formID }}" class="search-barcode-form">
                     <input type="text" id="{{ $inputID }}" class="search-barcode-input" autocomplete="off" placeholder="GTIN/JAN, ロット情報含む可">
                 </form>
-            </div>
+          
+  </div>
         </div>
 
         <div class="search-filter-row">
@@ -1601,12 +1666,16 @@ class="btn">集計期間保存</button>
              <div class="form-group">
                 <label>内外注区分:</label>
                 <div class="radio-group"> 
-                    <label><input type="radio" name="{{ $prefix }}usage_class" value="内" checked> 内</label>
+               
+     <label><input type="radio" name="{{ $prefix }}usage_class" value="内" checked> 内</label>
                     <label><input type="radio" name="{{ $prefix }}usage_class" value="外"> 外</label>
+                    <label><input type="radio" name="{{ $prefix }}usage_class" value="歯"> 歯</label>
                     <label><input type="radio" name="{{ $prefix }}usage_class" value="注"> 注</label>
+                    <label><input type="radio" name="{{ $prefix }}usage_class" value="機"> 機</label>
                     <label><input type="radio" name="{{ $prefix }}usage_class" value="他"> 他</label>
          
-                 </div>
+ 
+                </div>
             </div>
 
             <div class="form-group">
@@ -1614,7 +1683,8 @@ class="btn">集計期間保存</button>
                 <input type="text" id="{{ $prefix }}search-kana" class="search-filter-input" autocomplete="off">
             </div>
 
-            <div class="form-group">
+     
+       <div class="form-group">
  
                  <label for="{{ $prefix }}search-generic">一般名 (部分一致):</label>
                 <input type="text" id="{{ $prefix }}search-generic" class="search-filter-input" autocomplete="off">
@@ -1622,7 +1692,8 @@ class="btn">集計期間保存</button>
 
             <div class="form-group">
                 <label for="{{ $prefix }}search-shelf">棚番 (部分一致):</label>
-              
+   
+           
                <input type="text" id="{{ $prefix }}search-shelf" class="search-filter-input" autocomplete="off">
             </div>
 
