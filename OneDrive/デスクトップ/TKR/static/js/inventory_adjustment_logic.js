@@ -96,7 +96,6 @@ async function handleBarcodeScan(e) {
 
 async function onSelectProductClick() {
     const apiUrl = '/api/products/search_filtered';
-    // ▼▼▼【修正】IDのハイフン(-)をアンダースコア(_)に変更 ▼▼▼
     const kanaInput = document.getElementById('ia_search-kana');
     const genericInput = document.getElementById('ia_search-generic');
     const shelfInput = document.getElementById('ia_search-shelf');
@@ -106,7 +105,6 @@ async function onSelectProductClick() {
     const genericName = genericInput ? genericInput.value.trim() : '';
     const shelfNumber = shelfInput ? shelfInput.value.trim() : '';
     const usageClass = selectedUsageRadio ? selectedUsageRadio.value : '';
-
     if (!usageClass) {
         window.showNotification('内外注区分を選択してください。', 'warning');
         return;
@@ -171,14 +169,15 @@ async function loadAndRenderDetails(yjCode) {
             dateInput.value = getLocalDateString();
         }
         
-        // ▼▼▼【ここに追加】ロード完了後に一度、合計と逆算を実行する ▼▼▼
         document.querySelectorAll('.final-input-tbody').forEach(tbody => {
             const productCode = tbody.dataset.productCode;
             if (productCode) {
                 updateFinalInventoryTotal(productCode);
             }
         });
-
+        // ▼▼▼【ここに追加】ロード完了後に予製合計の表示を更新し、逆算を実行 ▼▼▼
+        reverseCalculateStock();
+        // ▲▲▲【追加ここまで】▲▲▲
     } catch (err) {
         outputContainer.innerHTML = `<p style="color:red;">エラー: ${err.message}</p>`;
     } finally {
@@ -186,9 +185,42 @@ async function loadAndRenderDetails(yjCode) {
     }
 }
 
+// ▼▼▼【ここから追加】(WASABI: inventory_adjustment_logic.js より) ▼▼▼
+function updatePrecompTotalDisplay() {
+    let total = 0;
+    document.querySelectorAll('.precomp-active-check:checked').forEach(cb => {
+        total += parseFloat(cb.dataset.quantity) || 0;
+    });
+    const totalEl = document.getElementById('precomp-active-total');
+    if (totalEl) {
+        totalEl.textContent = `有効合計: ${total.toFixed(2)}`;
+    }
+}
+// ▲▲▲【追加ここまで】▲▲▲
+
 function reverseCalculateStock() {
     const todayStr = getLocalDateString().replace(/-/g, '');
+    
+    // ▼▼▼【ここから追加】(WASABI: inventory_adjustment_logic.js より) ▼▼▼
+    const precompTotalsByProduct = {};
     const calculationErrorByProduct = {};
+    document.querySelectorAll('.precomp-active-check:checked').forEach(cb => {
+        const productCode = cb.dataset.productCode;
+        const master = findMaster(productCode);
+        if (!master) return;
+        const yjQuantity = parseFloat(cb.dataset.quantity) || 0;
+
+        if (master.janPackInnerQty > 0) {
+            const janQuantity = yjQuantity / master.janPackInnerQty;
+            precompTotalsByProduct[productCode] = (precompTotalsByProduct[productCode] || 0) + janQuantity;
+      
+        } else if (yjQuantity > 0) {
+            calculationErrorByProduct[productCode] = '包装数量(内)未設定';
+        }
+    });
+    updatePrecompTotalDisplay();
+    // ▲▲▲【追加ここまで】▲▲▲
+
     const todayNetChangeByProduct = {};
     if (lastLoadedDataCache && lastLoadedDataCache.transactionLedger) {
         lastLoadedDataCache.transactionLedger.forEach(yjGroup => {
@@ -198,33 +230,38 @@ function reverseCalculateStock() {
                         pkg.transactions.forEach(tx => {
       
  
+ 
                             if (tx.transactionDate === todayStr && tx.flag !== 0) {
                                 let janQty = tx.janQuantity || 0;
-                           
+                          
+  
  
                                  if (janQty === 0 && tx.yjQuantity) {
                                     if (tx.janPackInnerQty > 0) {
-                     
+                   
+   
  
                                      janQty = tx.yjQuantity / tx.janPackInnerQty;
      
                                     } else if (tx.yjQuantity !== 0) {
-            
+         
+    
                    
                                      calculationErrorByProduct[tx.janCode] = '包装数量(内)未設定';
           
-                                 
+                             
+      
     }
                                 }
           
                                  const signedJanQty = janQty * (tx.flag === 1 ?
  1 : (tx.flag === 3 ? -1 : 0));
                                 todayNetChangeByProduct[tx.janCode] = (todayNetChangeByProduct[tx.janCode] || 0) + signedJanQty;
-                            }
+ }
                         });
-                    }
+ }
                 });
-            }
+ }
         });
     }
     document.querySelectorAll('.physical-stock-input').forEach(input => {
@@ -232,31 +269,27 @@ function reverseCalculateStock() {
         const displaySpan = document.querySelector(`.calculated-previous-day-stock[data-product-code="${productCode}"]`);
         const finalInput = document.querySelector(`.final-inventory-input[data-product-code="${productCode}"]`); //
         if (calculationErrorByProduct[productCode]) {
-            // ▼▼▼【修正】style 属性を削除 ▼▼▼
             if (displaySpan) displaySpan.innerHTML = `<span class="status-error">${calculationErrorByProduct[productCode]}</span>`;
          
+ 
             if (finalInput) finalInput.value = '';
         
-            // ▼▼▼【修正】updateFinalInventoryTotal を呼び出す（readonlyでも実行） ▼▼▼
             updateFinalInventoryTotal(productCode);
             return;
         }
         const physicalStockToday = parseFloat(input.value) || 0;
-        const totalStockToday = physicalStockToday;
+
+        // ▼▼▼【ここから修正】予製在庫を加算 (WASABI: inventory_adjustment_logic.js より) ▼▼▼
+        const precompStock = precompTotalsByProduct[productCode] || 0;
+        const totalStockToday = physicalStockToday + precompStock;
+        // ▲▲▲【修正ここまで】▲▲▲
+     
         const netChangeToday = todayNetChangeByProduct[productCode] || 0;
         const calculatedPreviousDayStock = totalStockToday - netChangeToday;
-        if (displaySpan) displaySpan.textContent = calculatedPreviousDayStock.toFixed(2); //
-
-        // ▼▼▼【ここから削除】目安欄(finalInput)への書き戻し処理を削除 ▼▼▼
-        /*
-        if (finalInput) {
-            finalInput.value = calculatedPreviousDayStock.toFixed(2);
-        }
-        */
+        if (displaySpan) displaySpan.textContent = calculatedPreviousDayStock.toFixed(2);
     });
 }
 
-// ▼▼▼【ここから修正】明細合計を「① 実在庫」に反映し、逆算(reverseCalculateStock)を呼び出す ▼▼▼
 function updateFinalInventoryTotal(productCode) {
     const tbody = document.querySelector(`.final-input-tbody[data-product-code="${productCode}"]`);
     if (!tbody) return;
@@ -264,7 +297,6 @@ function updateFinalInventoryTotal(productCode) {
     tbody.querySelectorAll('.final-inventory-input, .lot-quantity-input').forEach(input => { //
         totalQuantity += parseFloat(input.value) || 0;
     });
-    // 1. 明細の合計数量を計算
 
     // 2. 「① 本日の実在庫数量」欄に反映
     const physicalStockInput = document.querySelector(`.physical-stock-input[data-product-code="${productCode}"]`);
@@ -273,10 +305,8 @@ function updateFinalInventoryTotal(productCode) {
     }
 
     // 3. 「①」が更新されたので、「②」を逆算するために reverseCalculateStock を呼び出す
-    // (reverseCalculateStock は .physical-stock-input の値 を読む)
     reverseCalculateStock();
 }
-// ▲▲▲【修正ここまで】▲▲▲
 
 
 function findMaster(productCode) {
@@ -316,6 +346,7 @@ async function saveInventoryData() {
         let totalInputQuantity = 0;
         const inventoryRows = tbody.querySelectorAll('.inventory-row');
         for (let 
+ 
 i = 0; i < inventoryRows.length; i += 2) {
             const topRow = inventoryRows[i];
             const bottomRow = inventoryRows[i+1];
@@ -323,28 +354,29 @@ i = 0; i < inventoryRows.length; i += 2) {
             const expiryInput = topRow.querySelector('.expiry-input');
             const lotInput = bottomRow.querySelector('.lot-input');
             if (!quantityInput || 
+ 
 !expiryInput || !lotInput) continue;
             const quantity = parseFloat(quantityInput.value) || 0;
             const expiry = expiryInput.value.trim();
             const lot = lotInput.value.trim();
-            totalInputQuantity += quantity;
+ totalInputQuantity += quantity;
 
-            // ▼▼▼【ここから修正】`if (quantity > 0)` の条件を削除し、0の行も明細に含める ▼▼▼
-            // (数量が 0 の行も、期限やロットが空欄の行も、すべて送信対象とする)
             deadStockData.push({ 
                 productCode: productCode, 
                 yjCode: master.yjCode, 
                 packageForm: master.packageForm,
        
  
+  
                 janPackInnerQty: master.janPackInnerQty, 
                 yjUnitName: master.yjUnitName,
-                stockQuantityJan: quantity, // 0 も許可
-                expiryDate: expiry, // 空欄でもOK
+                stockQuantityJan: quantity, 
+                expiryDate: expiry, 
              
  
-lotNumber: lot // 空欄でもOK
-            });
+lotNumber: lot 
+           
+ });
         }
         inventoryData[productCode] = totalInputQuantity;
     });
@@ -354,8 +386,6 @@ lotNumber: lot // 空欄でもOK
         inventoryData: inventoryData,
         deadStockData: deadStockData,
     };
-
-    // ▼▼▼【ここから追加】デバッグログ ▼▼▼
     console.log("Saving inventory data. Payload:", payload);
 
     window.showLoading();
@@ -370,10 +400,8 @@ lotNumber: lot // 空欄でもOK
         window.showNotification(resData.message, 'success');
         loadAndRenderDetails(currentYjCode);
     } catch (err) {
-        // ▼▼▼【ここから修正】エラーログを詳細化 ▼▼▼
         console.error("Failed to save inventory data:", err);
         window.showNotification(err.message, 'error');
-        // ▲▲▲【修正ここまで】▲▲▲
     } finally {
         window.hideLoading();
     }
@@ -412,14 +440,13 @@ export async function initInventoryAdjustment() {
     outputContainer.addEventListener('input', (e) => {
         const targetClassList = e.target.classList;
         
-        // ▼▼▼【修正】 .physical-stock-input は readonly になるため、inputイベントは発生しない ▼▼▼
-        /*
-        if (targetClassList.contains('physical-stock-input')) {
+        // ▼▼▼【ここから追加】(WASABI: inventory_adjustment_logic.js より) ▼▼▼
+        if (targetClassList.contains('precomp-active-check')) {
             reverseCalculateStock();
         }
-        */
-        // ▲▲▲【修正ここまで】▲▲▲
+        // ▲▲▲【追加ここまで】▲▲▲
 
+     
         if(targetClassList.contains('lot-quantity-input') || targetClassList.contains('final-inventory-input')){
             const productCode = e.target.dataset.productCode;
             updateFinalInventoryTotal(productCode); // 変更(この関数が reverseCalculateStock を呼ぶ)
@@ -433,6 +460,7 @@ export async function initInventoryAdjustment() {
             const tbody = document.querySelector(`.final-input-tbody[data-product-code="${productCode}"]`);
             if(master && tbody){
                 const 
+ 
 newRowHTML = createFinalInputRow(master, null, false);
                 tbody.insertAdjacentHTML('beforeend', newRowHTML);
             }
@@ -442,6 +470,7 @@ newRowHTML = createFinalInputRow(master, null, false);
             const bottomRow = topRow.nextElementSibling;
             const productCode = bottomRow.querySelector('[data-product-code]')?.dataset.productCode;
     
+ 
  
             topRow.remove();
             bottomRow.remove();

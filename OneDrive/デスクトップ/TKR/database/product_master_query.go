@@ -12,6 +12,7 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
+// ▼▼▼【ここから修正】DBTX インターフェースに Exec と Prepare を追加 ▼▼▼
 type DBTX interface {
 	Get(dest interface{}, query string, args ...interface{}) error
 	Select(dest interface{}, query string, args ...interface{}) error
@@ -19,9 +20,87 @@ type DBTX interface {
 	Query(query string, args ...interface{}) (*sql.Rows, error)
 	QueryRow(query string, args ...interface{}) *sql.Row
 	Rebind(query string) string
+	Exec(query string, args ...interface{}) (sql.Result, error) // 追加
+	Prepare(query string) (*sql.Stmt, error)                    // 追加
 }
 
+// ▲▲▲【修正ここまで】▲▲▲
+
+// ▼▼▼【ここから追加】(WASABI: db/product_master.go より移植・TKR用にカラム修正) ▼▼▼
+
+// SelectColumns は、product_masterテーブルから全列を取得するためのSQLスニペットです。
+// TKRのスキーマ に合わせて kana_name_short と generic_name を追加しています。
+const SelectColumns = `
+	product_code, yj_code, gs1_code, product_name, kana_name, kana_name_short, 
+	generic_name, maker_name,
+	specification, usage_classification, package_form, yj_unit_name, yj_pack_unit_qty,
+	jan_pack_inner_qty, jan_unit_code, jan_pack_unit_qty, origin,
+	nhi_price, purchase_price,
+	flag_poison, flag_deleterious, flag_narcotic, flag_psychotropic, flag_stimulant, flag_stimulant_raw,
+	is_order_stopped, supplier_wholesale,
+	group_code, shelf_number, category, user_notes
+`
+
+// ScanProductMaster は、データベースの行データから model.ProductMaster 構造体に値を割り当てます。
+// TKRのスキーマ に合わせて kana_name_short と generic_name を追加しています。
+func ScanProductMaster(row interface{ Scan(...interface{}) error }) (*model.ProductMaster, error) {
+	var m model.ProductMaster
+	err := row.Scan(
+		// 基本情報
+		&m.ProductCode, &m.YjCode, &m.Gs1Code, &m.ProductName, &m.KanaName, &m.KanaNameShort,
+		&m.GenericName, &m.MakerName,
+		// 製品仕様情報
+		&m.Specification, &m.UsageClassification, &m.PackageForm, &m.YjUnitName, &m.YjPackUnitQty,
+		&m.JanPackInnerQty, &m.JanUnitCode, &m.JanPackUnitQty, &m.Origin,
+		// 価格情報
+		&m.NhiPrice, &m.PurchasePrice,
+		// 管理フラグ・情報
+		&m.FlagPoison, &m.FlagDeleterious, &m.FlagNarcotic, &m.FlagPsychotropic, &m.FlagStimulant, &m.FlagStimulantRaw,
+		&m.IsOrderStopped, &m.SupplierWholesale,
+		// ユーザー定義項目
+		&m.GroupCode, &m.ShelfNumber, &m.Category, &m.UserNotes,
+	)
+	if err != nil {
+		return nil, err
+	}
+	return &m, nil
+}
+
+// GetProductMastersByCodesMap は、複数の製品コードをキーに製品マスターをマップ形式で取得します。
+// (WASABI: db/product_master.go より移植)
+func GetProductMastersByCodesMap(dbtx DBTX, codes []string) (map[string]*model.ProductMaster, error) {
+	if len(codes) == 0 {
+		return make(map[string]*model.ProductMaster), nil
+	}
+	q := `SELECT ` + SelectColumns + ` FROM product_master WHERE product_code IN (?` + strings.Repeat(",?", len(codes)-1) + `)`
+
+	args := make([]interface{}, len(codes))
+	for i, code := range codes {
+		args[i] = code
+	}
+
+	// sqlx.Tx, sqlx.DB どちらでも動作するよう、Query (sql.Rows) を使う
+	rows, err := dbtx.Query(q, args...)
+	if err != nil {
+		return nil, fmt.Errorf("query for masters by codes failed: %w", err)
+	}
+	defer rows.Close()
+
+	mastersMap := make(map[string]*model.ProductMaster)
+	for rows.Next() {
+		m, err := ScanProductMaster(rows)
+		if err != nil {
+			return nil, err
+		}
+		mastersMap[m.ProductCode] = m
+	}
+	return mastersMap, nil
+}
+
+// ▲▲▲【追加ここまで】▲▲▲
+
 func GetAllProductMasters(dbtx DBTX) ([]*model.ProductMaster, error) {
+	// ... (変更なし) ...
 	var masters []*model.ProductMaster
 	query := `SELECT * FROM product_master`
 	err := dbtx.Select(&masters, query)
@@ -38,8 +117,8 @@ func GetAllProductMasters(dbtx DBTX) ([]*model.ProductMaster, error) {
 	return masters, nil
 }
 
-// ▼▼▼【修正】[source]タグを文字列の外に移動 ▼▼▼
 func GetFilteredProductMasters(dbtx DBTX, usageClass, kanaName, genericName, shelfNumber string) ([]model.ProductMaster, error) {
+	// ... (変更なし) ...
 	var masters []model.ProductMaster
 
 	query := `SELECT * FROM product_master`
@@ -96,9 +175,8 @@ func GetFilteredProductMasters(dbtx DBTX, usageClass, kanaName, genericName, she
 	return masters, nil
 }
 
-// ▲▲▲【修正ここまで】▲▲▲
-
 func GetProductMasterByCode(dbtx DBTX, code string) (*model.ProductMaster, error) {
+	// ... (変更なし) ...
 	var master model.ProductMaster
 	query := `SELECT * FROM product_master WHERE product_code = ?`
 	err := dbtx.Get(&master, query, code)
@@ -108,8 +186,8 @@ func GetProductMasterByCode(dbtx DBTX, code string) (*model.ProductMaster, error
 	return &master, nil
 }
 
-// ▼▼▼【修正】 { をシグネチャと同じ行に移動 ▼▼▼
 func GetProductMasterByGs1Code(dbtx DBTX, gs1Code string) (*model.ProductMaster, error) {
+	// ... (変更なし) ...
 	var master model.ProductMaster
 	query := `SELECT * FROM product_master WHERE gs1_code = ?`
 	err := dbtx.Get(&master, query, gs1Code)
@@ -119,9 +197,8 @@ func GetProductMasterByGs1Code(dbtx DBTX, gs1Code string) (*model.ProductMaster,
 	return &master, nil
 }
 
-// ▲▲▲【修正ここまで】▲▲▲
-
 func GetProductMasterByBarcode(dbtx DBTX, barcodeStr string) (*model.ProductMaster, error) {
+	// ... (変更なし) ...
 	if barcodeStr == "" {
 		return nil, fmt.Errorf("バーコードが空です")
 	}
@@ -143,10 +220,11 @@ func GetProductMasterByBarcode(dbtx DBTX, barcodeStr string) (*model.ProductMast
 	return GetProductMasterByGs1Code(dbtx, gtin14)
 }
 
-// ▼▼▼【修正】[source]タグを文字列の外に移動 ▼▼▼
 func GetProductMastersByYjCode(dbtx DBTX, yjCode string) ([]*model.ProductMaster, error) {
+	// ... (変更なし) ...
 	var masters []*model.ProductMaster
-	query := `SELECT * FROM product_master WHERE yj_code = ? ORDER BY product_code`
+	query := `SELECT * FROM product_master WHERE yj_code = ?
+ ORDER BY product_code`
 	err := dbtx.Select(&masters, query, yjCode)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -160,9 +238,8 @@ func GetProductMastersByYjCode(dbtx DBTX, yjCode string) ([]*model.ProductMaster
 	return masters, nil
 }
 
-// ▲▲▲【修正ここまで】▲▲▲
-
 func GetProductCodesByYjCodes(dbtx DBTX, yjCodes []string) ([]string, error) {
+	// ... (変更なし) ...
 	if len(yjCodes) == 0 {
 		return []string{}, nil
 	}
@@ -179,6 +256,7 @@ func GetProductCodesByYjCodes(dbtx DBTX, yjCodes []string) ([]string, error) {
 }
 
 func GetProductMasterByKanaNameShort(dbtx DBTX, kanaNameShort string) (*model.ProductMaster, error) {
+	// ... (変更なし) ...
 	var master model.ProductMaster
 	query := `SELECT * FROM product_master WHERE kana_name_short = ?`
 	err := dbtx.Get(&master, query, kanaNameShort)
@@ -188,7 +266,6 @@ func GetProductMasterByKanaNameShort(dbtx DBTX, kanaNameShort string) (*model.Pr
 	return &master, nil
 }
 
-// ▼▼▼【修正】[source]タグを文字列の外に移動 ▼▼▼
 const insertProductMasterQuery = `
 INSERT INTO product_master (
     product_code, yj_code, gs1_code, product_name, kana_name, kana_name_short, 
@@ -197,7 +274,8 @@ INSERT INTO product_master (
     yj_unit_name, yj_pack_unit_qty, jan_pack_inner_qty, jan_unit_code, jan_pack_unit_qty, 
     origin, nhi_price, purchase_price, flag_poison, flag_deleterious, flag_narcotic, 
     
- flag_psychotropic, flag_stimulant, flag_stimulant_raw, 
+ flag_psychotropic, 
+ flag_stimulant, flag_stimulant_raw, 
 is_order_stopped, 
     supplier_wholesale, group_code, shelf_number, category, user_notes
 ) VALUES (
@@ -210,14 +288,13 @@ is_order_stopped,
 )`
 
 func InsertProductMaster(dbtx DBTX, master *model.ProductMaster) error {
+	// ... (変更なし) ...
 	_, err := dbtx.NamedExec(insertProductMasterQuery, master)
 	if err != nil {
 		return fmt.Errorf("failed to insert product master: %w", err)
 	}
 	return nil
 }
-
-// ▲▲▲【修正ここまで】▲▲▲
 
 // ▼▼▼【ここから追加】PackageKeyを全件取得するヘルパー関数 ▼▼▼
 
@@ -231,6 +308,7 @@ type MasterPackageKeyInfo struct {
 // GetAllPackageKeysFromMasters は、product_masterテーブルに存在するすべてのPackageKeyと
 // その代表マスター情報をマップで返します。
 func GetAllPackageKeysFromMasters(dbtx DBTX) (map[string]MasterPackageKeyInfo, error) {
+	// ... (変更なし) ...
 	// 1. 全マスターを取得
 	var allMasters []*model.ProductMaster
 	query := `SELECT * FROM product_master WHERE yj_code != ''`
@@ -267,5 +345,3 @@ func GetAllPackageKeysFromMasters(dbtx DBTX) (map[string]MasterPackageKeyInfo, e
 
 	return keyInfoMap, nil
 }
-
-// ▲▲▲【追加ここまで】▲▲▲

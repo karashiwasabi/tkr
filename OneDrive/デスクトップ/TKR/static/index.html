@@ -16,7 +16,8 @@
     <link rel="stylesheet" href="/static/css/deadstock.css">
     </head>
 <body>
-    <header id="main-header">
+  
+  <header id="main-header">
         <button id="datViewBtn" class="btn">DAT取込</button>
         <button id="usageViewBtn" class="btn">USAGE取込</button>
         <button id="inOutViewBtn" class="btn">入出庫</button>
@@ -24,13 +25,15 @@
         <button id="deadStockViewBtn" class="btn">不動在庫</button>
   
          <button id="masterEditViewBtn" class="btn">マスタ編集</button>
+        <button id="precompViewBtn" class="btn">予製管理</button>
         <button id="reprocessBtn" class="btn">全取引再計算</button>
         <button id="configViewBtn" class="btn">設定</button>
     
 </header>
 
     <main>
-        {{if .Views}}
+      
+  {{if .Views}}
     
              {{range .Views}}
                  {{.}}
@@ -39,7 +42,8 @@
          {{else}}
             <div id="dat-upload-view" class="view active">DATビュー</div>
          
-           <div id="usage-upload-view" class="view">USAGEビュー</div>
+         
+  <div id="usage-upload-view" class="view">USAGEビュー</div>
          
    <div id="inventory-adjustment-view" class="view">棚卸調整ビュー</div>
    
@@ -49,7 +53,8 @@
      
              <div id="deadstock-view" class="view">不動在庫ビュー</div>
              {{end}}
-        </main>
+     
+   </main>
 
     <div id="loading-overlay" class="hidden">
         <div class="spinner"></div>
@@ -58,7 +63,7 @@
     <div id="notification-box"></div>
 
  {{ template "common_search_modal" .
- }}
+}}
  {{ template "common_input_modal" . }}
     <script type="module" src="/static/js/app.js?v=2025110701"></script>
     </body>

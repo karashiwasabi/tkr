@@ -186,3 +186,24 @@ body {
    背景色は、それぞれのファイルに記載されている
    IDセレクタによって正しく上書きされます) 
 */
+
+/* ▼▼▼【ここに追加】(WASABI: static/css/styles.css  より) ▼▼▼ */
+/* 予製中断時のスタイル */
+#precomp-details-container.is-inactive {
+    opacity: 0.5; /* 半透明にする */
+    pointer-events: none; /* クリックなどの操作を無効化 */
+    position: relative; /* 疑似要素の配置基準 */
+}
+#precomp-details-container.is-inactive::before {
+    content: "中断中";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%) rotate(-15deg);
+    font-size: 3em;
+    color: rgba(220, 53, 69, 0.5); /* 赤系の半透明 */
+    font-weight: bold;
+    z-index: 10;
+    pointer-events: none; /* 文字自体はクリックできないように */
+}
+/* ▲▲▲【追加ここまで】▲▲▲ */

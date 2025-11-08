@@ -9,11 +9,12 @@ import { loadMasterData } from './master_data.js';
 import { initInOut, resetInOutView } from './inout.js';
 // ▼▼▼【ここに追加】▼▼▼
 import { initDeadStockView } from './deadstock.js';
+import { initPrecomp, resetPrecompView } from './precomp.js';
 // ▲▲▲【追加ここまで】▲▲▲
 
 let loadingOverlay, loadingMessage, notificationBox;
 // ▼▼▼【ここに追加】▼▼▼
-let views, datViewBtn, usageViewBtn, inventoryAdjustmentViewBtn, masterEditViewBtn, configViewBtn, inoutViewBtn, reprocessBtn, deadStockViewBtn;
+let views, datViewBtn, usageViewBtn, inventoryAdjustmentViewBtn, masterEditViewBtn, configViewBtn, inoutViewBtn, reprocessBtn, deadStockViewBtn, precompViewBtn;
 // ▲▲▲【追加ここまで】▲▲▲
 const initializedViews = {
     dat: false,
@@ -24,6 +25,7 @@ const initializedViews = {
     inout: false,
     // ▼▼▼【ここに追加】▼▼▼
     deadstock: false,
+    precomp: false,
     // ▲▲▲【追加ここまで】▲▲▲
 };
 window.showLoading = (message = '処理中...') => {
@@ -115,6 +117,14 @@ function setActiveView(targetId) {
             }
             // (ビュー表示時のデフォルトロード処理はなし)
             break;
+        case 'precomp-view':
+            if (!initializedViews.precomp) {
+                console.log("Initializing Precomp view...");
+                initPrecomp();
+                initializedViews.precomp = true;
+            }
+            resetPrecompView();
+            break;
         // ▲▲▲【追加ここまで】▲▲▲
     }
 }
@@ -129,7 +139,6 @@ async function handleReprocessAll() {
         const response = await fetch('/api/reprocess/all', {
             method: 'POST', // 再計算はPOSTリクエストを使用
         });
-
         const result = await response.json();
         if (!response.ok) {
             throw new Error(result.message || `サーバーエラー (HTTP ${response.status})`);
@@ -160,10 +169,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     reprocessBtn = document.getElementById('reprocessBtn');
     // ▼▼▼【ここに追加】▼▼▼
     deadStockViewBtn = document.getElementById('deadStockViewBtn');
+    precompViewBtn = document.getElementById('precompViewBtn');
     // ▲▲▲【追加ここまで】▲▲▲
 
     await loadMasterData();
 
+  
     initSearchModal();
 
     if (datViewBtn) {
@@ -191,6 +202,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     // ▼▼▼【ここに追加】▼▼▼
     if (deadStockViewBtn) {
         deadStockViewBtn.addEventListener('click', () => setActiveView('deadstock-view'));
+    }
+    if (precompViewBtn) {
+        precompViewBtn.addEventListener('click', () => setActiveView('precomp-view'));
     }
     // ▲▲▲【追加ここまで】▲▲▲
 

@@ -3,15 +3,17 @@ package model
 
 // DeadStockRecord はロット・期限・在庫（JAN単位）の記録です。
 type DeadStockRecord struct {
-	ID               int     `json:"id"`
-	ProductCode      string  `json:"productCode"`
-	YjCode           string  `json:"yjCode"`
-	PackageForm      string  `json:"packageForm"`
-	JanPackInnerQty  float64 `json:"janPackInnerQty"`
-	YjUnitName       string  `json:"yjUnitName"`
-	StockQuantityJan float64 `json:"stockQuantityJan"`
-	ExpiryDate       string  `json:"expiryDate"`
-	LotNumber        string  `json:"lotNumber"`
+	// ▼▼▼【ここに追加】(WASABI: model/types.go [cite: 1025-1026] より) ▼▼▼
+	ID int `db:"id" json:"id"`
+	// ▲▲▲【追加ここまで】▲▲▲
+	ProductCode      string  `db:"product_code" json:"productCode"`
+	YjCode           string  `db:"yj_code" json:"yjCode"`
+	PackageForm      string  `db:"package_form" json:"packageForm"`
+	JanPackInnerQty  float64 `db:"jan_pack_inner_qty" json:"janPackInnerQty"`
+	YjUnitName       string  `db:"yj_unit_name" json:"yjUnitName"`
+	StockQuantityJan float64 `db:"stock_quantity_jan" json:"stockQuantityJan"`
+	ExpiryDate       string  `db:"expiry_date" json:"expiryDate"`
+	LotNumber        string  `db:"lot_number" json:"lotNumber"`
 }
 
 // PackageStock は package_stock テーブルのレコードです。

@@ -29,6 +29,10 @@ import (
 	"tkr/stock"
 	"tkr/units"
 	"tkr/usage"
+
+	// ▼▼▼【ここに追加】予製パッケージをインポート ▼▼▼
+	"tkr/precomp"
+	// ▲▲▲【追加ここまで】▲▲▲
 )
 
 var (
@@ -224,6 +228,15 @@ func main() {
 
 	mux.HandleFunc("/api/inventory/adjust/data", inventoryadjustment.GetInventoryDataHandler(dbConn))
 	mux.HandleFunc("/api/inventory/adjust/save", inventoryadjustment.SaveInventoryDataHandler(dbConn))
+
+	// ▼▼▼【ここに追加】予製管理APIエンドポイント (WASABI: precomp/handler.go [cite: 1477-1488] より) ▼▼▼
+	mux.HandleFunc("/api/precomp/save", precomp.SavePrecompHandler(dbConn))
+	mux.HandleFunc("/api/precomp/load", precomp.LoadPrecompHandler(dbConn))
+	mux.HandleFunc("/api/precomp/clear", precomp.ClearPrecompHandler(dbConn))
+	mux.HandleFunc("/api/precomp/suspend", precomp.SuspendPrecompHandler(dbConn))
+	mux.HandleFunc("/api/precomp/resume", precomp.ResumePrecompHandler(dbConn))
+	mux.HandleFunc("/api/precomp/status", precomp.GetStatusPrecompHandler(dbConn))
+	// ▲▲▲【追加ここまで】▲▲▲
 
 	mux.HandleFunc("/api/products/search_filtered", product.SearchProductsHandler(dbConn))
 	mux.HandleFunc("/api/master/adopt", product.AdoptMasterHandler(dbConn))

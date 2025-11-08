@@ -60,6 +60,11 @@ type ResponseDataView struct {
 	TransactionLedger []StockLedgerYJGroupView `json:"transactionLedger"`
 	YesterdaysStock   *StockLedgerYJGroupView  `json:"yesterdaysStock"`
 	DeadStockDetails  []model.DeadStockRecord  `json:"deadStockDetails"`
+
+	// ▼▼▼【ここに追加】(WASABI: guidedinventory/handler.go [cite: 542] より) ▼▼▼
+	PrecompDetails []model.TransactionRecord `json:"precompDetails"`
+	// ▲▲▲【追加ここまで】▲▲▲
+
 }
 
 // ConvertToView はDBモデルを集計・表示用モデルに変換します。

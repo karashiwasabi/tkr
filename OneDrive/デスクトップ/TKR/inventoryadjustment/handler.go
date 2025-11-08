@@ -73,6 +73,23 @@ func GetInventoryDataHandler(conn *sqlx.DB) http.HandlerFunc {
 			}
 		}
 
+		// ▼▼▼【ここから追加】予製詳細(PrecompDetails)取得ロジック (WASABI: guidedinventory/handler.go [cite: 541] より) ▼▼▼
+		var productCodes []string
+		if len(ledgerToday) > 0 {
+			for _, pkg := range ledgerToday[0].PackageLedgers {
+				for _, master := range pkg.Masters {
+					productCodes = append(productCodes, master.ProductCode)
+				}
+			}
+		}
+
+		precompDetails, err := database.GetPreCompoundingDetailsByProductCodes(conn, productCodes)
+		if err != nil {
+			// 予製はオプション機能なので、エラーでも続行
+			log.Printf("WARN: Failed to get pre-compounding details: %v", err)
+		}
+		// ▲▲▲【追加ここまで】▲▲▲
+
 		// ▼▼▼【ここから修正】5. ロット・期限情報 (最新の棚卸明細) を取得 ▼▼▼
 		tx, err := conn.Beginx()
 		if err != nil {
@@ -110,6 +127,11 @@ func GetInventoryDataHandler(conn *sqlx.DB) http.HandlerFunc {
 			YesterdaysStock:   yesterdaysStockView,
 			DeadStockDetails:  deadStockDetails, // マッピングした結果を渡す
 			// TKRには予製(PrecompDetails)はない
+
+			// ▼▼▼【ここに追加】▼▼▼
+			PrecompDetails: precompDetails,
+			// ▲▲▲【追加ここまで】▲▲▲
+
 		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(response)

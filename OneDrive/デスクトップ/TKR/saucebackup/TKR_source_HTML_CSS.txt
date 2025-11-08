@@ -932,6 +932,27 @@ body {
    IDセレクタによって正しく上書きされます) 
 */
 
+/* ▼▼▼【ここに追加】(WASABI: static/css/styles.css  より) ▼▼▼ */
+/* 予製中断時のスタイル */
+#precomp-details-container.is-inactive {
+    opacity: 0.5; /* 半透明にする */
+    pointer-events: none; /* クリックなどの操作を無効化 */
+    position: relative; /* 疑似要素の配置基準 */
+}
+#precomp-details-container.is-inactive::before {
+    content: "中断中";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%) rotate(-15deg);
+    font-size: 3em;
+    color: rgba(220, 53, 69, 0.5); /* 赤系の半透明 */
+    font-weight: bold;
+    z-index: 10;
+    pointer-events: none; /* 文字自体はクリックできないように */
+}
+/* ▲▲▲【追加ここまで】▲▲▲ */
+
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\css\table.css -----
 /* TKR/static/css/table.css */
 
@@ -1084,7 +1105,6 @@ body {
    
                         <label>内外注区分:</label>
                        <div class="radio-group" id="modal-search-usage-class">
-                            <label><input type="radio" name="modal_usage_class" value="" checked> 全</label>
             
         
                             <label><input type="radio" name="modal_usage_class" value="内"> 内</label>
@@ -1169,14 +1189,16 @@ id="modal-search-generic" autocomplete="off">
      <div class="form-group">
    
                     <label for="config-dat-folder-path">伝票取込フォルダパス (DAT):</label>
-                    <input type="text" id="config-dat-folder-path" autocomplete="off">
+     
+               <input type="text" id="config-dat-folder-path" autocomplete="off">
                 </div>
                 <div class="form-group">
              
        <label for="config-usage-folder-path">処方取込フォルダパス (CSV):</label>
   
                     <input type="text" id="config-usage-folder-path" autocomplete="off">
-                </div>
+  
+              </div>
             </div>
             <div class="form-actions">
                 <button id="configSavePathBtn" class="btn">パス保存</button>
@@ -1188,13 +1210,15 @@ id="modal-search-generic" autocomplete="off">
  
     <section class="config-section">
         <h2>集計設定</h2>
-        <div class="config-form-container">
+ 
+       <div class="config-form-container">
             <div class="form-row">
                  <div class="form-group flex-150">
                     <label for="config-calculation-days">在庫集計期間 (日数):</label>
   
                 
-                    <input type="number" id="config-calculation-days" autocomplete="off" value="90">
+                    
+<input type="number" id="config-calculation-days" autocomplete="off" value="90">
                 </div>
             </div>
             <div class="form-actions">
@@ -1206,44 +1230,51 @@ class="btn">集計期間保存</button>
 
     <section class="config-section">
      
-       <h2>卸コード管理</h2>
+  
+     <h2>卸コード管理</h2>
         <div class="config-form-container">
             <fieldset>
                  <legend>新規卸コード追加</legend>
                  <div class="form-row">
    
                  <div class="form-group flex-150">
-                   
+                 
+  
            <label for="config-wholesaler-code">卸コード:</label>
                          <input type="text" id="config-wholesaler-code" autocomplete="off" maxlength="10">
                     </div>
  
                      <div class="form-group flex-300">
-                      
+             
+         
            <label for="config-wholesaler-name">卸名:</label>
                         <input type="text" id="config-wholesaler-name" autocomplete="off">
                  
                      </div>
-                     <div class="form-actions">
+              
+       <div class="form-actions">
                         <button id="configAddWholesalerBtn" class="btn">追加</button>
   
                      </div>
                  </div>
          
              </fieldset>
-        </div>
+    
+    </div>
          <div id="wholesalerListContainer" class="table-container">
             <table id="wholesalerListTable" class="data-table">
                 <thead>
     
                     <tr>
                         
-                          <th class="col-config-code">卸コード</th>
+       
+                   <th class="col-config-code">卸コード</th>
                          <th class="col-config-name">卸名</th>
                         <th class="col-config-action">操作</th>
        
                      </tr>
-                </thead>
+ 
+               </thead>
    
                        <tbody>
                 </tbody>
@@ -1252,8 +1283,51 @@ class="btn">集計期間保存</button>
     </section>
 
     <section class="config-section">
+        <h2>予製データ移行 (一括)</h2>
+        <div class="config-form-container">
+            <fieldset>
+                <legend>A.
+予製データ エクスポート</legend>
+                <div class="form-row">
+                    <div class="form-group flex-full">
+                        <p style="font-size: 10px; margin: 0 0 5px 0;">
+                            現在登録されている全患者の予製データをCSV (patient_number, product_code, product_name, quantity_jan, unit_name) としてエクスポートします。
+                        </p>
+                    </div>
+                </div>
+                <div class="form-actions" style="margin-top: 5px;">
+                    <button id="precomp-export-all-btn" class="btn">予製(全件) エクスポート</button>
+                </div>
+            </fieldset>
+        </div>
+        <div class="config-form-container">
+            <fieldset>
+                <legend>B.
+予製データ インポート</legend>
+                <div class="form-row">
+                    <div class="form-group flex-full">
+                        <p style="font-size: 10px; margin: 0 0 5px 0; color: #dc3545; font-weight: bold;">
+                            警告: 既存の予製データをCSVの内容で上書き（患者ごとに洗い替え）します。<br>
+                            CSV形式: 上記A. と同じ形式 (patient_number, product_code, quantity_jan が必須)
+                        </p>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="precomp-import-all-input" style="font-size: 10px; font-weight: bold;">予製CSVファイル:</label>
+                        <input type="file" id="precomp-import-all-input" class="hidden" accept=".csv,.CSV">
+                    </div>
+                    <div class="form-actions" style="margin-top: 5px;">
+                        <button id="precomp-import-all-btn" class="btn">予製CSV インポート実行</button>
+                    </div>
+                </div>
+            </fieldset>
+        </div>
+    </section>
+    <section class="config-section">
         <h2>在庫データ移行</h2>
-        
+     
+   
         <div class="config-form-container">
             <fieldset>
    
@@ -1267,7 +1341,8 @@ class="btn">集計期間保存</button>
                     </div>
                 </div>
                 <div class="form-actions" style="margin-top: 5px;">
-                   
+                  
+ 
                      <button id="exportTkrStockBtn" class="btn">TKR独自CSV エクスポート</button>
                 </div>
             </fieldset>
@@ -1275,29 +1350,35 @@ class="btn">集計期間保存</button>
 
         <div class="config-form-container">
             <fieldset>
-                <legend>B. TKR独自CSVインポート (全洗い替え)</legend>
+                <legend>B.
+TKR独自CSVインポート (全洗い替え)</legend>
                 <div class="form-row">
                      <div class="form-group flex-full">
                         <p style="font-size: 10px; margin: 0 0 5px 0; color: #dc3545; font-weight: bold;">
-                            警告: この操作は既存の在庫をすべて削除し、CSVの内容で上書き（洗い替え）します。<br>
+                        
+    警告: この操作は既存の在庫をすべて削除し、CSVの内容で上書き（洗い替え）します。<br>
                             CSV形式: PackageKey, ProductName, JAN数量 (※期限・ロットは登録されません)
                         </p>
                     </div>
                 </div>
-                <div class="form-row">
+   
+             <div class="form-row">
                     <div class="form-group">
                         <label for="importTkrStockDate" style="font-size: 10px; font-weight: bold;">棚卸日 (CSV適用日):</label>
                         <input type="date" id="importTkrStockDate" style="padding: 3px;">
-                    </div>
+       
+             </div>
               
                     <div class="form-group">
                         <label for="importTkrStockInput" style="font-size: 10px; font-weight: bold;">CSVファイル:</label>
-                        <input type="file" id="importTkrStockInput" class="hidden" accept=".csv,.CSV">
+                       
+ <input type="file" id="importTkrStockInput" class="hidden" accept=".csv,.CSV">
                     </div>
                     
                     <div class="form-actions" style="margin-top: 5px;">
                         <button id="importTkrStockBtn" class="btn">TKR独自CSV（洗い替え）読込</button>
-                    </div>
+      
+              </div>
                 </div>
                  </fieldset>
         </div>
@@ -1308,46 +1389,57 @@ class="btn">集計期間保存</button>
         <h2>マスタデータ移行</h2>
         
         <div class="config-form-container">
-            <fieldset>
-                <legend>A. 製品マスタ エクスポート</legend>
+       
+     <fieldset>
+                <legend>A.
+製品マスタ エクスポート</legend>
                 <div class="form-row">
                     <div class="form-group flex-full">
                         <p style="font-size: 10px; margin: 0 0 5px 0;">
                             現在の製品マスタ（product_master）の全項目（JCSHMS由来、ユーザー設定含む）をCSVに出力します。
-                        </p>
+ 
+                       </p>
                     </div>
                 </div>
                 <div class="form-actions" style="margin-top: 5px;">
-                    <button id="exportAllMastersBtn" class="btn">マスタCSV エクスポート</button>
+                    <button id="exportAllMastersBtn" 
+class="btn">マスタCSV エクスポート</button>
                 </div>
             </fieldset>
         </div>
 
         <div class="config-form-container">
             <fieldset>
-                <legend>B. 製品マスタ インポート (JCSHMSマージ/上書き)</legend>
+                <legend>B.
+製品マスタ インポート (JCSHMSマージ/上書き)</legend>
                 <div class="form-row">
                     <div class="form-group flex-full">
                         <p style="font-size: 10px; margin: 0 0 5px 0; color: #dc3545; font-weight: bold;">
-                            警告: 既存の製品マスタをCSVの内容で上書き (Upsert) します。<br>
-                            CSV形式: 上記A. と同じ形式 (product_codeが必須)
+                        
+    警告: 既存の製品マスタをCSVの内容で上書き (Upsert) します。<br>
+                            CSV形式: 上記A.
+と同じ形式 (product_codeが必須)
                         </p>
                         <p style="font-size: 10px; margin: 0 0 5px 0;">
                             <b>読込ルール:</b><br>
-                            1. CSVの品目がJCSHMSに存在する場合: JCSHMSの品名/薬価/規格等を優先し、CSVの棚番/仕入単価/メモ等をマージします。<br>
+                
+            1. CSVの品目がJCSHMSに存在する場合: JCSHMSの品名/薬価/規格等を優先し、CSVの棚番/仕入単価/メモ等をマージします。<br>
                             2. JCSHMSに存在しない場合: CSVのすべての値を登録します。(YJコードが空なら自動採番されます)
                         </p>
                     </div>
-                </div>
+            
+    </div>
                 <div class="form-row">
                     <div class="form-group">
                         <label for="importAllMastersInput" style="font-size: 10px; font-weight: bold;">マスタCSVファイル:</label>
                         <input type="file" id="importAllMastersInput" class="hidden" accept=".csv,.CSV">
-                    </div>
+ 
+                   </div>
                     <div class="form-actions" style="margin-top: 5px;">
                         <button id="importAllMastersBtn" class="btn">マスタCSV インポート実行</button>
                     </div>
-                </div>
+           
+     </div>
             </fieldset>
         </div>
     </section>
@@ -1384,7 +1476,8 @@ class="btn">集計期間保存</button>
     
     <div class="deadstock-controls">
         <div class="form-group">
-            <label for="ds-start-date">対象期間 (開始日):</label>
+  
+          <label for="ds-start-date">対象期間 (開始日):</label>
             <input type="date" id="ds-start-date">
         </div>
         <div class="form-group">
@@ -1392,7 +1485,8 @@ class="btn">集計期間保存</button>
             <input type="date" id="ds-end-date">
         </div>
         <div class="form-actions">
-            <button id="ds-search-btn" class="btn">この期間で検索</button>
+            
+<button id="ds-search-btn" class="btn">この期間で検索</button>
             <button id="ds-export-csv-btn" class="btn">CSVエクスポート</button>
             </div>
     </div>
@@ -1403,7 +1497,8 @@ class="btn">集計期間保存</button>
             <input type="date" id="ds-csv-date">
         </div>
         <div class="form-group">
-            <label for="ds-csv-file-input">棚卸CSVファイル:</label>
+        
+    <label for="ds-csv-file-input">棚卸CSVファイル:</label>
             <input type="file" id="ds-csv-file-input" accept=".csv,.CSV">
         </div>
         <div class="form-actions">
@@ -1637,6 +1732,39 @@ class="btn">集計期間保存</button>
     </div>
 </div>
 
+----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\views\precomp_view.html -----
+<div id="precomp-view" class="view">
+    <h1>予製管理</h1>
+
+    <div class="inout-header-controls">
+        <div class="form-group">
+            <label for="precomp-patient-number">患者番号 (Client Code):</label>
+            <input type="text" id="precomp-patient-number" autocomplete="off" placeholder="患者番号を入力...">
+        </div>
+        
+        <div class="buttons-group" style="gap: 5px;">
+            <button id="precomp-load-btn" class="btn">呼出</button>
+            <button id="precomp-save-btn" class="btn">保存</button>
+            <button id="precomp-clear-btn" class="btn">全削除</button>
+            <button id="precomp-toggle-status-btn" class="btn">予製中断</button>
+        </div>
+        
+        <div class="buttons-group" style="gap: 5px; border-left: 1px solid #ccc; padding-left: 10px;">
+            <button id="precomp-export-btn" class="btn">CSV<br>エクスポート</button>
+            <button id="precomp-import-btn" class="btn">CSV<br>インポート</button>
+            <input type="file" id="precomp-import-input" class="hidden" accept=".csv,.CSV">
+        </div>
+    </div>
+
+    <div class="inout-view-container">
+        <div class="inout-details-header">
+            <button id="precomp-add-row-btn" class="btn">明細を追加</button>
+        </div>
+        <div id="precomp-details-container" class="table-container" style="position: relative;">
+            </div>
+    </div>
+</div>
+
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\views\search_form_group.html -----
 // C:\Users\wasab\OneDrive\デスクトップ\TKR\static\views\search_form_group.html
 {{ define "generic_search_form" }}
@@ -1739,7 +1867,8 @@ class="btn">集計期間保存</button>
     <link rel="stylesheet" href="/static/css/deadstock.css">
     </head>
 <body>
-    <header id="main-header">
+  
+  <header id="main-header">
         <button id="datViewBtn" class="btn">DAT取込</button>
         <button id="usageViewBtn" class="btn">USAGE取込</button>
         <button id="inOutViewBtn" class="btn">入出庫</button>
@@ -1747,13 +1876,15 @@ class="btn">集計期間保存</button>
         <button id="deadStockViewBtn" class="btn">不動在庫</button>
   
          <button id="masterEditViewBtn" class="btn">マスタ編集</button>
+        <button id="precompViewBtn" class="btn">予製管理</button>
         <button id="reprocessBtn" class="btn">全取引再計算</button>
         <button id="configViewBtn" class="btn">設定</button>
     
 </header>
 
     <main>
-        {{if .Views}}
+      
+  {{if .Views}}
     
              {{range .Views}}
                  {{.}}
@@ -1762,7 +1893,8 @@ class="btn">集計期間保存</button>
          {{else}}
             <div id="dat-upload-view" class="view active">DATビュー</div>
          
-           <div id="usage-upload-view" class="view">USAGEビュー</div>
+         
+  <div id="usage-upload-view" class="view">USAGEビュー</div>
          
    <div id="inventory-adjustment-view" class="view">棚卸調整ビュー</div>
    
@@ -1772,7 +1904,8 @@ class="btn">集計期間保存</button>
      
              <div id="deadstock-view" class="view">不動在庫ビュー</div>
              {{end}}
-        </main>
+     
+   </main>
 
     <div id="loading-overlay" class="hidden">
         <div class="spinner"></div>
@@ -1781,7 +1914,7 @@ class="btn">集計期間保存</button>
     <div id="notification-box"></div>
 
  {{ template "common_search_modal" .
- }}
+}}
  {{ template "common_input_modal" . }}
     <script type="module" src="/static/js/app.js?v=2025110701"></script>
     </body>

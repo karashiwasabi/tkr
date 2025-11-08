@@ -24,7 +24,12 @@ type StockLedgerYJGroup struct {
 	StartingBalance interface{}               `json:"startingBalance"`
 	NetChange       float64                   `json:"netChange"`
 	EndingBalance   interface{}               `json:"endingBalance"`
-	IsReorderNeeded bool                      `json:"isReorderNeeded"`
+	// ▼▼▼【ここから追加】(WASABI: model/types.go  より) ▼▼▼
+	TotalReorderPoint     float64 `json:"totalReorderPoint"`
+	IsReorderNeeded       bool    `json:"isReorderNeeded"`
+	TotalBaseReorderPoint float64 `json:"totalBaseReorderPoint"`
+	TotalPrecompounded    float64 `json:"totalPrecompounded"`
+	// ▲▲▲【追加ここまで】▲▲▲
 }
 
 // StockLedgerPackageGroup は包装キー単位の集計グループです。
@@ -36,6 +41,14 @@ type StockLedgerPackageGroup struct {
 	NetChange       float64             `json:"netChange"`
 	EndingBalance   interface{}         `json:"endingBalance"`
 	Masters         []*ProductMaster    `json:"masters"`
+	// ▼▼▼【ここから追加】(WASABI: model/types.go  より) ▼▼▼
+	EffectiveEndingBalance float64 `json:"effectiveEndingBalance"`
+	MaxUsage               float64 `json:"maxUsage"`
+	ReorderPoint           float64 `json:"reorderPoint"`
+	IsReorderNeeded        bool    `json:"isReorderNeeded"`
+	BaseReorderPoint       float64 `json:"baseReorderPoint"`
+	PrecompoundedTotal     float64 `json:"precompoundedTotal"`
+	// ▲▲▲【追加ここまで】▲▲▲
 }
 
 // LedgerTransaction は台帳表示用の取引記録です。
