@@ -7,6 +7,7 @@ import (
 	"strings"
 	"tkr/model"
 
+	// ▼▼▼【追加】units パッケージをインポート ▼▼▼
 	"github.com/jmoiron/sqlx"
 )
 
@@ -21,19 +22,19 @@ func UpsertPackageStockInTx(tx *sqlx.Tx, packageKey string, yjCode string, quant
 	`
 	_, err := tx.Exec(q, packageKey, yjCode, quantityYj, inventoryDate)
 	if err != nil {
-		// ▼▼▼【ここを修正】文字列の改行を削除 ▼▼▼
+		// ▼▼▼【修正】[source]タグを文字列の外に移動し、改行を削除 ▼▼▼
 		return fmt.Errorf("failed to upsert package_stock for key %s: %w", packageKey, err)
 	}
 	return nil
 }
 
+// ▼▼▼【修正】[source]タグを文字列の外に移動 ▼▼▼
 func GetPackageStockByYjCode(dbtx DBTX, yjCode string) (map[string]model.PackageStock, error) {
 	var stocks []model.PackageStock
 	const q = `
 		SELECT package_key, yj_code, stock_quantity_yj, last_inventory_date
 		FROM package_stock
-		WHERE yj_code = ?
- `
+		WHERE yj_code = ?`
 	err := dbtx.Select(&stocks, q, yjCode)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get package_stock by yj_code %s: %w", yjCode, err)
@@ -45,6 +46,8 @@ func GetPackageStockByYjCode(dbtx DBTX, yjCode string) (map[string]model.Package
 	}
 	return stockMap, nil
 }
+
+// ▲▲▲【修正ここまで】▲▲▲
 
 type ParsedPackageKey struct {
 	YjCode          string

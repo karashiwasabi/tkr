@@ -10,6 +10,7 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
+// ▼▼▼【修正】[source]タグを文字列の外に移動 ▼▼▼
 // GetDeadStockList は、指定された期間に処方(flag=3)されていない在庫品目（不動在庫）のリストを取得します。
 func GetDeadStockList(db *sqlx.DB, startDate, endDate string) ([]model.DeadStockItem, error) {
 
@@ -18,7 +19,7 @@ func GetDeadStockList(db *sqlx.DB, startDate, endDate string) ([]model.DeadStock
 		SELECT DISTINCT 
 			T.yj_code || '|' || 
 			COALESCE(T.package_form, '不明') || '|' || 
-			PRINTF('%g', COALESCE(T.jan_pack_inner_qty, 0)) || '|' || 
+			PRINTF('%g', COALESCE(T.jan_pack_inner_qty, 0)) || '|' ||
 			COALESCE(U.name, T.yj_unit_name, '不明') AS package_key
 		FROM transaction_records AS T
 		LEFT JOIN units AS U ON T.yj_unit_name = U.code
@@ -30,7 +31,7 @@ func GetDeadStockList(db *sqlx.DB, startDate, endDate string) ([]model.DeadStock
 	const allMasterKeysQuery = `
 		SELECT
 			P.yj_code || '|' || 
-			COALESCE(P.package_form, '不明') || '|' || 
+			COALESCE(P.package_form, '不明') || '|' ||
 			PRINTF('%g', COALESCE(P.jan_pack_inner_qty, 0)) || '|' || 
 			COALESCE(U.name, P.yj_unit_name, '不明') AS package_key,
 			P.yj_code,
@@ -47,7 +48,7 @@ func GetDeadStockList(db *sqlx.DB, startDate, endDate string) ([]model.DeadStock
 		SELECT 
 			T.yj_code || '|' || 
 			COALESCE(T.package_form, '不明') || '|' || 
-			PRINTF('%g', COALESCE(T.jan_pack_inner_qty, 0)) || '|' || 
+			PRINTF('%g', COALESCE(T.jan_pack_inner_qty, 0)) || '|' ||
 			COALESCE(U.name, T.yj_unit_name, '不明') AS package_key,
 			SUM(CASE 
 				WHEN T.flag = 1 THEN T.yj_quantity  -- 納品 (+)
@@ -130,12 +131,11 @@ func GetDeadStockList(db *sqlx.DB, startDate, endDate string) ([]model.DeadStock
 
 		// 在庫が 0 より大きい品目のみロット・期限を取得
 		if item.StockQuantityYj > 0 {
-			// ▼▼▼【ここから修正】SELECT句に T.gs1_code を追加 ▼▼▼
 			// (transaction_records には gs1_code がないため、product_master と JOIN する)
 			err = db.Select(&item.LotDetails, `
 				SELECT 
 					T.jan_code, 
-					P.gs1_code, 
+					COALESCE(P.gs1_code, '') AS gs1_code, 
 					T.package_spec, 
 					T.expiry_date, 
 					T.lot_number, 
@@ -143,8 +143,7 @@ func GetDeadStockList(db *sqlx.DB, startDate, endDate string) ([]model.DeadStock
 					T.jan_unit_name
 				FROM transaction_records AS T
 				LEFT JOIN product_master AS P ON T.jan_code = P.product_code
-				WHERE T.yj_code = ? 
-				  AND T.flag = 0 
+				WHERE T.yj_code = ? AND T.flag = 0 
 				  AND T.transaction_date = (
 					  SELECT MAX(last_inventory_date) 
 					  FROM package_stock 
@@ -166,3 +165,5 @@ func GetDeadStockList(db *sqlx.DB, startDate, endDate string) ([]model.DeadStock
 
 	return items, nil
 }
+
+// ▲▲▲【修正ここまで】▲▲▲

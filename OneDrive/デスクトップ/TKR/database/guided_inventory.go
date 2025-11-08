@@ -14,6 +14,7 @@ import (
 
 // DeleteTransactionsByFlagAndDateAndCodes は、指定されたフラグ、日付、製品コード群に一致する取引データを削除します。
 // (WASABI: db/transaction_records.go  より移植)
+// ▼▼▼【修正】[source]タグを文字列の外に移動 ▼▼▼
 func DeleteTransactionsByFlagAndDateAndCodes(tx *sqlx.Tx, flag int, date string, productCodes []string) error {
 	if len(productCodes) == 0 {
 		return nil
@@ -31,6 +32,8 @@ func DeleteTransactionsByFlagAndDateAndCodes(tx *sqlx.Tx, flag int, date string,
 	}
 	return nil
 }
+
+// ▲▲▲【修正ここまで】▲▲▲
 
 // SaveGuidedInventoryData は、棚卸調整画面からの入力データを棚卸レコード(flag=0)として保存します。
 // (WASABI: db/guided_inventory.go  より移植・TKR用に修正)
@@ -67,10 +70,12 @@ func SaveGuidedInventoryData(tx *sqlx.Tx, date string, yjCode string, allPackagi
 	prefix := "ADJ" + dateYYMMDD // "ADJ251031"
 
 	// データベースから 'ADJ251031' で始まる最大の伝票番号を取得
+	// ▼▼▼【修正】[source]タグを文字列の外に移動 ▼▼▼
 	q := `SELECT receipt_number FROM transaction_records 
 		  WHERE receipt_number LIKE ? ORDER BY receipt_number DESC LIMIT 1` //
 	var lastReceiptNumber string
 	err := tx.Get(&lastReceiptNumber, q, prefix+"%") //
+	// ▲▲▲【修正ここまで】▲▲▲
 
 	if err != nil && err != sql.ErrNoRows {
 		return fmt.Errorf("failed to get last receipt number sequence for prefix %s: %w", prefix, err)
@@ -119,27 +124,6 @@ func SaveGuidedInventoryData(tx *sqlx.Tx, date string, yjCode string, allPackagi
 		janQty := ds.StockQuantityJan
 		yjQty := janQty * master.JanPackInnerQty //
 
-		// ▼▼▼【削除】productCodesWithInventory への追加ロジック (不要) ▼▼▼
-		/*
-			// 在庫が0より大きい（＝入力があった）コードを記録 (dead_stock_list 保存用)
-			if janQty > 0 {
-				// productCodesWithInventory に重複して追加しないようにチェック
-				found := false
-				for _, code := range productCodesWithInventory {
-					if code == ds.ProductCode {
-						found = true
-						break
-					}
-				}
-				if !found {
-					productCodesWithInventory = append(productCodesWithInventory, ds.ProductCode) //
-				}
-			}
-		*/
-		// ▲▲▲【削除ここまで】▲▲▲
-
-		// (packageStockTotalsYj への集計ロジックは上で実施済みなの)
-
 		tr := model.TransactionRecord{
 			TransactionDate: date,
 			Flag:            0,             // 棚卸
@@ -168,34 +152,7 @@ func SaveGuidedInventoryData(tx *sqlx.Tx, date string, yjCode string, allPackagi
 	// ▲▲▲【修正ここまで】▲▲▲
 
 	// ▼▼▼【削除】3. ロット・期限情報を更新 (dead_stock_list 廃止のため不要) ▼▼▼
-	/*
-		if len(productCodesWithInventory) > 0 {
-			var relevantDeadstockData []model.DeadStockRecord
-			for _, ds := range deadstockData {
-				// ▼▼▼【ここから修正】数量が0より大きいものだけを dead_stock_list に保存する ▼▼▼
-				if ds.StockQuantityJan > 0 {
-				// ▲▲▲【修正ここまで】▲▲▲
-					for _, pid := range productCodesWithInventory {
-						if ds.ProductCode == pid {
-							relevantDeadstockData = append(relevantDeadstockData, ds)
-							break
-						}
-					}
-				}
-			}
-
-			// このYJコードに関連する既存のロット・期限情報を一度すべて削除
-			if err := DeleteDeadStockByProductCodesInTx(tx, allProductCodes); err != nil { //
-				return fmt.Errorf("failed to delete old dead stock records: %w", err)
-			}
-			// 新しいロット・期限情報（在庫>0のもの）を保存
-			if len(relevantDeadstockData) > 0 {
-				if err := SaveDeadStockListInTx(tx, relevantDeadstockData); err != nil { //
-					return fmt.Errorf("failed to upsert new dead stock records: %w", err)
-				}
-			}
-		}
-	*/
+	//
 	// ▲▲▲【削除ここまで】▲▲▲
 
 	// ▼▼▼【ここから修正】4. package_stock テーブルを更新（在庫起点）▼▼▼

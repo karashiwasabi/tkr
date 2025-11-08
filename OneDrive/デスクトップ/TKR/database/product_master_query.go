@@ -1,3 +1,4 @@
+// C:\Users\wasab\OneDrive\デスクトップ\TKR\database\product_master_query.go
 package database
 
 import (
@@ -6,6 +7,7 @@ import (
 	"strings"
 	"tkr/barcode"
 	"tkr/model"
+	"tkr/units"
 
 	"github.com/jmoiron/sqlx"
 )
@@ -36,6 +38,7 @@ func GetAllProductMasters(dbtx DBTX) ([]*model.ProductMaster, error) {
 	return masters, nil
 }
 
+// ▼▼▼【修正】[source]タグを文字列の外に移動 ▼▼▼
 func GetFilteredProductMasters(dbtx DBTX, usageClass, kanaName, genericName, shelfNumber string) ([]model.ProductMaster, error) {
 	var masters []model.ProductMaster
 
@@ -71,7 +74,6 @@ func GetFilteredProductMasters(dbtx DBTX, usageClass, kanaName, genericName, she
 	}
 
 	if len(mustConditions) > 0 {
-		// ▼▼▼【ここを修正】文字列の途中で改行していたのを修正 ▼▼▼
 		query += " WHERE " + strings.Join(mustConditions, " AND ")
 	} else {
 		return []model.ProductMaster{}, fmt.Errorf("usage class filter is required")
@@ -94,6 +96,8 @@ func GetFilteredProductMasters(dbtx DBTX, usageClass, kanaName, genericName, she
 	return masters, nil
 }
 
+// ▲▲▲【修正ここまで】▲▲▲
+
 func GetProductMasterByCode(dbtx DBTX, code string) (*model.ProductMaster, error) {
 	var master model.ProductMaster
 	query := `SELECT * FROM product_master WHERE product_code = ?`
@@ -104,7 +108,7 @@ func GetProductMasterByCode(dbtx DBTX, code string) (*model.ProductMaster, error
 	return &master, nil
 }
 
-// ▼▼▼【ここを修正】開き括弧 { をシグネチャと同じ行に移動 ▼▼▼
+// ▼▼▼【修正】 { をシグネチャと同じ行に移動 ▼▼▼
 func GetProductMasterByGs1Code(dbtx DBTX, gs1Code string) (*model.ProductMaster, error) {
 	var master model.ProductMaster
 	query := `SELECT * FROM product_master WHERE gs1_code = ?`
@@ -114,6 +118,8 @@ func GetProductMasterByGs1Code(dbtx DBTX, gs1Code string) (*model.ProductMaster,
 	}
 	return &master, nil
 }
+
+// ▲▲▲【修正ここまで】▲▲▲
 
 func GetProductMasterByBarcode(dbtx DBTX, barcodeStr string) (*model.ProductMaster, error) {
 	if barcodeStr == "" {
@@ -137,10 +143,10 @@ func GetProductMasterByBarcode(dbtx DBTX, barcodeStr string) (*model.ProductMast
 	return GetProductMasterByGs1Code(dbtx, gtin14)
 }
 
+// ▼▼▼【修正】[source]タグを文字列の外に移動 ▼▼▼
 func GetProductMastersByYjCode(dbtx DBTX, yjCode string) ([]*model.ProductMaster, error) {
 	var masters []*model.ProductMaster
-	query := `SELECT * FROM product_master WHERE yj_code = 
- ? ORDER BY product_code`
+	query := `SELECT * FROM product_master WHERE yj_code = ? ORDER BY product_code`
 	err := dbtx.Select(&masters, query, yjCode)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -153,6 +159,8 @@ func GetProductMastersByYjCode(dbtx DBTX, yjCode string) ([]*model.ProductMaster
 	}
 	return masters, nil
 }
+
+// ▲▲▲【修正ここまで】▲▲▲
 
 func GetProductCodesByYjCodes(dbtx DBTX, yjCodes []string) ([]string, error) {
 	if len(yjCodes) == 0 {
@@ -180,6 +188,7 @@ func GetProductMasterByKanaNameShort(dbtx DBTX, kanaNameShort string) (*model.Pr
 	return &master, nil
 }
 
+// ▼▼▼【修正】[source]タグを文字列の外に移動 ▼▼▼
 const insertProductMasterQuery = `
 INSERT INTO product_master (
     product_code, yj_code, gs1_code, product_name, kana_name, kana_name_short, 
@@ -188,7 +197,8 @@ INSERT INTO product_master (
     yj_unit_name, yj_pack_unit_qty, jan_pack_inner_qty, jan_unit_code, jan_pack_unit_qty, 
     origin, nhi_price, purchase_price, flag_poison, flag_deleterious, flag_narcotic, 
     
- flag_psychotropic, flag_stimulant, flag_stimulant_raw, is_order_stopped, 
+ flag_psychotropic, flag_stimulant, flag_stimulant_raw, 
+is_order_stopped, 
     supplier_wholesale, group_code, shelf_number, category, user_notes
 ) VALUES (
     :product_code, :yj_code, :gs1_code, :product_name, :kana_name, :kana_name_short, 
@@ -206,3 +216,56 @@ func InsertProductMaster(dbtx DBTX, master *model.ProductMaster) error {
 	}
 	return nil
 }
+
+// ▲▲▲【修正ここまで】▲▲▲
+
+// ▼▼▼【ここから追加】PackageKeyを全件取得するヘルパー関数 ▼▼▼
+
+// MasterPackageKeyInfo は、マスターからPackageKeyを構築するための情報を保持します。
+type MasterPackageKeyInfo struct {
+	PackageKey     string
+	YjCode         string
+	Representative *model.ProductMaster
+}
+
+// GetAllPackageKeysFromMasters は、product_masterテーブルに存在するすべてのPackageKeyと
+// その代表マスター情報をマップで返します。
+func GetAllPackageKeysFromMasters(dbtx DBTX) (map[string]MasterPackageKeyInfo, error) {
+	// 1. 全マスターを取得
+	var allMasters []*model.ProductMaster
+	query := `SELECT * FROM product_master WHERE yj_code != ''`
+	err := dbtx.Select(&allMasters, query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to select all product masters for package key generation: %w", err)
+	}
+
+	// 2. PackageKey ごとに分類し、代表マスター（JCSHMS優先）を選定
+	mastersByPackageKey := make(map[string][]*model.ProductMaster)
+	keyInfoMap := make(map[string]MasterPackageKeyInfo)
+
+	for _, m := range allMasters {
+		// PackageKeyを生成 (aggregation.go と同じロジック)
+		key := fmt.Sprintf("%s|%s|%g|%s", m.YjCode, m.PackageForm, m.JanPackInnerQty, units.ResolveName(m.YjUnitName))
+		mastersByPackageKey[key] = append(mastersByPackageKey[key], m)
+
+		// 代表マスターを選定
+		if info, ok := keyInfoMap[key]; !ok {
+			// まだキーが登録されていなければ、このマスターを暫定代表とする
+			keyInfoMap[key] = MasterPackageKeyInfo{
+				PackageKey:     key,
+				YjCode:         m.YjCode,
+				Representative: m,
+			}
+		} else {
+			// 既に代表がいる場合、JCSHMS由来のマスターを優先する
+			if info.Representative.Origin != "JCSHMS" && m.Origin == "JCSHMS" {
+				info.Representative = m
+				keyInfoMap[key] = info
+			}
+		}
+	}
+
+	return keyInfoMap, nil
+}
+
+// ▲▲▲【追加ここまで】▲▲▲

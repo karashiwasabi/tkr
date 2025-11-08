@@ -24,6 +24,7 @@ type DBTX interface {
 func GetJcshmsInfoByJan(dbtx DBTX, janCode string) (*model.JcshmsInfo, error) {
 	var info model.JcshmsInfo
 	// ▼▼▼【ここを修正】 j.JC020 をSELECTに追加 ▼▼▼
+	// ▼▼▼【修正】[source]タグを文字列の外に移動 ▼▼▼
 	query := `
 		SELECT
 			j.JC000, j.JC009, j.JC018, j.JC019, j.JC020, j.JC022, j.JC024, j.JC030, j.JC013, j.JC037, j.JC039,
@@ -47,6 +48,7 @@ func GetJcshmsInfoByJan(dbtx DBTX, janCode string) (*model.JcshmsInfo, error) {
 	return &info, nil
 }
 
+// ▼▼▼【修正】[source]タグを文字列の外に移動 ▼▼▼
 func GetJcshmsInfoByGs1Code(dbtx DBTX, gs1Code string) (*model.JcshmsInfo, error) {
 	var info model.JcshmsInfo
 	query := `
@@ -71,43 +73,49 @@ func GetJcshmsInfoByGs1Code(dbtx DBTX, gs1Code string) (*model.JcshmsInfo, error
 	return &info, nil
 }
 
+// ▲▲▲【修正ここまで】▲▲▲
+
+// ▼▼▼【修正】[source]タグを文字列の外に移動 ▼▼▼
 func GetFilteredJcshmsInfo(dbtx DBTX, usageClass, kanaName, genericName string) ([]*model.JcshmsInfo, error) {
-    var jcshmsList []*model.JcshmsInfo
-    query := `
+	var jcshmsList []*model.JcshmsInfo
+	query := `
         SELECT
             j.JC000, j.JC009, j.JC018, j.JC019, j.JC020, j.JC022, j.JC024, j.JC030, j.JC013, j.JC037, j.JC039,
             j.JC044, j.JC049, j.JC050, j.JC122, j.JC124,
             j.JC061, j.JC062, j.JC063, j.JC064, j.JC065, j.JC066,
-            ja.JA006, ja.JA007, ja.JA008
+  
+           ja.JA006, ja.JA007, ja.JA008
         FROM jcshms AS j
 		LEFT JOIN jancode AS ja ON j.JC000 = ja.JA001`
 
-    var conditions []string
-    var args []interface{}
+	var conditions []string
+	var args []interface{}
 
-    if usageClass != "" {
-        conditions = append(conditions, "j.JC013 = ?")
-        args = append(args, usageClass)
-    }
-    if kanaName != "" {
-        conditions = append(conditions, "j.JC022 LIKE ?")
-        args = append(args, kanaName+"%")
-    }
-    if genericName != "" {
-        conditions = append(conditions, "j.JC024 LIKE ?")
-        args = append(args, "%"+genericName+"%")
-    }
+	if usageClass != "" {
+		conditions = append(conditions, "j.JC013 = ?")
+		args = append(args, usageClass)
+	}
+	if kanaName != "" {
+		conditions = append(conditions, "j.JC022 LIKE ?")
+		args = append(args, kanaName+"%")
+	}
+	if genericName != "" {
+		conditions = append(conditions, "j.JC024 LIKE ?")
+		args = append(args, "%"+genericName+"%")
+	}
 
-    if len(conditions) > 0 {
-        query += " WHERE " + strings.Join(conditions, " AND ")
-    }
+	if len(conditions) > 0 {
+		query += " WHERE " + strings.Join(conditions, " AND ")
+	}
 
-    query += " ORDER BY j.JC022 LIMIT 500" // Add a reasonable limit
+	query += " ORDER BY j.JC022 LIMIT 500" // Add a reasonable limit
 
-    err := dbtx.Select(&jcshmsList, query, args...)
-    if err != nil {
-        return nil, fmt.Errorf("failed to select filtered jcshms info: %w", err)
-    }
+	err := dbtx.Select(&jcshmsList, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to select filtered jcshms info: %w", err)
+	}
 
-    return jcshmsList, nil
+	return jcshmsList, nil
 }
+
+// ▲▲▲【修正ここまで】▲▲▲

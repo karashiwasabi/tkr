@@ -637,10 +637,13 @@ func UploadDatHandler(db *sqlx.DB) http.HandlerFunc {
 			if openErr != nil {
 				log.Printf("Failed to open uploaded file %s: %v", fileHeader.Filename, openErr)
 				fileResult["error"] = fmt.Sprintf("Failed to open file: %v", openErr)
-				allResults = append(allResults, fileResult)
+				allResults =
+					append(allResults, fileResult)
 				continue
 			}
+			// ▼▼▼【修正】TKRのパーサー(バイト列処理)を呼び出す ▼▼▼
 			parsedRecords, parseErr := parsers.ParseDat(file)
+			// ▲▲▲【修正ここまで】▲▲▲
 			file.Close()
 			if parseErr != nil {
 				log.Printf("Failed to parse DAT file %s: %v", fileHeader.Filename, parseErr)
@@ -691,13 +694,38 @@ func UploadDatHandler(db *sqlx.DB) http.HandlerFunc {
 	}
 }
 
+// ▼▼▼【ここから追加】重複除去ロジック (WASABI: dat/handler.go  より) ▼▼▼
+func removeDatDuplicates(records []model.DatRecord) []model.DatRecord {
+	seen := make(map[string]struct{})
+	var result []model.DatRecord
+	for _, r := range records {
+		// WASABIのキー定義 に基づき、TKRのmodel.DatRecord  のフィールドでキーを作成
+		key := fmt.Sprintf("%s|%s|%s|%s", r.Date, r.ClientCode, r.ReceiptNumber, r.LineNumber)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		result = append(result, r)
+	}
+	return result
+}
+
+// ▲▲▲【追加ここまで】▲▲▲
+
 func ProcessDatRecords(tx *sqlx.Tx, parsedRecords []model.DatRecord) ([]model.TransactionRecord, error) {
 	var insertedTransactions []model.TransactionRecord
 	var insertedCount int = 0
 
-	for _, rec := range parsedRecords {
+	// ▼▼▼【ここに追加】重複除去を実行 ▼▼▼
+	recordsToProcess := removeDatDuplicates(parsedRecords)
+	// ▲▲▲【追加ここまで】▲▲▲
+
+	// ▼▼▼【ここから修正】ループ対象を parsedRecords -> recordsToProcess に変更 ▼▼▼
+	for _, rec := range recordsToProcess {
+		// ▲▲▲【修正ここまで】▲▲▲
 		key := rec.JanCode
-		if key == "" || key == "0000000000000" {
+		if key == "" ||
+			key == "0000000000000" {
 			// ユーザーの要求: DATファイルの商品名をプロダクトマスタのkana_name_shortに照合
 			// なければ、DAT商品名をプロダクトマスタの商品名とkana_name_shortに記載
 			foundMaster, err := database.GetProductMasterByKanaNameShort(tx, rec.ProductName)
@@ -748,7 +776,8 @@ func ProcessDatRecords(tx *sqlx.Tx, parsedRecords []model.DatRecord) ([]model.Tr
 			transaction.Subtotal = transaction.YjQuantity * transaction.UnitPrice
 		}
 
-		mappers.MapMasterToTransaction(&transaction, master)
+		mappers.MapMasterToTransaction(&transaction,
+			master)
 
 		if err := database.InsertTransactionRecord(tx, transaction); err != nil {
 			return nil, fmt.Errorf("transaction insert failed for key %s: %w", key, err)
@@ -789,7 +818,8 @@ func SearchDatHandler(db *sqlx.DB) http.HandlerFunc {
 		productCode := master.ProductCode
 		var expiryYYMMDD, expiryYYMM, lotNumber string
 		if len(barcodeStr) > 14 {
-			gs1Result, parseErr := barcode.Parse(barcodeStr)
+			gs1Result,
+				parseErr := barcode.Parse(barcodeStr)
 			if parseErr == nil && gs1Result != nil {
 				expiryYYMMDD = gs1Result.ExpiryDate
 				if len(expiryYYMMDD) == 6 {
@@ -1491,7 +1521,7 @@ func UpsertPackageStockInTx(tx *sqlx.Tx, packageKey string, yjCode string, quant
 	`
 	_, err := tx.Exec(q, packageKey, yjCode, quantityYj, inventoryDate)
 	if err != nil {
-		// ▼▼▼【ここを修正】文字列の改行を削除 ▼▼▼
+		// ▼▼▼【修正】[source]タグを文字列の外に移動し、改行を削除 ▼▼▼
 		return fmt.Errorf("failed to upsert package_stock for key %s: %w", packageKey, err)
 	}
 	return nil
@@ -1503,7 +1533,7 @@ func GetPackageStockByYjCode(dbtx DBTX, yjCode string) (map[string]model.Package
 		SELECT package_key, yj_code, stock_quantity_yj, last_inventory_date
 		FROM package_stock
 		WHERE yj_code = ?
- `
+`
 	err := dbtx.Select(&stocks, q, yjCode)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get package_stock by yj_code %s: %w", yjCode, err)
@@ -1544,16 +1574,14 @@ func ParsePackageKey(key string) (*ParsedPackageKey, error) {
 
 
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\database\product_master_query.go -----
+// C:\Users\wasab\OneDrive\デスクトップ\TKR\database\product_master_query.go
 package database
 
 import (
 	"database/sql"
 	"fmt"
-	"strings"
-	"tkr/barcode"
 	"tkr/model"
-
-	"github.com/jmoiron/sqlx"
+	"tkr/units" // ▼▼▼【追加】units パッケージをインポート ▼▼▼
 )
 
 type DBTX interface {
@@ -1565,166 +1593,8 @@ type DBTX interface {
 	Rebind(query string) string
 }
 
-func GetAllProductMasters(dbtx DBTX) ([]*model.ProductMaster, error) {
-	var masters []*model.ProductMaster
-	query := `SELECT * FROM product_master`
-	err := dbtx.Select(&masters, query)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			return []*model.ProductMaster{},
-				nil
-		}
-		return nil, fmt.Errorf("failed to select all product masters: %w", err)
-	}
-	if masters == nil {
-		masters = []*model.ProductMaster{}
-	}
-	return masters, nil
-}
-
-func GetFilteredProductMasters(dbtx DBTX, usageClass, kanaName, genericName, shelfNumber string) ([]model.ProductMaster, error) {
-	var masters []model.ProductMaster
-
-	query := `SELECT * FROM product_master`
-	mustConditions := []string{}
-	args := []interface{}{}
-
-	if usageClass != "" {
-		mustConditions = append(mustConditions, "usage_classification = ?")
-		args = append(args, usageClass)
-	} else {
-		return []model.ProductMaster{}, nil
-	}
-
-	var nameConditions []string
-	if len(kanaName) > 0 {
-		nameConditions = append(nameConditions, "kana_name LIKE ?")
-		args = append(args, kanaName+"%")
-	}
-
-	if len(genericName) > 0 {
-		nameConditions = append(nameConditions, "generic_name LIKE ?")
-		args = append(args, "%"+genericName+"%")
-	}
-
-	if len(nameConditions) > 0 {
-		mustConditions = append(mustConditions, "("+strings.Join(nameConditions, " OR ")+")")
-	}
-
-	if len(shelfNumber) > 0 {
-		mustConditions = append(mustConditions, "shelf_number = ?")
-		args = append(args, shelfNumber)
-	}
-
-	if len(mustConditions) > 0 {
-		// ▼▼▼【ここを修正】文字列の途中で改行していたのを修正 ▼▼▼
-		query += " WHERE " + strings.Join(mustConditions, " AND ")
-	} else {
-		return []model.ProductMaster{}, fmt.Errorf("usage class filter is required")
-	}
-
-	query += " ORDER BY kana_name"
-
-	err := dbtx.Select(&masters, query, args...)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			return []model.ProductMaster{}, nil
-		}
-		return nil, fmt.Errorf("failed to select filtered product masters: %w", err)
-	}
-
-	if masters == nil {
-		masters = []model.ProductMaster{}
-	}
-
-	return masters, nil
-}
-
-func GetProductMasterByCode(dbtx DBTX, code string) (*model.ProductMaster, error) {
-	var master model.ProductMaster
-	query := `SELECT * FROM product_master WHERE product_code = ?`
-	err := dbtx.Get(&master, query, code)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get product master by code %s: %w", code, err)
-	}
-	return &master, nil
-}
-
-// ▼▼▼【ここを修正】開き括弧 { をシグネチャと同じ行に移動 ▼▼▼
-func GetProductMasterByGs1Code(dbtx DBTX, gs1Code string) (*model.ProductMaster, error) {
-	var master model.ProductMaster
-	query := `SELECT * FROM product_master WHERE gs1_code = ?`
-	err := dbtx.Get(&master, query, gs1Code)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get product master by gs1_code %s: %w", gs1Code, err)
-	}
-	return &master, nil
-}
-
-func GetProductMasterByBarcode(dbtx DBTX, barcodeStr string) (*model.ProductMaster, error) {
-	if barcodeStr == "" {
-		return nil, fmt.Errorf("バーコードが空です")
-	}
-
-	if len(barcodeStr) <= 13 {
-		return GetProductMasterByCode(dbtx, barcodeStr)
-	}
-
-	gs1Result, parseErr := barcode.Parse(barcodeStr)
-	if parseErr != nil {
-		return nil, fmt.Errorf("バーコード解析エラー: %w", parseErr)
-	}
-
-	gtin14 := gs1Result.Gtin14
-	if gtin14 == "" {
-		return nil, fmt.Errorf("バーコードからGTIN(14桁)が抽出できませんでした")
-	}
-
-	return GetProductMasterByGs1Code(dbtx, gtin14)
-}
-
-func GetProductMastersByYjCode(dbtx DBTX, yjCode string) ([]*model.ProductMaster, error) {
-	var masters []*model.ProductMaster
-	query := `SELECT * FROM product_master WHERE yj_code = 
- ? ORDER BY product_code`
-	err := dbtx.Select(&masters, query, yjCode)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			return []*model.ProductMaster{}, nil
-		}
-		return nil, fmt.Errorf("failed to select product masters by yj_code %s: %w", yjCode, err)
-	}
-	if masters == nil {
-		masters = []*model.ProductMaster{}
-	}
-	return masters, nil
-}
-
-func GetProductCodesByYjCodes(dbtx DBTX, yjCodes []string) ([]string, error) {
-	if len(yjCodes) == 0 {
-		return []string{}, nil
-	}
-	query, args, err := sqlx.In(`SELECT DISTINCT product_code FROM product_master WHERE yj_code IN (?)`, yjCodes)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create IN query for GetProductCodesByYjCodes: %w", err)
-	}
-	query = dbtx.Rebind(query)
-	var codes []string
-	if err := dbtx.Select(&codes, query, args...); err != nil {
-		return nil, err
-	}
-	return codes, nil
-}
-
-func GetProductMasterByKanaNameShort(dbtx DBTX, kanaNameShort string) (*model.ProductMaster, error) {
-	var master model.ProductMaster
-	query := `SELECT * FROM product_master WHERE kana_name_short = ?`
-	err := dbtx.Get(&master, query, kanaNameShort)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get product master by kana_name_short %s: %w", kanaNameShort, err)
-	}
-	return &master, nil
-}
+// (GetAllProductMasters, GetFilteredProductMasters, GetProductMasterByCode, GetProductMasterByGs1Code, GetProductMasterByBarcode, GetProductMastersByYjCode, GetProductCodesByYjCodes, GetProductMasterByKanaNameShort, insertProductMasterQuery, InsertProductMaster 関数 は変更なし)
+// ... [cite: 2032-2036]
 
 const insertProductMasterQuery = `
 INSERT INTO product_master (
@@ -1734,7 +1604,8 @@ INSERT INTO product_master (
     yj_unit_name, yj_pack_unit_qty, jan_pack_inner_qty, jan_unit_code, jan_pack_unit_qty, 
     origin, nhi_price, purchase_price, flag_poison, flag_deleterious, flag_narcotic, 
     
- flag_psychotropic, flag_stimulant, flag_stimulant_raw, is_order_stopped, 
+ flag_psychotropic, flag_stimulant, flag_stimulant_raw, 
+is_order_stopped, 
     supplier_wholesale, group_code, shelf_number, category, user_notes
 ) VALUES (
     :product_code, :yj_code, :gs1_code, :product_name, :kana_name, :kana_name_short, 
@@ -1752,6 +1623,57 @@ func InsertProductMaster(dbtx DBTX, master *model.ProductMaster) error {
 	}
 	return nil
 }
+
+// ▼▼▼【ここから追加】PackageKeyを全件取得するヘルパー関数 ▼▼▼
+
+// MasterPackageKeyInfo は、マスターからPackageKeyを構築するための情報を保持します。
+type MasterPackageKeyInfo struct {
+	PackageKey     string
+	YjCode         string
+	Representative *model.ProductMaster
+}
+
+// GetAllPackageKeysFromMasters は、product_masterテーブルに存在するすべてのPackageKeyと
+// その代表マスター情報をマップで返します。
+func GetAllPackageKeysFromMasters(dbtx DBTX) (map[string]MasterPackageKeyInfo, error) {
+	// 1. 全マスターを取得
+	var allMasters []*model.ProductMaster
+	query := `SELECT * FROM product_master WHERE yj_code != ''`
+	err := dbtx.Select(&allMasters, query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to select all product masters for package key generation: %w", err)
+	}
+
+	// 2. PackageKey ごとに分類し、代表マスター（JCSHMS優先）を選定
+	mastersByPackageKey := make(map[string][]*model.ProductMaster)
+	keyInfoMap := make(map[string]MasterPackageKeyInfo)
+
+	for _, m := range allMasters {
+		// PackageKeyを生成 (aggregation.go と同じロジック [cite: 1948-1949])
+		key := fmt.Sprintf("%s|%s|%g|%s", m.YjCode, m.PackageForm, m.JanPackInnerQty, units.ResolveName(m.YjUnitName))
+		mastersByPackageKey[key] = append(mastersByPackageKey[key], m)
+
+		// 代表マスターを選定
+		if info, ok := keyInfoMap[key]; !ok {
+			// まだキーが登録されていなければ、このマスターを暫定代表とする
+			keyInfoMap[key] = MasterPackageKeyInfo{
+				PackageKey:     key,
+				YjCode:         m.YjCode,
+				Representative: m,
+			}
+		} else {
+			// 既に代表がいる場合、JCSHMS由来のマスターを優先する
+			if info.Representative.Origin != "JCSHMS" && m.Origin == "JCSHMS" {
+				info.Representative = m
+				keyInfoMap[key] = info
+			}
+		}
+	}
+
+	return keyInfoMap, nil
+}
+
+// ▲▲▲【追加ここまで】▲▲▲
 
 
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\database\sequence.go -----
@@ -2159,7 +2081,8 @@ func ScanTransactionRecord(row interface{ Scan(...interface{}) error }) (*model.
 		&r.JanCode, &r.YjCode, &r.ProductName, &r.KanaName, &r.UsageClassification, &r.PackageForm, &r.PackageSpec, &r.MakerName,
 		&r.DatQuantity, &r.JanPackInnerQty, &r.JanQuantity, &r.JanPackUnitQty, &r.JanUnitName, &r.JanUnitCode,
 		&r.YjQuantity, &r.YjPackUnitQty, &r.YjUnitName, &r.UnitPrice, &r.PurchasePrice, &r.SupplierWholesale,
-		&r.Subtotal, &r.TaxAmount, &r.TaxRate, &r.ExpiryDate, &r.LotNumber, &r.FlagPoison,
+		&r.Subtotal,
+		&r.TaxAmount, &r.TaxRate, &r.ExpiryDate, &r.LotNumber, &r.FlagPoison,
 		&r.FlagDeleterious, &r.FlagNarcotic, &r.FlagPsychotropic, &r.FlagStimulant,
 		&r.FlagStimulantRaw, &r.ProcessFlagMA,
 	)
@@ -2181,6 +2104,7 @@ INSERT INTO transaction_records (
 ) VALUES (
     :transaction_date, :client_code, :receipt_number, :line_number, :flag,
     :jan_code, :yj_code, :product_name, :kana_name, :usage_classification, :package_form, 
+
  :package_spec, :maker_name,
     :dat_quantity, :jan_pack_inner_qty, :jan_quantity, :jan_pack_unit_qty, :jan_unit_name, :jan_unit_code,
     :yj_quantity, :yj_pack_unit_qty, :yj_unit_name, :unit_price, :purchase_price, :supplier_wholesale,
@@ -2204,7 +2128,8 @@ UPDATE transaction_records SET
     transaction_date = :transaction_date,
     client_code = :client_code,
     receipt_number = :receipt_number,
-    line_number = :line_number,
+    line_number = 
+:line_number,
     flag = :flag,
     jan_code = :jan_code,
     yj_code = :yj_code,
@@ -2221,7 +2146,8 @@ UPDATE transaction_records SET
     jan_unit_name = :jan_unit_name,
     jan_unit_code = :jan_unit_code,
     yj_quantity = :yj_quantity,
-    yj_pack_unit_qty = :yj_pack_unit_qty,
+    
+yj_pack_unit_qty = :yj_pack_unit_qty,
     yj_unit_name = :yj_unit_name,
     unit_price = :unit_price,
     purchase_price = :purchase_price,
@@ -2238,7 +2164,8 @@ UPDATE transaction_records SET
     flag_stimulant = :flag_stimulant,
     flag_stimulant_raw = :flag_stimulant_raw,
     process_flag_ma = :process_flag_ma
-WHERE id = :id`
+WHERE id 
+= :id`
 
 func UpdateFullTransactionInTx(tx *sqlx.Tx, rec *model.TransactionRecord) error {
 	_, err := tx.NamedExec(updateTransactionQuery, rec)
@@ -2267,7 +2194,9 @@ func PersistTransactionRecordsInTx(tx *sqlx.Tx, records []model.TransactionRecor
 }
 
 func DeleteUsageTransactionsInDateRange(tx *sqlx.Tx, minDate, maxDate string) error {
-	q := `DELETE FROM transaction_records WHERE flag = '2' AND transaction_date BETWEEN ? AND ?`
+	// ▼▼▼【修正】文字列リテラル内の改行を削除 ▼▼▼
+	const q = `DELETE FROM transaction_records WHERE flag = '2' AND transaction_date BETWEEN ? AND ?`
+	// ▲▲▲【修正ここまで】▲▲▲
 	_, err := tx.Exec(q, minDate, maxDate)
 	if err != nil {
 		return fmt.Errorf("failed to delete usage transactions in date range: %w", err)
@@ -2315,19 +2244,22 @@ func SearchTransactions(db *sqlx.DB, janCode string, expiryYYMMDD string, expiry
 	var queryBuilder strings.Builder
 	queryBuilder.WriteString("SELECT ")
 	queryBuilder.WriteString(TransactionColumns)
-	queryBuilder.WriteString(" FROM transaction_records WHERE 1=1")
+	queryBuilder.WriteString(" FROM transaction_records WHERE flag IN (1, 2)") // 納品(1)と返品(2)のみ対象
 
-	args := []interface{}{}
+	args :=
+		[]interface{}{}
 
 	if janCode != "" {
 		queryBuilder.WriteString(" AND jan_code = ?")
 		args = append(args, janCode)
 	}
 	if expiryYYMMDD != "" {
-		queryBuilder.WriteString(" AND expiry_date = ?")
-		args = append(args, expiryYYMMDD)
+		// YYYYMMDD (8桁) または YYMMDD (6桁)
+		queryBuilder.WriteString(" AND (expiry_date = ? OR expiry_date = ?)")
+		args = append(args, expiryYYMMDD, expiryYYMMDD[2:])
 	}
 	if expiryYYMM != "" {
+		// YYYYMM (6桁)
 		queryBuilder.WriteString(" AND SUBSTR(expiry_date, 1, 6) = ?")
 		args = append(args, expiryYYMM)
 	}
@@ -2350,7 +2282,8 @@ func GetReceiptNumbersByDate(db *sqlx.DB, date string, prefix string, clientCode
 
 	query := "SELECT DISTINCT receipt_number FROM transaction_records"
 	conditions := []string{"transaction_date = ?", "receipt_number LIKE ?"}
-	args := []interface{}{date, prefix + "%"}
+	args := []interface{}{date, prefix +
+		"%"}
 
 	if clientCode != "" {
 		conditions = append(conditions, "client_code = ?")
@@ -2369,7 +2302,9 @@ func GetReceiptNumbersByDate(db *sqlx.DB, date string, prefix string, clientCode
 
 func GetTransactionsByReceiptNumber(db *sqlx.DB, receiptNumber string) ([]model.TransactionRecord, error) {
 	var records []model.TransactionRecord
+	// ▼▼▼【修正】文字列リテラル内の改行を削除 ▼▼▼
 	q := `SELECT ` + TransactionColumns + ` FROM transaction_records WHERE receipt_number = ? ORDER BY line_number`
+	// ▲▲▲【修正ここまで】▲▲▲
 
 	err := db.Select(&records, q, receiptNumber)
 	if err != nil {
@@ -2402,21 +2337,26 @@ func GetLatestInventoryDetailsByYjCode(dbtx DBTX, yjCode string) ([]model.Transa
 		yjCode)
 
 	if err != nil && err != sql.ErrNoRows {
+		// ▼▼▼【修正】文字列リテラル内の改行を削除 ▼▼▼
 		return nil, fmt.Errorf("failed to get latest inventory date from package_stock for %s: %w", yjCode, err)
+		// ▲▲▲【修正ここまで】▲▲▲
 	}
 
-	if !latestInventoryDate.Valid || latestInventoryDate.String == "" {
+	if !latestInventoryDate.Valid ||
+		latestInventoryDate.String == "" {
 		// まだ一度も棚卸されていない
 		return []model.TransactionRecord{}, nil
 	}
 
 	// 2. 最新棚卸日の flag=0 の取引明細を取得
 	var records []model.TransactionRecord
+	// ▼▼▼【修正】文字列リテラル内の改行を削除 ▼▼▼
 	q := `SELECT ` + TransactionColumns + ` 
 		  FROM transaction_records 
 		  WHERE yj_code = ? AND transaction_date = ? 
 		  AND flag = 0 
 		  ORDER BY jan_code, expiry_date, lot_number`
+	// ▲▲▲【修正ここまで】▲▲▲
 
 	err = dbtx.Select(&records, q, yjCode, latestInventoryDate.String)
 	if err != nil {
@@ -4531,79 +4471,107 @@ package model
 
 
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\parsers\dat_parser.go -----
+// C:\Users\wasab\OneDrive\デスクトップ\TKR\parsers\dat_parser.go
 package parsers
 
 import (
 	"bufio"
+	"bytes" // bytes パッケージを追加
 	"fmt"
 	"io"
 	"strconv"
-	"strings"
 	"tkr/model" // model パッケージをインポート
 
 	"golang.org/x/text/encoding/japanese"
 	"golang.org/x/text/transform"
 )
 
+// ▼▼▼【ここから修正】UTF-8に事前変換せず、バイトスライスとしてパースする ▼▼▼
+
+// sjisToUTF8 は Shift-JIS のバイトスライスを UTF-8 文字列に変換します。
+func sjisToUTF8(b []byte) string {
+	// 0x00 (NULL文字) はトリム対象の空白とはみなされないため、
+	// 先に ReplaceAll で除去してから TrimSpace をかける
+	trimmedBytes := bytes.Trim(b, "\x00 ") // NULL文字と空白を除去
+	utf8Bytes, _, _ := transform.Bytes(japanese.ShiftJIS.NewDecoder(), trimmedBytes)
+	return string(utf8Bytes)
+}
+
+// trimSpaceAndGetString は、バイトスライスの指定範囲を文字列として取得し、空白とNULL文字を除去します。
+func trimSpaceAndGetString(line []byte, start, end int) string {
+	if start >= len(line) {
+		return ""
+	}
+	if end > len(line) {
+		end = len(line)
+	}
+	// 0x00 (NULL文字) と 0x20 (スペース) を両端から除去
+	trimmedSlice := bytes.Trim(line[start:end], "\x00 ")
+	return string(trimmedSlice)
+}
+
+// parseFloat は、バイトスライスの指定範囲を float64 に変換します (エラー時は 0.0)
+func parseFloat(line []byte, start, end int) float64 {
+	s := trimSpaceAndGetString(line, start, end)
+	f, _ := strconv.ParseFloat(s, 64)
+	return f
+}
+
+// parseInt は、バイトスライスの指定範囲を int に変換します (エラー時は 0)
+func parseInt(line []byte, start, end int) int {
+	s := trimSpaceAndGetString(line, start, end)
+	i, _ := strconv.Atoi(s)
+	return i
+}
+
 // ParseDat は、固定長のDATファイルからレコードを抽出し、DatRecord のスライスを返します。
 func ParseDat(r io.Reader) ([]model.DatRecord, error) {
-	// ShiftJIS から UTF-8 へのデコーダーを用意
-	decoder := japanese.ShiftJIS.NewDecoder()
-	utf8Reader := transform.NewReader(r, decoder)
-	scanner := bufio.NewScanner(utf8Reader)
+	// UTF-8へのデコーダーを削除
+	scanner := bufio.NewScanner(r)
 
 	var records []model.DatRecord
 	var currentWholesale string
 
 	for scanner.Scan() {
-		line := scanner.Text() // UTF-8 に変換された行
-		if len(line) == 0 {
+		lineBytes := scanner.Bytes() // UTF-8ではなく、元のバイト列を取得
+
+		if len(lineBytes) == 0 {
 			continue
 		}
 
-		// rune スライスに変換してバイト位置ではなく文字位置でアクセス
-		runes := []rune(line)
-
-		// TrimSpaceAndGet は、指定範囲の文字列を取得し、前後の空白を除去するヘルパー
-		trimSpaceAndGet := func(start, end int) string {
-			if start >= len(runes) {
-				return ""
-			}
-			if end > len(runes) {
-				end = len(runes)
-			}
-			return strings.TrimSpace(string(runes[start:end]))
+		// レコード区分 (1バイト目)
+		recordType := ""
+		if len(lineBytes) > 0 {
+			recordType = string(lineBytes[0:1])
 		}
 
-		// parseFloat は文字列を float64 に変換 (エラー時は 0.0)
-		parseFloat := func(s string) float64 {
-			f, _ := strconv.ParseFloat(strings.TrimSpace(s), 64)
-			return f
-		}
-		// parseInt は文字列を int に変換 (エラー時は 0)
-		parseInt := func(s string) int {
-			i, _ := strconv.Atoi(strings.TrimSpace(s))
-			return i
-		}
-
-		switch trimSpaceAndGet(0, 1) {
+		switch recordType {
 		case "S":
-			// Sレコードから卸コードを取得 (文字位置 3 から 13 未満)
-			currentWholesale = trimSpaceAndGet(3, 13)
+			// Sレコードから卸コードを取得 (バイト位置 3 から 13 未満)
+			currentWholesale = trimSpaceAndGetString(lineBytes, 3, 13)
 		case "D":
-			// Dレコードをパース
-			flag := parseInt(trimSpaceAndGet(3, 4))
-			date := trimSpaceAndGet(4, 12)
-			receiptNumber := trimSpaceAndGet(12, 22)
-			lineNumber := trimSpaceAndGet(22, 24)
-			janCode := trimSpaceAndGet(25, 38)
-			productName := trimSpaceAndGet(38, 78) // UTF-8になっているはず
-			datQuantity := parseFloat(trimSpaceAndGet(78, 83))
-			unitPrice := parseFloat(trimSpaceAndGet(83, 92))
-			subtotal := parseFloat(trimSpaceAndGet(92, 101))
-			// 期限とロット (文字位置)
-			expiryDate := trimSpaceAndGet(109, 115) // YYMMDD or YYYYMM
-			lotNumber := trimSpaceAndGet(115, 121)
+			// Dレコード (最低 121 バイト必要と仮定)
+			if len(lineBytes) < 121 {
+				continue
+			}
+
+			// バイト位置に基づいてパース
+			flag := parseInt(lineBytes, 3, 4)
+			date := trimSpaceAndGetString(lineBytes, 4, 12)
+			receiptNumber := trimSpaceAndGetString(lineBytes, 12, 22)
+			lineNumber := trimSpaceAndGetString(lineBytes, 22, 24)
+			janCode := trimSpaceAndGetString(lineBytes, 25, 38)
+
+			// 製品名 (バイト位置 38-78) のみ Shift-JIS から UTF-8 に変換
+			productName := sjisToUTF8(lineBytes[38:78])
+
+			datQuantity := parseFloat(lineBytes, 78, 83)
+			unitPrice := parseFloat(lineBytes, 83, 92)
+			subtotal := parseFloat(lineBytes, 92, 101)
+
+			// 期限とロット (バイト位置)
+			expiryDate := trimSpaceAndGetString(lineBytes, 109, 115)
+			lotNumber := trimSpaceAndGetString(lineBytes, 115, 121)
 
 			rec := model.DatRecord{
 				ClientCode:    currentWholesale,
@@ -4627,6 +4595,8 @@ func ParseDat(r io.Reader) ([]model.DatRecord, error) {
 	}
 	return records, nil
 }
+
+// ▲▲▲【修正ここまで】▲▲▲
 
 
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\parsers\deadstock_csv_parser.go -----
@@ -5586,20 +5556,23 @@ package stock
 
 import (
 	"bytes"
-	"database/sql"
 	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
 	"net/url"
+
+	// "strconv" // (未使用)
 	"strings"
 	"time"
 	"tkr/database"
 	"tkr/mappers"
-	"tkr/mastermanager"
+
+	// "tkr/mastermanager" // (未使用)
 	"tkr/model"
 	"tkr/parsers"
-	"tkr/units"
+
+	// "tkr/units" // (未使用)
 
 	"github.com/jmoiron/sqlx"
 )
@@ -5608,6 +5581,7 @@ func quoteAll(s string) string {
 	return `"` + strings.ReplaceAll(s, `"`, `""`) + `"`
 }
 
+// (ExportCurrentStockHandler 関数は変更なし)
 func ExportCurrentStockHandler(db *sqlx.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 
@@ -5640,6 +5614,7 @@ func ExportCurrentStockHandler(db *sqlx.DB) http.HandlerFunc {
 		for _, pkg := range stocks {
 			// PackageKey を解析して JanPackInnerQty を取得
 			parsedKey, err := database.ParsePackageKey(pkg.PackageKey)
+
 			if err != nil {
 				log.Printf("WARN: Skipping invalid PackageKey in export: %s", pkg.PackageKey)
 				continue
@@ -5674,27 +5649,11 @@ func ExportCurrentStockHandler(db *sqlx.DB) http.HandlerFunc {
 	}
 }
 
-func ImportExternalStockCSVHandler(db *sqlx.DB) http.HandlerFunc {
+// ▼▼▼【ここから修正】ImportTKRStockCSVHandler を「完全洗い替え」ロジックに変更 ▼▼▼
+func ImportTKRStockCSVHandler(db *sqlx.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-			return
-		}
-		file, _, err := r.FormFile("file")
-		if err != nil {
-			http.Error(w, "CSVファイルの読み取りに失敗: "+err.Error(), http.StatusBadRequest)
-			return
-		}
-		defer file.Close()
-
-		// ▼▼▼【ロジック変更】先にCSVをパースする ▼▼▼
-		records, err := parsers.ParseExternalStockCSV(file)
-		if err != nil {
-			http.Error(w, "CSVファイルの解析に失敗: "+err.Error(), http.StatusBadRequest)
-			return
-		}
-		if len(records) == 0 {
-			http.Error(w, "読み込むデータがありません（JAN数量が0以下のデータは無視されます）。", http.StatusBadRequest)
 			return
 		}
 
@@ -5704,136 +5663,6 @@ func ImportExternalStockCSVHandler(db *sqlx.DB) http.HandlerFunc {
 			return
 		}
 
-		var dateYYMMDD string
-		if len(date) >= 8 {
-			dateYYMMDD = date[2:8] // "20251107" -> "251107"
-		} else {
-			dateYYMMDD = date
-		}
-		receiptNumber := "MIG_EXT_" + dateYYMMDD
-
-		tx, err := db.Beginx()
-		if err != nil {
-			http.Error(w, "データベーストランザクションの開始に失敗: "+err.Error(), http.StatusInternalServerError)
-			return
-		}
-		defer tx.Rollback()
-
-		// ▼▼▼【ロジック変更】洗い替えロジック ▼▼▼
-
-		// 1. CSVのデータをループし、先に（仮）マスタを作成する
-		//    (この時点ではDBに永続化しない)
-		//    同時に、後の処理のためにCSVデータを集計する
-		packageStockTotalsYj := make(map[string]float64)
-		var transactionsToInsert []model.TransactionRecord
-		csvMasters := make(map[string]*model.ProductMaster) // CSVに出てきたマスタを格納
-
-		for i, rec := range records {
-			master, err := mastermanager.FindOrCreateMaster(tx, rec.JanCode, "")
-			if err != nil {
-				http.Error(w, fmt.Sprintf("マスターの特定/作成に失敗 (JAN: %s): %v", rec.JanCode, err), http.StatusInternalServerError)
-				return
-			}
-			csvMasters[master.ProductCode] = master // マスタをキャッシュ
-
-			janQty := rec.JanQuantity
-			yjQty := janQty * master.JanPackInnerQty
-
-			packageKey := fmt.Sprintf("%s|%s|%g|%s", master.YjCode, master.PackageForm, master.JanPackInnerQty, units.ResolveName(master.YjUnitName))
-			packageStockTotalsYj[packageKey] += yjQty
-
-			tr := model.TransactionRecord{
-				TransactionDate: date,
-				Flag:            0,
-				ReceiptNumber:   receiptNumber,
-				LineNumber:      fmt.Sprintf("%d", i+1),
-				JanCode:         master.ProductCode,
-				JanQuantity:     janQty,
-				YjQuantity:      yjQty,
-				ExpiryDate:      rec.ExpiryDate,
-				LotNumber:       rec.LotNumber,
-				UnitPrice:       master.NhiPrice,
-				Subtotal:        yjQty * master.NhiPrice,
-			}
-			mappers.MapMasterToTransaction(&tr, master)
-			transactionsToInsert = append(transactionsToInsert, tr)
-		}
-
-		// 2. 全ての棚卸明細(flag=0)を削除 (既存の棚卸履歴をクリア)
-		if _, err := tx.Exec("DELETE FROM transaction_records WHERE flag = 0"); err != nil {
-			http.Error(w, "既存の棚卸明細(flag=0)の削除に失敗: "+err.Error(), http.StatusInternalServerError)
-			return
-		}
-
-		// 3. product_master に存在する全品目（CSVから仮作成されたものも含む）の
-		//    package_key を取得し、package_stock の在庫を 0 でリセットする
-		var allMasterKeys []struct {
-			PackageKey string `db:"package_key"`
-			YjCode     string `db:"yj_code"`
-		}
-		const allMasterKeysQuery = `
-			SELECT
-				P.yj_code || '|' || 
-				COALESCE(P.package_form, '不明') || '|' ||
-				PRINTF('%g', COALESCE(P.jan_pack_inner_qty, 0)) || '|' || 
-				COALESCE(U.name, P.yj_unit_name, '不明') AS package_key,
-				P.yj_code
-			FROM product_master AS P
-			LEFT JOIN units AS U ON P.yj_unit_name = U.code
-			WHERE P.yj_code != "" 
-			GROUP BY package_key, P.yj_code
-		`
-		if err := tx.Select(&allMasterKeys, allMasterKeysQuery); err != nil {
-			http.Error(w, "全マスタの包装キー取得に失敗: "+err.Error(), http.StatusInternalServerError)
-			return
-		}
-
-		log.Printf("[ImportExternalStock] Resetting %d master package keys to 0...", len(allMasterKeys))
-		// 全マスタ品目の在庫を 0 で Upsert (洗い替えの準備)
-		for _, m := range allMasterKeys {
-			if err := database.UpsertPackageStockInTx(tx, m.PackageKey, m.YjCode, 0, date); err != nil {
-				http.Error(w, "全在庫の0リセットに失敗: "+err.Error(), http.StatusInternalServerError)
-				return
-			}
-		}
-
-		// 4. 棚卸明細(flag=0)を挿入 (CSVに存在する分のみ)
-		if err := database.PersistTransactionRecordsInTx(tx, transactionsToInsert); err != nil {
-			http.Error(w, "棚卸明細の挿入に失敗: "+err.Error(), http.StatusInternalServerError)
-			return
-		}
-
-		// 5. package_stock を CSV の在庫データで上書き更新
-		log.Printf("[ImportExternalStock] Updating %d package keys from CSV...", len(packageStockTotalsYj))
-		for key, totalYjQty := range packageStockTotalsYj {
-			yjCode := strings.Split(key, "|")[0]
-			// 既に 0 で Upsert されているレコードを、CSVの在庫数で再度 Upsert
-			if err := database.UpsertPackageStockInTx(tx, key, yjCode, totalYjQty, date); err != nil {
-				http.Error(w, "在庫起点の上書き更新に失敗: "+err.Error(), http.StatusInternalServerError)
-				return
-			}
-		}
-
-		// ▲▲▲【修正ここまで】▲▲▲
-
-		if err := tx.Commit(); err != nil {
-			http.Error(w, "データベースのコミットに失敗: "+err.Error(), http.StatusInternalServerError)
-			return
-		}
-
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
-			"message": fmt.Sprintf("在庫の洗い替えが完了しました。%d件の明細が登録されました。", len(transactionsToInsert)),
-		})
-	}
-}
-
-func ImportTKRStockCSVHandler(db *sqlx.DB) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-			return
-		}
 		file, _, err := r.FormFile("file")
 		if err != nil {
 			http.Error(w, "CSVファイルの読み取りに失敗: "+err.Error(), http.StatusBadRequest)
@@ -5841,18 +5670,28 @@ func ImportTKRStockCSVHandler(db *sqlx.DB) http.HandlerFunc {
 		}
 		defer file.Close()
 
-		records, err := parsers.ParseTKRStockCSV(file)
+		// 1. TKR独自CSVパーサーを呼ぶ (CSVに記載のあるデータ)
+		csvRecords, err := parsers.ParseTKRStockCSV(file)
 		if err != nil {
 			http.Error(w, "CSVファイルの解析に失敗: "+err.Error(), http.StatusBadRequest)
 			return
 		}
-		if len(records) == 0 {
-			http.Error(w, "読み込むデータがありません。", http.StatusBadRequest)
-			return
+
+		// CSVの在庫データをマップ化 (Key: PackageKey, Value: JAN数量)
+		csvStockMap := make(map[string]float64)
+		for _, rec := range csvRecords {
+			if rec.PackageKey != "" {
+				csvStockMap[rec.PackageKey] = rec.JanQuantity
+			}
 		}
 
-		date := time.Now().Format("20060102")
-		dateYYMMDD := time.Now().Format("060102")
+		// 2. 棚卸日（フォーム値）と伝票番号を生成
+		var dateYYMMDD string
+		if len(date) >= 8 {
+			dateYYMMDD = date[2:8] // "20251107" -> "251107"
+		} else {
+			dateYYMMDD = date
+		}
 		receiptNumber := "MIG_TKR_" + dateYYMMDD
 
 		tx, err := db.Beginx()
@@ -5862,56 +5701,70 @@ func ImportTKRStockCSVHandler(db *sqlx.DB) http.HandlerFunc {
 		}
 		defer tx.Rollback()
 
-		for i, rec := range records {
-			parsedKey, err := database.ParsePackageKey(rec.PackageKey)
-			if err != nil {
-				log.Printf("WARN: Skipping invalid PackageKey: %s", rec.PackageKey)
+		// 3. 【洗い替え】既存の在庫データをすべて削除
+		// (package_stock と flag=0 の transaction_records)
+		if err := database.ClearAllPackageStockInTx(tx); err != nil {
+			http.Error(w, "既存在庫の全削除（洗い替え）に失敗: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		// 4. 【洗い替え】product_master から「すべての」PackageKey を取得
+		allMasterKeysMap, err := database.GetAllPackageKeysFromMasters(tx)
+		if err != nil {
+			http.Error(w, "全マスタのPackageKey取得に失敗: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		// 5. すべての PackageKey をループして登録処理
+		lineCounter := 0
+		for key, keyInfo := range allMasterKeysMap {
+			lineCounter++
+
+			janQty := 0.0
+			// CSVマップに存在するかチェック
+			if csvQty, ok := csvStockMap[key]; ok {
+				janQty = csvQty // 存在すればCSVの値を使用
+			}
+			// 存在しなければ janQty は 0.0 のまま (洗い替え)
+
+			master := keyInfo.Representative
+			if master == nil {
+				log.Printf("WARN: No representative master found for PackageKey %s, skipping.", key)
 				continue
 			}
 
-			janQty := rec.JanQuantity
-			yjQty := janQty * parsedKey.JanPackInnerQty
+			yjQty := janQty * master.JanPackInnerQty
 
-			if err := database.UpsertPackageStockInTx(tx, rec.PackageKey, parsedKey.YjCode, yjQty, date); err != nil {
-				http.Error(w, "在庫起点の差分更新に失敗: "+err.Error(), http.StatusInternalServerError)
+			// 5a. package_stock を更新（これが在庫の起点となる）
+			if err :=
+				database.UpsertPackageStockInTx(tx, key, master.YjCode, yjQty, date); err != nil {
+				http.Error(w, "在庫起点(package_stock)の更新に失敗: "+err.Error(), http.StatusInternalServerError)
 				return
 			}
 
-			var master *model.ProductMaster
-			err = tx.Get(&master, "SELECT * FROM product_master WHERE yj_code = ? AND package_form = ? ORDER BY origin = 'JCSHMS' DESC, product_code ASC LIMIT 1", parsedKey.YjCode, parsedKey.PackageForm)
-			if err != nil {
-				if err == sql.ErrNoRows {
-					log.Printf("WARN: No master found for PackageKey %s, skipping transaction record.", rec.PackageKey)
-					continue
-				}
-				http.Error(w, "代表マスターの検索に失敗: "+err.Error(), http.StatusInternalServerError)
-				return
-			}
-
-			_, err = tx.Exec("DELETE FROM transaction_records WHERE flag = 0 AND transaction_date = ? AND yj_code = ?", date, parsedKey.YjCode)
-			if err != nil {
-				http.Error(w, "既存棚卸明細の削除に失敗: "+err.Error(), http.StatusInternalServerError)
-				return
-			}
-
+			// 5b. transaction_records に棚卸明細(flag=0)を登録
+			// (期限・ロットは不明のため、代表マスターのJANで合計行を1行だけ登録)
 			tr := model.TransactionRecord{
 				TransactionDate: date,
 				Flag:            0,
-				ReceiptNumber:   fmt.Sprintf("%s-%d", receiptNumber, i+1),
+				ReceiptNumber:   fmt.Sprintf("%s-%d", receiptNumber, lineCounter),
 				LineNumber:      "1",
 				JanCode:         master.ProductCode,
 				JanQuantity:     janQty,
 				YjQuantity:      yjQty,
 				UnitPrice:       master.NhiPrice,
 				Subtotal:        yjQty * master.NhiPrice,
+				ExpiryDate:      "", // 期限不明
+				LotNumber:       "", // ロット不明
 			}
 			mappers.MapMasterToTransaction(&tr, master)
 
 			if err := database.InsertTransactionRecord(tx, tr); err != nil {
-				http.Error(w, "棚卸明細の挿入に失敗: "+err.Error(), http.StatusInternalServerError)
+				http.Error(w, "棚卸明細(flag=0)の挿入に失敗: "+err.Error(), http.StatusInternalServerError)
 				return
 			}
 		}
+		// ▲▲▲【修正ここまで】▲▲▲
 
 		if err := tx.Commit(); err != nil {
 			http.Error(w, "データベースのコミットに失敗: "+err.Error(), http.StatusInternalServerError)
@@ -5920,7 +5773,7 @@ func ImportTKRStockCSVHandler(db *sqlx.DB) http.HandlerFunc {
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]interface{}{
-			"message": fmt.Sprintf("在庫の差分更新が完了しました。%d件のPackageKeyが処理されました。", len(records)),
+			"message": fmt.Sprintf("在庫の洗い替えが完了しました。%d件のPackageKeyが処理されました。", len(allMasterKeysMap)),
 		})
 	}
 }
@@ -6325,6 +6178,7 @@ func validateFolderPath(path string) error {
 
 
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\main.go -----
+// C:\Users\wasab\OneDrive\デスクトップ\TKR\main.go
 package main
 
 import (
@@ -6458,13 +6312,14 @@ func main() {
 		for _, file := range viewFiles {
 			key := strings.TrimSuffix(file, filepath.Ext(file))
 
-			data := struct {
-				Prefix             string
-				BarcodeFormID      string
-				BarcodeFormInputID string
-				SearchButtonID     string
-				SearchButtonText   string
-			}{}
+			data :=
+				struct {
+					Prefix             string
+					BarcodeFormID      string
+					BarcodeFormInputID string
+					SearchButtonID     string
+					SearchButtonText   string
+				}{}
 
 			switch key {
 			case "dat_view":
@@ -6605,10 +6460,9 @@ func main() {
 
 	mux.HandleFunc("/api/stock/export/current", stock.ExportCurrentStockHandler(dbConn))
 
-	// ▼▼▼【ここに追加】在庫移行インポートAPI ▼▼▼
-	mux.HandleFunc("/api/stock/import/external", stock.ImportExternalStockCSVHandler(dbConn))
+	// ▼▼▼【ここから修正】/api/stock/import/external を削除し、/api/stock/import/tkr のみ残す ▼▼▼
 	mux.HandleFunc("/api/stock/import/tkr", stock.ImportTKRStockCSVHandler(dbConn))
-	// ▲▲▲【追加ここまで】▲▲▲
+	// ▲▲▲【修正ここまで】▲▲▲
 
 	port := ":8080"
 	log.Printf("Starting server on http://localhost%s", port)

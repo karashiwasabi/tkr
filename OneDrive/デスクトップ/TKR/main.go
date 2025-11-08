@@ -1,3 +1,4 @@
+// C:\Users\wasab\OneDrive\デスクトップ\TKR\main.go
 package main
 
 import (
@@ -86,7 +87,6 @@ func main() {
 
 	if searchFormsFS != nil {
 		appTemplate, err = appTemplate.ParseFS(searchFormsFS, "search_form_group.html")
-		// ▼▼▼【修正】 { を if と同じ行に移動 ▼▼▼
 		if err != nil {
 			log.Fatalf("Failed to parse views/search_form_group.html: %v", err)
 		}
@@ -259,7 +259,6 @@ func main() {
 		json.NewEncoder(w).Encode(clients)
 	})
 
-	// ▼▼▼【修正】 { を func と同じ行に移動 ▼▼▼
 	mux.HandleFunc("/api/config", func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:
@@ -281,15 +280,15 @@ func main() {
 
 	mux.HandleFunc("/api/stock/export/current", stock.ExportCurrentStockHandler(dbConn))
 
-	mux.HandleFunc("/api/stock/import/external", stock.ImportExternalStockCSVHandler(dbConn))
+	// ▼▼▼【ここから修正】/api/stock/import/external を削除し、/api/stock/import/tkr のみ残す ▼▼▼
 	mux.HandleFunc("/api/stock/import/tkr", stock.ImportTKRStockCSVHandler(dbConn))
+	// ▲▲▲【修正ここまで】▲▲▲
 
 	port := ":8080"
 	log.Printf("Starting server on http://localhost%s", port)
 
 	openBrowser("http://localhost:8080")
 
-	// ▼▼▼【修正】 { を if と同じ行に移動 ▼▼▼
 	if err := http.ListenAndServe(port, mux); err != nil {
 		log.Fatalf("server start error: %v", err)
 	}

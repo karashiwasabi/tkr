@@ -21,6 +21,7 @@ func signedYjQty(flag int, yjQty float64) float64 {
 	}
 }
 
+// ▼▼▼【修正】[source]タグを文字列の外に移動 ▼▼▼
 // CalculateStockOnDate は指定された製品の、特定の日付時点での理論在庫を計算します。
 // (WASABI: db/stock.go  より移植・TKR用に修正)
 func CalculateStockOnDate(dbtx *sqlx.DB, productCode string, targetDate string) (float64, error) {
@@ -79,6 +80,9 @@ func CalculateStockOnDate(dbtx *sqlx.DB, productCode string, targetDate string) 
 	}
 }
 
+// ▲▲▲【修正ここまで】▲▲▲
+
+// ▼▼▼【修正】[source]タグを文字列の外に移動 ▼▼▼
 // GetAllCurrentStockMap は全製品の現在庫を効率的に計算し、マップで返します。
 // (WASABI: db/stock.go  より移植・TKR用に修正)
 func GetAllCurrentStockMap(conn *sqlx.DB) (map[string]float64, error) {
@@ -147,3 +151,5 @@ func GetAllCurrentStockMap(conn *sqlx.DB) (map[string]float64, error) {
 
 	return stockMap, nil
 }
+
+// ▲▲▲【修正ここまで】▲▲▲
