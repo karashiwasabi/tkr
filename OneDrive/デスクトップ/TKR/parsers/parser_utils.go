@@ -8,8 +8,10 @@ import (
 	"strings"
 )
 
-// skipBOM はUTF-8 BOMをスキップします。
-func skipBOM(r io.Reader) io.Reader {
+// ▼▼▼【修正】関数名を 'skipBOM' から 'SkipBOM' に変更 ▼▼▼
+// SkipBOM はUTF-8 BOMをスキップします。
+func SkipBOM(r io.Reader) io.Reader {
+	// ▲▲▲【修正ここまで】▲▲▲
 	br := bufio.NewReader(r)
 	bom := []byte{0xEF, 0xBB, 0xBF}
 	peeked, err := br.Peek(3)

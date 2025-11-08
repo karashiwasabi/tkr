@@ -279,10 +279,12 @@ func main() {
 	mux.HandleFunc("/api/deadstock/export", deadstock.ExportDeadStockHandler(dbConn))
 
 	mux.HandleFunc("/api/stock/export/current", stock.ExportCurrentStockHandler(dbConn))
-
-	// ▼▼▼【ここから修正】/api/stock/import/external を削除し、/api/stock/import/tkr のみ残す ▼▼▼
 	mux.HandleFunc("/api/stock/import/tkr", stock.ImportTKRStockCSVHandler(dbConn))
-	// ▲▲▲【修正ここまで】▲▲▲
+
+	// ▼▼▼【ここから追加】マスタ移行APIエンドポイント ▼▼▼
+	mux.HandleFunc("/api/masters/export/all", stock.ExportAllMastersHandler(dbConn))
+	mux.HandleFunc("/api/masters/import/all", stock.ImportAllMastersHandler(dbConn))
+	// ▲▲▲【追加ここまで】▲▲▲
 
 	port := ":8080"
 	log.Printf("Starting server on http://localhost%s", port)

@@ -142,5 +142,52 @@ class="btn">集計期間保存</button>
         </div>
 
     </section>
+    
+    <section class="config-section">
+        <h2>マスタデータ移行</h2>
+        
+        <div class="config-form-container">
+            <fieldset>
+                <legend>A. 製品マスタ エクスポート</legend>
+                <div class="form-row">
+                    <div class="form-group flex-full">
+                        <p style="font-size: 10px; margin: 0 0 5px 0;">
+                            現在の製品マスタ（product_master）の全項目（JCSHMS由来、ユーザー設定含む）をCSVに出力します。
+                        </p>
+                    </div>
+                </div>
+                <div class="form-actions" style="margin-top: 5px;">
+                    <button id="exportAllMastersBtn" class="btn">マスタCSV エクスポート</button>
+                </div>
+            </fieldset>
+        </div>
 
-</div>
+        <div class="config-form-container">
+            <fieldset>
+                <legend>B. 製品マスタ インポート (JCSHMSマージ/上書き)</legend>
+                <div class="form-row">
+                    <div class="form-group flex-full">
+                        <p style="font-size: 10px; margin: 0 0 5px 0; color: #dc3545; font-weight: bold;">
+                            警告: 既存の製品マスタをCSVの内容で上書き (Upsert) します。<br>
+                            CSV形式: 上記A. と同じ形式 (product_codeが必須)
+                        </p>
+                        <p style="font-size: 10px; margin: 0 0 5px 0;">
+                            <b>読込ルール:</b><br>
+                            1. CSVの品目がJCSHMSに存在する場合: JCSHMSの品名/薬価/規格等を優先し、CSVの棚番/仕入単価/メモ等をマージします。<br>
+                            2. JCSHMSに存在しない場合: CSVのすべての値を登録します。(YJコードが空なら自動採番されます)
+                        </p>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="importAllMastersInput" style="font-size: 10px; font-weight: bold;">マスタCSVファイル:</label>
+                        <input type="file" id="importAllMastersInput" class="hidden" accept=".csv,.CSV">
+                    </div>
+                    <div class="form-actions" style="margin-top: 5px;">
+                        <button id="importAllMastersBtn" class="btn">マスタCSV インポート実行</button>
+                    </div>
+                </div>
+            </fieldset>
+        </div>
+    </section>
+    </div>

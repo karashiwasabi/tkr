@@ -20,7 +20,9 @@ type ParsedDeadStockCSVRecord struct {
 }
 
 func ParseDeadStockCSV(r io.Reader) ([]ParsedDeadStockCSVRecord, error) {
-	reader := csv.NewReader(skipBOM(r))
+	// ▼▼▼【修正】skipBOM -> SkipBOM ▼▼▼
+	reader := csv.NewReader(SkipBOM(r))
+	// ▲▲▲【修正ここまで】▲▲▲
 	reader.LazyQuotes = true
 
 	header, err := reader.Read()

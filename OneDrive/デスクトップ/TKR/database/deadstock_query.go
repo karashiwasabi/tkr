@@ -10,7 +10,6 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
-// ▼▼▼【修正】[source]タグを文字列の外に移動 ▼▼▼
 // GetDeadStockList は、指定された期間に処方(flag=3)されていない在庫品目（不動在庫）のリストを取得します。
 func GetDeadStockList(db *sqlx.DB, startDate, endDate string) ([]model.DeadStockItem, error) {
 
@@ -83,13 +82,17 @@ func GetDeadStockList(db *sqlx.DB, startDate, endDate string) ([]model.DeadStock
 		WHERE 
 			B.package_key IS NULL -- 期間内に動きがなかったもの
 		ORDER BY 
+			-- ▼▼▼【ここから修正】「内外歯注機他」の順序に変更 ▼▼▼
 			CASE COALESCE(A.usage_classification, '他')
 				WHEN '内' THEN 1
 				WHEN '外' THEN 2
-				WHEN '注' THEN 3
-				WHEN '他' THEN 4
-				ELSE 5
+				WHEN '歯' THEN 3
+				WHEN '注' THEN 4
+				WHEN '機' THEN 5
+				WHEN '他' THEN 6
+				ELSE 7
 			END,
+			-- ▲▲▲【修正ここまで】▲▲▲
 			A.kana_name,
 			A.package_key
 	`
@@ -131,7 +134,6 @@ func GetDeadStockList(db *sqlx.DB, startDate, endDate string) ([]model.DeadStock
 
 		// 在庫が 0 より大きい品目のみロット・期限を取得
 		if item.StockQuantityYj > 0 {
-			// (transaction_records には gs1_code がないため、product_master と JOIN する)
 			err = db.Select(&item.LotDetails, `
 				SELECT 
 					T.jan_code, 
@@ -165,5 +167,3 @@ func GetDeadStockList(db *sqlx.DB, startDate, endDate string) ([]model.DeadStock
 
 	return items, nil
 }
-
-// ▲▲▲【修正ここまで】▲▲▲

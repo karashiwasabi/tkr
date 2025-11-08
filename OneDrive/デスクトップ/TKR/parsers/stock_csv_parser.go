@@ -24,7 +24,9 @@ type ParsedTKRStockCSVRecord struct {
 }
 
 func ParseExternalStockCSV(r io.Reader) ([]ParsedExternalStockCSVRecord, error) {
-	reader := csv.NewReader(skipBOM(r))
+	// ▼▼▼【修正】skipBOM -> SkipBOM ▼▼▼
+	reader := csv.NewReader(SkipBOM(r))
+	// ▲▲▲【修正ここまで】▲▲▲
 	reader.LazyQuotes = true
 
 	header, err := reader.Read()
@@ -53,7 +55,8 @@ func ParseExternalStockCSV(r io.Reader) ([]ParsedExternalStockCSVRecord, error) 
 			break
 		}
 		if err != nil {
-			log.Printf("WARN: CSV %d行目の読み取りエラー (スキップ): %v", line, err)
+			log.Printf("WARN: CSV %d行目の読み取りエラー (スキップ): %v", line,
+				err)
 			continue
 		}
 
@@ -87,7 +90,9 @@ func ParseExternalStockCSV(r io.Reader) ([]ParsedExternalStockCSVRecord, error) 
 }
 
 func ParseTKRStockCSV(r io.Reader) ([]ParsedTKRStockCSVRecord, error) {
-	reader := csv.NewReader(skipBOM(r))
+	// ▼▼▼【修正】skipBOM -> SkipBOM ▼▼▼
+	reader := csv.NewReader(SkipBOM(r))
+	// ▲▲▲【修正ここまで】▲▲▲
 	reader.LazyQuotes = true
 
 	header, err := reader.Read()
@@ -113,7 +118,8 @@ func ParseTKRStockCSV(r io.Reader) ([]ParsedTKRStockCSVRecord, error) {
 			break
 		}
 		if err != nil {
-			log.Printf("WARN: CSV %d行目の読み取りエラー (スキップ): %v", line, err)
+			log.Printf("WARN: CSV %d行目の読み取りエラー (スキップ): %v",
+				line, err)
 			continue
 		}
 
