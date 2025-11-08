@@ -50,10 +50,13 @@ func UploadDatHandler(db *sqlx.DB) http.HandlerFunc {
 			if openErr != nil {
 				log.Printf("Failed to open uploaded file %s: %v", fileHeader.Filename, openErr)
 				fileResult["error"] = fmt.Sprintf("Failed to open file: %v", openErr)
-				allResults = append(allResults, fileResult)
+				allResults =
+					append(allResults, fileResult)
 				continue
 			}
+			// ▼▼▼【修正】TKRのパーサー(バイト列処理)を呼び出す ▼▼▼
 			parsedRecords, parseErr := parsers.ParseDat(file)
+			// ▲▲▲【修正ここまで】▲▲▲
 			file.Close()
 			if parseErr != nil {
 				log.Printf("Failed to parse DAT file %s: %v", fileHeader.Filename, parseErr)
@@ -104,13 +107,38 @@ func UploadDatHandler(db *sqlx.DB) http.HandlerFunc {
 	}
 }
 
+// ▼▼▼【ここから追加】重複除去ロジック (WASABI: dat/handler.go  より) ▼▼▼
+func removeDatDuplicates(records []model.DatRecord) []model.DatRecord {
+	seen := make(map[string]struct{})
+	var result []model.DatRecord
+	for _, r := range records {
+		// WASABIのキー定義 に基づき、TKRのmodel.DatRecord  のフィールドでキーを作成
+		key := fmt.Sprintf("%s|%s|%s|%s", r.Date, r.ClientCode, r.ReceiptNumber, r.LineNumber)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		result = append(result, r)
+	}
+	return result
+}
+
+// ▲▲▲【追加ここまで】▲▲▲
+
 func ProcessDatRecords(tx *sqlx.Tx, parsedRecords []model.DatRecord) ([]model.TransactionRecord, error) {
 	var insertedTransactions []model.TransactionRecord
 	var insertedCount int = 0
 
-	for _, rec := range parsedRecords {
+	// ▼▼▼【ここに追加】重複除去を実行 ▼▼▼
+	recordsToProcess := removeDatDuplicates(parsedRecords)
+	// ▲▲▲【追加ここまで】▲▲▲
+
+	// ▼▼▼【ここから修正】ループ対象を parsedRecords -> recordsToProcess に変更 ▼▼▼
+	for _, rec := range recordsToProcess {
+		// ▲▲▲【修正ここまで】▲▲▲
 		key := rec.JanCode
-		if key == "" || key == "0000000000000" {
+		if key == "" ||
+			key == "0000000000000" {
 			// ユーザーの要求: DATファイルの商品名をプロダクトマスタのkana_name_shortに照合
 			// なければ、DAT商品名をプロダクトマスタの商品名とkana_name_shortに記載
 			foundMaster, err := database.GetProductMasterByKanaNameShort(tx, rec.ProductName)
@@ -161,7 +189,8 @@ func ProcessDatRecords(tx *sqlx.Tx, parsedRecords []model.DatRecord) ([]model.Tr
 			transaction.Subtotal = transaction.YjQuantity * transaction.UnitPrice
 		}
 
-		mappers.MapMasterToTransaction(&transaction, master)
+		mappers.MapMasterToTransaction(&transaction,
+			master)
 
 		if err := database.InsertTransactionRecord(tx, transaction); err != nil {
 			return nil, fmt.Errorf("transaction insert failed for key %s: %w", key, err)
@@ -202,7 +231,8 @@ func SearchDatHandler(db *sqlx.DB) http.HandlerFunc {
 		productCode := master.ProductCode
 		var expiryYYMMDD, expiryYYMM, lotNumber string
 		if len(barcodeStr) > 14 {
-			gs1Result, parseErr := barcode.Parse(barcodeStr)
+			gs1Result,
+				parseErr := barcode.Parse(barcodeStr)
 			if parseErr == nil && gs1Result != nil {
 				expiryYYMMDD = gs1Result.ExpiryDate
 				if len(expiryYYMMDD) == 6 {

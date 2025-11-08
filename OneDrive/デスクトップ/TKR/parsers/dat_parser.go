@@ -1,76 +1,104 @@
+// C:\Users\wasab\OneDrive\デスクトップ\TKR\parsers\dat_parser.go
 package parsers
 
 import (
 	"bufio"
+	"bytes" // bytes パッケージを追加
 	"fmt"
 	"io"
 	"strconv"
-	"strings"
 	"tkr/model" // model パッケージをインポート
 
 	"golang.org/x/text/encoding/japanese"
 	"golang.org/x/text/transform"
 )
 
+// ▼▼▼【ここから修正】UTF-8に事前変換せず、バイトスライスとしてパースする ▼▼▼
+
+// sjisToUTF8 は Shift-JIS のバイトスライスを UTF-8 文字列に変換します。
+func sjisToUTF8(b []byte) string {
+	// 0x00 (NULL文字) はトリム対象の空白とはみなされないため、
+	// 先に ReplaceAll で除去してから TrimSpace をかける
+	trimmedBytes := bytes.Trim(b, "\x00 ") // NULL文字と空白を除去
+	utf8Bytes, _, _ := transform.Bytes(japanese.ShiftJIS.NewDecoder(), trimmedBytes)
+	return string(utf8Bytes)
+}
+
+// trimSpaceAndGetString は、バイトスライスの指定範囲を文字列として取得し、空白とNULL文字を除去します。
+func trimSpaceAndGetString(line []byte, start, end int) string {
+	if start >= len(line) {
+		return ""
+	}
+	if end > len(line) {
+		end = len(line)
+	}
+	// 0x00 (NULL文字) と 0x20 (スペース) を両端から除去
+	trimmedSlice := bytes.Trim(line[start:end], "\x00 ")
+	return string(trimmedSlice)
+}
+
+// parseFloat は、バイトスライスの指定範囲を float64 に変換します (エラー時は 0.0)
+func parseFloat(line []byte, start, end int) float64 {
+	s := trimSpaceAndGetString(line, start, end)
+	f, _ := strconv.ParseFloat(s, 64)
+	return f
+}
+
+// parseInt は、バイトスライスの指定範囲を int に変換します (エラー時は 0)
+func parseInt(line []byte, start, end int) int {
+	s := trimSpaceAndGetString(line, start, end)
+	i, _ := strconv.Atoi(s)
+	return i
+}
+
 // ParseDat は、固定長のDATファイルからレコードを抽出し、DatRecord のスライスを返します。
 func ParseDat(r io.Reader) ([]model.DatRecord, error) {
-	// ShiftJIS から UTF-8 へのデコーダーを用意
-	decoder := japanese.ShiftJIS.NewDecoder()
-	utf8Reader := transform.NewReader(r, decoder)
-	scanner := bufio.NewScanner(utf8Reader)
+	// UTF-8へのデコーダーを削除
+	scanner := bufio.NewScanner(r)
 
 	var records []model.DatRecord
 	var currentWholesale string
 
 	for scanner.Scan() {
-		line := scanner.Text() // UTF-8 に変換された行
-		if len(line) == 0 {
+		lineBytes := scanner.Bytes() // UTF-8ではなく、元のバイト列を取得
+
+		if len(lineBytes) == 0 {
 			continue
 		}
 
-		// rune スライスに変換してバイト位置ではなく文字位置でアクセス
-		runes := []rune(line)
-
-		// TrimSpaceAndGet は、指定範囲の文字列を取得し、前後の空白を除去するヘルパー
-		trimSpaceAndGet := func(start, end int) string {
-			if start >= len(runes) {
-				return ""
-			}
-			if end > len(runes) {
-				end = len(runes)
-			}
-			return strings.TrimSpace(string(runes[start:end]))
+		// レコード区分 (1バイト目)
+		recordType := ""
+		if len(lineBytes) > 0 {
+			recordType = string(lineBytes[0:1])
 		}
 
-		// parseFloat は文字列を float64 に変換 (エラー時は 0.0)
-		parseFloat := func(s string) float64 {
-			f, _ := strconv.ParseFloat(strings.TrimSpace(s), 64)
-			return f
-		}
-		// parseInt は文字列を int に変換 (エラー時は 0)
-		parseInt := func(s string) int {
-			i, _ := strconv.Atoi(strings.TrimSpace(s))
-			return i
-		}
-
-		switch trimSpaceAndGet(0, 1) {
+		switch recordType {
 		case "S":
-			// Sレコードから卸コードを取得 (文字位置 3 から 13 未満)
-			currentWholesale = trimSpaceAndGet(3, 13)
+			// Sレコードから卸コードを取得 (バイト位置 3 から 13 未満)
+			currentWholesale = trimSpaceAndGetString(lineBytes, 3, 13)
 		case "D":
-			// Dレコードをパース
-			flag := parseInt(trimSpaceAndGet(3, 4))
-			date := trimSpaceAndGet(4, 12)
-			receiptNumber := trimSpaceAndGet(12, 22)
-			lineNumber := trimSpaceAndGet(22, 24)
-			janCode := trimSpaceAndGet(25, 38)
-			productName := trimSpaceAndGet(38, 78) // UTF-8になっているはず
-			datQuantity := parseFloat(trimSpaceAndGet(78, 83))
-			unitPrice := parseFloat(trimSpaceAndGet(83, 92))
-			subtotal := parseFloat(trimSpaceAndGet(92, 101))
-			// 期限とロット (文字位置)
-			expiryDate := trimSpaceAndGet(109, 115) // YYMMDD or YYYYMM
-			lotNumber := trimSpaceAndGet(115, 121)
+			// Dレコード (最低 121 バイト必要と仮定)
+			if len(lineBytes) < 121 {
+				continue
+			}
+
+			// バイト位置に基づいてパース
+			flag := parseInt(lineBytes, 3, 4)
+			date := trimSpaceAndGetString(lineBytes, 4, 12)
+			receiptNumber := trimSpaceAndGetString(lineBytes, 12, 22)
+			lineNumber := trimSpaceAndGetString(lineBytes, 22, 24)
+			janCode := trimSpaceAndGetString(lineBytes, 25, 38)
+
+			// 製品名 (バイト位置 38-78) のみ Shift-JIS から UTF-8 に変換
+			productName := sjisToUTF8(lineBytes[38:78])
+
+			datQuantity := parseFloat(lineBytes, 78, 83)
+			unitPrice := parseFloat(lineBytes, 83, 92)
+			subtotal := parseFloat(lineBytes, 92, 101)
+
+			// 期限とロット (バイト位置)
+			expiryDate := trimSpaceAndGetString(lineBytes, 109, 115)
+			lotNumber := trimSpaceAndGetString(lineBytes, 115, 121)
 
 			rec := model.DatRecord{
 				ClientCode:    currentWholesale,
@@ -94,3 +122,5 @@ func ParseDat(r io.Reader) ([]model.DatRecord, error) {
 	}
 	return records, nil
 }
+
+// ▲▲▲【修正ここまで】▲▲▲
