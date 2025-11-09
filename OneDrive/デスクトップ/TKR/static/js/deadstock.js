@@ -1,14 +1,9 @@
-// C:\Users\wasab\OneDrive\デスクトップ\TKR\static\js\deadstock.js
 import { getLocalDateString } from './utils.js';
 
 let startDateInput, endDateInput, searchBtn, resultContainer;
 let csvDateInput, csvFileInput, csvUploadBtn;
 let exportCsvBtn;
 
-
-/**
- * 期間のデフォルト値を設定（例: 90日前から本日）
- */
 function setDefaultDates() {
     const endDate = new Date();
     const startDate = new Date();
@@ -25,9 +20,6 @@ function setDefaultDates() {
     }
 }
 
-/**
- * APIを叩いて不動在庫リストを取得・描画する
- */
 async function fetchAndRenderDeadStock() {
     const startDate = startDateInput.value.replace(/-/g, '');
     const endDate = endDateInput.value.replace(/-/g, '');
@@ -44,12 +36,11 @@ async function fetchAndRenderDeadStock() {
         const response = await fetch(`/api/deadstock/list?${params.toString()}`);
 
         if (!response.ok) {
-            const errorText = await response.text(); 
+            const errorText = await response.text();
             throw new Error(errorText || `サーバーエラー (HTTP ${response.status})`);
         }
         
-        const data = await response.json(); 
-
+        const data = await response.json();
         if (data.errors && data.errors.length > 0) {
             window.showNotification(data.errors.join('\n'), 'error');
         }
@@ -65,9 +56,6 @@ async function fetchAndRenderDeadStock() {
     }
 }
 
-/**
- * 取得した不動在庫アイテムをHTMLテーブルに変換して描画する
- */
 function renderDeadStockTable(items) {
     if (!items || items.length === 0) {
         resultContainer.innerHTML = '<p>対象期間の不動在庫は見つかりませんでした。</p>';
@@ -80,15 +68,16 @@ function renderDeadStockTable(items) {
                 <tr>
                     <th class="col-ds-action">操作</th>
                     <th class="col-ds-key">PackageKey</th>
-                    <th class="col-ds-name">製品名</th>
+            
+                     <th class="col-ds-name">製品名</th>
             
                     <th class="col-ds-qty">現在庫(YJ)</th>
                     <th class="col-ds-details">棚卸明細 (JAN / 包装仕様 / 在庫数 / 単位 / 期限 / ロット)</th>
                     </tr>
-            </thead>
+      
+                 </thead>
             <tbody>
     `;
-
     const body = items.map(item => {
         let lotHtml = '棚卸履歴なし'; 
         if (item.lotDetails && item.lotDetails.length > 0) {
@@ -96,12 +85,14 @@ function renderDeadStockTable(items) {
             lotHtml += item.lotDetails.map(lot => {
                 const janQty = (lot.JanQuantity || 0).toFixed(2);
   
-                const janCode = lot.JanCode || '(JANなし)';
+               
+                 const janCode = lot.JanCode || '(JANなし)';
                 const pkgSpec = lot.PackageSpec || '(仕様なし)';
                 const lotNum = lot.LotNumber || '(ロットなし)';
                 const expiry = lot.ExpiryDate || '(期限なし)';
                 const unitName 
  = lot.JanUnitName || ''; 
+        
                 
                 return `<li>${janCode} / ${pkgSpec} / ${janQty} ${unitName} / ${expiry} / ${lotNum}</li>`;
             }).join('');
@@ -111,17 +102,17 @@ function renderDeadStockTable(items) {
             lotHtml = '<span class="status-error">在庫あり (明細なし)</span>';
         }
 
+ 
         const stockQty = (item.stockQuantityYj || 0).toFixed(2);
         
-        const buttonHtml = item.yjCode ? 
-            `<button class="btn adjust-inventory-btn" data-yj-code="${item.yjCode}">棚卸調整</button>` : '';
+        const buttonHtml = item.yjCode ?
+ `<button class="btn adjust-inventory-btn" data-yj-code="${item.yjCode}">棚卸調整</button>` : '';
 
         return `
             <tr>
                 <td class="center col-ds-action">${buttonHtml}</td>
                 <td class="left">${item.packageKey}</td>
-                <td class="left">${item.productName ||
- '(品名不明)'}</td>
+                <td class="left">${item.productName || '(品名不明)'}</td>
                 <td class="right">${stockQty}</td>
                 <td class="left">${lotHtml}</td>
             </tr>
@@ -218,7 +209,6 @@ async function handleCsvExport() {
         window.URL.revokeObjectURL(url);
         
         window.showNotification('CSVをエクスポートしました。', 'success');
-
     } catch (error) {
         console.error('Failed to export CSV:', error);
         window.showNotification(`CSVエクスポートエラー: ${error.message}`, 'error');
@@ -227,19 +217,13 @@ async function handleCsvExport() {
     }
 }
 
-
-/**
- * 不動在庫ビューの初期化
- */
 export function initDeadStockView() {
-    // 期間検索
     startDateInput = document.getElementById('ds-start-date');
     endDateInput = document.getElementById('ds-end-date');
     searchBtn = document.getElementById('ds-search-btn');
     resultContainer = document.getElementById('deadstock-result-container');
     exportCsvBtn = document.getElementById('ds-export-csv-btn');
 
-    // CSVアップロード
     csvDateInput = document.getElementById('ds-csv-date');
     csvFileInput = document.getElementById('ds-csv-file-input');
     csvUploadBtn = document.getElementById('ds-csv-upload-btn');
@@ -262,19 +246,22 @@ export function initDeadStockView() {
                 const yjCode = e.target.dataset.yjCode;
                 if (!yjCode) {
                     window.showNotification('YJコードが見つかりません。', 'error');
-                    return;
+           
+                     return;
                 }
                 
                 const inventoryBtn = document.getElementById('inventoryAdjustmentViewBtn');
                 if (inventoryBtn) {
                     inventoryBtn.click();
+  
                 } else {
                     window.showNotification('棚卸調整ビューへの切り替えボタンが見つかりません。', 'error');
                     return;
                 }
 
                 setTimeout(() => {
-                    document.dispatchEvent(new CustomEvent('loadInventoryAdjustment', {
+         
+                     document.dispatchEvent(new CustomEvent('loadInventoryAdjustment', {
                         detail: { yjCode: yjCode }
                     }));
                 }, 100); 

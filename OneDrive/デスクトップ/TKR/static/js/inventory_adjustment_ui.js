@@ -1,30 +1,18 @@
-// C:\Users\wasab\OneDrive\デスクトップ\TKR\static\js\inventory_adjustment_ui.js
 import { getLocalDateString } from './utils.js';
-// ▼▼▼【ここから修正】renderTransactionTableHTML と clientMap をインポート ▼▼▼
 import { renderTransactionTableHTML } from './common_table.js';
 import { clientMap } from './master_data.js';
-// ▲▲▲【修正ここまで】▲▲▲
 
 let unitMap = {};
-// ▼▼▼【ここに追加】(WASABI: inventory_adjustment_ui.js より) ▼▼▼
 const transactionTypeMap = {
 	0: "棚卸", 1: "納品", 2: "返品", 3: "処方",
     11: "入庫", 12: "出庫"
 };
-// ▲▲▲【追加ここまで】▲▲▲
 
-/**
- * 単位マップを外部から設定する
- */
 export function setUnitMap(map) {
     unitMap = map;
 }
 
-/**
- * 「1. 全体サマリー」セクションのHTMLを生成する
- */
 function generateSummaryLedgerHtml(yjGroup, yesterdaysTotal) {
-// ... (変更なし) ...
     const endDate = getLocalDateString();
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - 30);
@@ -46,9 +34,11 @@ function generateSummaryLedgerHtml(yjGroup, yesterdaysTotal) {
         return pkgHeader + 
  txTable;
  
+   
     }).join('');
     return `<div class="summary-section">
-        <h3 class="view-subtitle">1. 全体サマリー</h3>
+        <h3 class="view-subtitle">1.
+ 全体サマリー</h3>
         <div class="report-section-header">
             <h4>在庫元帳 (期間: ${startDateStr} ～ ${endDate})</h4>
             <span class="header-total">【参考】前日理論在庫合計: ${yesterdaysTotal.toFixed(2)} ${yjGroup.yjUnitName}</span>
@@ -57,31 +47,25 @@ function generateSummaryLedgerHtml(yjGroup, yesterdaysTotal) {
     </div>`;
 }
 
-// ▼▼▼【ここから追加】(WASABI: inventory_adjustment_ui.js を TKR 用に適合) ▼▼▼
-/**
- * 「予製払出明細」セクションのHTMLを生成する
- */
 function generateSummaryPrecompHtml(precompDetails) {
     const precompTransactions = (precompDetails || []).map(p => ({
-        ...p, // TKR の precomp record は TKR の TransactionRecord 形式に準拠
+        ...p, 
         transactionDate: (p.transactionDate || '').slice(0, 8),
-        flag: 5, // 予製
-        clientCodeDisplay: clientMap.get(p.clientCode) || p.clientCode || '', // ヘルパーが clientCode を見るため
+        flag: 5, 
+        clientCodeDisplay: clientMap.get(p.clientCode) || p.clientCode || '', 
     }));
-
-    // TKR の renderTransactionTableHTML を使うためのラッパー
     const renderTKRPrecompTable = (records) => {
         const header = `<thead>
             <tr><th rowspan="2" class="col-action">有効</th><th class="col-date">日付</th><th class="col-yj">YJ</th><th colspan="2" class="col-product">製品名</th><th class="col-count">個数</th><th class="col-yjqty">YJ数量</th><th class="col-yjpackqty">YJ包装数</th><th class="col-yjunit">YJ単位</th><th class="col-unitprice">単価</th><th class="col-expiry">期限</th><th class="col-wholesaler">患者</th><th class="col-line">行</th></tr>
             <tr><th class="col-flag">種別</th><th class="col-jan">JAN</th><th class="col-package">包装</th><th class="col-maker">メーカー</th><th class="col-form">剤型</th><th class="col-janqty">JAN数量</th><th class="col-janpackqty">JAN包装数</th><th class="col-janunit">JAN単位</th><th class="col-amount">金額</th><th class="col-lot">ロット</th><th class="col-receipt">伝票番号</th><th class="col-ma">MA</th></tr></thead>`;
-        
         let bodyHtml = `<tbody>${(!records || records.length === 0) ?
             '<tr><td colspan="13">対象データがありません。</td></tr>' : records.map(rec => {
             
             const top = `<tr><td rowspan="2" class="col-action center"><input type="checkbox" 
                 class="precomp-active-check" data-quantity="${rec.yjQuantity}" data-product-code="${rec.janCode}" checked></td>
                 <td class="col-date">${rec.transactionDate || ''}</td><td class="yj-jan-code col-yj">${rec.yjCode || ''}</td><td class="left col-product" colspan="2">${rec.productName || ''}</td>
-                <td class="right col-count">${rec.datQuantity?.toFixed(2) || ''}</td><td class="right col-yjqty">${rec.yjQuantity?.toFixed(2) || ''}</td><td class="right col-yjpackqty">${rec.yjPackUnitQty || ''}</td><td class="col-yjunit">${rec.yjUnitName || ''}</td>
+       
+                 <td class="right col-count">${rec.datQuantity?.toFixed(2) || ''}</td><td class="right col-yjqty">${rec.yjQuantity?.toFixed(2) || ''}</td><td class="right col-yjpackqty">${rec.yjPackUnitQty || ''}</td><td class="col-yjunit">${rec.yjUnitName || ''}</td>
                 <td class="right col-unitprice">${rec.unitPrice?.toFixed(4) || ''}</td><td class="col-expiry">${rec.expiryDate || ''}</td><td class="left col-wholesaler">${rec.clientCodeDisplay}</td><td class="right col-line">${rec.lineNumber || ''}</td></tr>`;
             
             const bottom = `<tr><td class="col-flag">${transactionTypeMap[rec.flag] || rec.flag}</td><td class="yj-jan-code col-jan">${rec.janCode || ''}</td><td class="left col-package">${rec.packageSpec || ''}</td><td class="left col-maker">${rec.makerName || ''}</td>
@@ -97,14 +81,10 @@ function generateSummaryPrecompHtml(precompDetails) {
         <span class="header-total" id="precomp-active-total">有効合計: 0.00</span></div>
         ${renderTKRPrecompTable(precompTransactions)}</div>`;
 }
-// ▲▲▲【追加ここまで】▲▲▲
 
-/**
- * 「2. 棚卸入力」セクションの入力行のHTMLを生成する
- */
 export function createFinalInputRow(master, deadStockRecord = null, isPrimary = false) {
     const actionButtons = isPrimary ?
- `
+`
         <button type="button" class="btn add-deadstock-row-btn" data-product-code="${master.productCode}">＋</button>
         <button type="button" class="btn register-inventory-btn">登録</button>
     ` : `<button type="button" class="btn delete-deadstock-row-btn">－</button>`;
@@ -116,24 +96,17 @@ export function createFinalInputRow(master, deadStockRecord = null, isPrimary = 
 
     const topRow = `<tr class="inventory-row"><td rowspan="2" class="col-action"><div class="action-buttons">${actionButtons}</div></td>
         <td class="col-date">(棚卸日)</td><td class="yj-jan-code col-yj">${master.yjCode}</td><td class="left col-product" colspan="2">${master.productName}</td>
-        <td class="col-count"></td><td class="right col-yjqty"></td><td class="right col-yjpackqty">${master.yjPackUnitQty ||
- ''}</td><td class="col-yjunit">${master.yjUnitName || ''}</td>
-        <td class="right col-unitprice">${master.nhiPrice?.toFixed(4) ||
- ''}</td><td class="col-expiry"><input type="text" class="expiry-input" placeholder="YYYYMM" value="${expiry}"></td><td class="col-wholesaler"></td><td class="col-line"></td></tr>`;
+        <td class="col-count"></td><td class="right col-yjqty"></td><td class="right col-yjpackqty">${master.yjPackUnitQty || ''}</td><td class="col-yjunit">${master.yjUnitName || ''}</td>
+        <td class="right col-unitprice">${master.nhiPrice?.toFixed(4) || ''}</td><td class="col-expiry"><input type="text" class="expiry-input" placeholder="YYYYMM" value="${expiry}"></td><td class="col-wholesaler"></td><td class="col-line"></td></tr>`;
     
     const bottomRow = `<tr class="inventory-row"><td class="col-flag">棚卸</td><td class="yj-jan-code col-jan">${master.productCode}</td>
-        <td class="col-package">${master.formattedPackageSpec ||
- ''}</td><td class="col-maker">${master.makerName || ''}</td><td class="col-form">${master.usageClassification || ''}</td>
+        <td class="col-package">${master.formattedPackageSpec || ''}</td><td class="col-maker">${master.makerName || ''}</td><td class="col-form">${master.usageClassification || ''}</td>
         <td class="right col-janqty"><input type="number" class="${quantityInputClass}" data-product-code="${master.productCode}" placeholder="${quantityPlaceholder}" value="${quantity}" step="any"></td>
-        <td class="right col-janpackqty">${master.janPackUnitQty ||
- ''}</td><td class="col-janunit">${master.janUnitName || ''}</td>
+        <td class="right col-janpackqty">${master.janPackUnitQty || ''}</td><td class="col-janunit">${master.janUnitName || ''}</td>
         <td class="right col-amount"></td><td class="col-lot"><input type="text" class="lot-input" placeholder="ロット番号" value="${lot}"></td><td class="col-receipt"></td><td class="col-ma"></td></tr>`;
     return topRow + bottomRow;
 }
 
-/**
- * 「2. 棚卸入力」セクション全体のHTMLを生成する
- */
 function generateInputSectionsHtml(packageLedgers, yjUnitName = '単位', cache, yesterdaysTotal) {
     const packageGroupsHtml = (packageLedgers || []).map(pkgLedger => {
         let yesterdaysPkgStock = 0;
@@ -141,7 +114,8 @@ function generateInputSectionsHtml(packageLedgers, yjUnitName = '単位', cache,
             const prevPkg = cache.yesterdaysStock.packageLedgers.find(p => p.packageKey === pkgLedger.packageKey);
             if(prevPkg) {
                 yesterdaysPkgStock = 
- prevPkg.endingBalance || 0;
+ prevPkg.endingBalance || 
+ 0;
      
     
  
@@ -154,7 +128,8 @@ function generateInputSectionsHtml(packageLedgers, yjUnitName = '単位', cache,
         if (pkgLedger.masters && pkgLedger.masters.length > 0) {
             const firstMaster = pkgLedger.masters[0];
             
- const janPackInnerQty = firstMaster.janPackInnerQty;
+ const 
+ janPackInnerQty = firstMaster.janPackInnerQty;
      
      
    
@@ -172,7 +147,7 @@ function generateInputSectionsHtml(packageLedgers, yjUnitName = '単位', cache,
             <div class="agg-pkg-header">
                 <span>包装: ${pkgLedger.packageKey}</span>
             </div>`;
- html += (pkgLedger.masters || []).map(master => {
+        html += (pkgLedger.masters || []).map(master => {
             if (!master) return '';
             
             const janUnitName = master.janUnitName;
@@ -181,7 +156,8 @@ function generateInputSectionsHtml(packageLedgers, yjUnitName = '単位', cache,
         
  
   
-                <div class="user-input-area">
+              
+   <div class="user-input-area">
         
              <div class="form-group">
                         <label>① 本日の実在庫数量（予製除く）:</label>
@@ -189,7 +165,8 @@ function generateInputSectionsHtml(packageLedgers, yjUnitName = '単位', cache,
       
   
          
-                 <span>(${janUnitName})</span>
+    
+              <span>(${janUnitName})</span>
           
                <span class="info-text">本日理論在庫(包装計): ${totalStockDisplay}</span>
                     </div>
@@ -197,19 +174,20 @@ function generateInputSectionsHtml(packageLedgers, yjUnitName = '単位', cache,
        <div class="form-group">
       
      
-                       <label>② 前日在庫(逆算値):</label>
+       
+                <label>② 前日在庫(逆算値):</label>
                   
        <span class="calculated-previous-day-stock" data-product-code="${master.productCode}">0.00</span>
                         <span>(${janUnitName})</span>
         
              
      <span class="info-text stock-info">(この数値が棚卸データとして登録されます)</span>
-        
+    
+     
                          <span class="info-text align-right">前日理論在庫(包装計): ${yesterdaysTotalStockDisplay}</span>
                
       </div>
                 </div>`;
-            
             const relevantDeadStock = (cache.deadStockDetails || []).filter(ds => ds.productCode === master.productCode);
  let finalInputTbodyHtml;
  if (relevantDeadStock.length > 0) {
@@ -219,10 +197,10 @@ function generateInputSectionsHtml(packageLedgers, yjUnitName = '単位', cache,
  }
             
             const finalInputTable = renderTransactionTableHTML(
-                [], // データは customBody で渡す
+                [], 
                 `<tbody class="final-input-tbody" data-product-code="${master.productCode}">${finalInputTbodyHtml}</tbody>`
             );
- return `<div class="product-input-group">
+            return `<div class="product-input-group">
                         ${userInputArea}
                         <div>
                             <p class="lot-input-header">ロット・期限を個別入力</p>
@@ -232,14 +210,15 @@ function generateInputSectionsHtml(packageLedgers, yjUnitName = '単位', cache,
         ${finalInputTable}
                         </div>
                     </div>`;
- }).join('');
+        }).join('');
 
         html += `</div>`;
         return html;
     }).join('');
     
     return `<div class="input-section">
-        <h3 class="view-subtitle">2. 棚卸入力</h3>
+        <h3 class="view-subtitle">2.
+ 棚卸入力</h3>
         <div class="inventory-input-area">
             <div class="adj-date-group">
                 <div class="form-group">
@@ -254,7 +233,7 @@ function generateInputSectionsHtml(packageLedgers, yjUnitName = '単位', cache,
                         <label for="adjustment-barcode-input">バーコードでロット・期限入力</label>
                         <input type="text" id="adjustment-barcode-input" inputmode="latin" placeholder="GS1-128バーコードをスキャンしてEnter">
       
-  
+ 
   
             </div>
                 </form>
@@ -264,13 +243,10 @@ function generateInputSectionsHtml(packageLedgers, yjUnitName = '単位', cache,
     </div>`;
 }
 
-/**
- * 「3. 参考」セクションのHTMLを生成する
- */
 function generateDeadStockReferenceHtml(deadStockRecords, cache) {
     if (!deadStockRecords || deadStockRecords.length === 0) {
         return '';
- }
+    }
 
     const masterMap = new Map();
  if (cache && cache.transactionLedger) {
@@ -299,10 +275,12 @@ function generateDeadStockReferenceHtml(deadStockRecords, cache) {
         </tr>
     `
     }).join('');
- return `
+    return `
         <div class="summary-section input-section">
-            <h3 class="view-subtitle">3. 参考：現在登録済みのロット・期限情報</h3>
-            <p class="reference-section-header">※このリストは参照用です。棚卸情報を保存するには、上の「2. 棚卸入力」の欄に改めて入力してください。</p>
+            <h3 class="view-subtitle">3.
+ 参考：現在登録済みのロット・期限情報</h3>
+            <p class="reference-section-header">※このリストは参照用です。棚卸情報を保存するには、上の「2.
+ 棚卸入力」の欄に改めて入力してください。</p>
             <table class="data-table reference-table">
                 <thead>
                     <tr>
@@ -314,7 +292,7 @@ function generateDeadStockReferenceHtml(deadStockRecords, cache) {
                         <th class="col-ref-expiry">使用期限</th>
                         <th class="col-ref-lot">ロット番号</th>
                     </tr>
-    
+   
   
                 </thead>
              
@@ -327,9 +305,6 @@ function generateDeadStockReferenceHtml(deadStockRecords, cache) {
     `;
 }
 
-/**
- * 棚卸調整画面の全HTMLを生成する
- */
 export function generateFullHtml(data, cache) {
     if (!data.transactionLedger || data.transactionLedger.length === 0) {
         return '<p>対象の製品データが見つかりませんでした。</p>';
@@ -340,9 +315,7 @@ export function generateFullHtml(data, cache) {
  (data.yesterdaysStock.endingBalance || 0) : 0;
     
     const summaryLedgerHtml = generateSummaryLedgerHtml(yjGroup, yesterdaysTotal);
-    // ▼▼▼【ここに追加】▼▼▼
     const summaryPrecompHtml = generateSummaryPrecompHtml(data.precompDetails);
-    // ▲▲▲【追加ここまで】▲▲▲
     const inputSectionsHtml = generateInputSectionsHtml(yjGroup.packageLedgers, yjGroup.yjUnitName, cache, yesterdaysTotal);
     const deadStockReferenceHtml = generateDeadStockReferenceHtml(data.deadStockDetails, cache);
     return `<h2 class="adj-header">【棚卸調整】 ${productName} (YJ: ${yjGroup.yjCode})</h2>

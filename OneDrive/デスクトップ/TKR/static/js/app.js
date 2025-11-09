@@ -3,19 +3,15 @@ import { initDatUpload, fetchAndRenderDat } from './dat.js';
 import { initMasterEditView } from './masteredit.js';
 import { initConfigView, loadConfigAndWholesalers } from './config.js'; 
 import { initUsageUpload, fetchAndRenderUsage } from './usage.js';
-import { initInventoryAdjustment } from './inventory_adjustment_logic.js';
+import { initInventoryAdjustment } from './inventory_adjustment.js';
 import { initSearchModal } from './search_modal.js';
 import { loadMasterData } from './master_data.js';
 import { initInOut, resetInOutView } from './inout.js';
-// ▼▼▼【ここに追加】▼▼▼
 import { initDeadStockView } from './deadstock.js';
 import { initPrecomp, resetPrecompView } from './precomp.js';
-// ▲▲▲【追加ここまで】▲▲▲
 
 let loadingOverlay, loadingMessage, notificationBox;
-// ▼▼▼【ここに追加】▼▼▼
 let views, datViewBtn, usageViewBtn, inventoryAdjustmentViewBtn, masterEditViewBtn, configViewBtn, inoutViewBtn, reprocessBtn, deadStockViewBtn, precompViewBtn;
-// ▲▲▲【追加ここまで】▲▲▲
 const initializedViews = {
     dat: false,
     usage: false,
@@ -23,10 +19,8 @@ const initializedViews = {
     masterEdit: false,
     config: false,
     inout: false,
-    // ▼▼▼【ここに追加】▼▼▼
     deadstock: false,
     precomp: false,
-    // ▲▲▲【追加ここまで】▲▲▲
 };
 window.showLoading = (message = '処理中...') => {
     if (!loadingOverlay) loadingOverlay = document.getElementById('loading-overlay');
@@ -95,7 +89,9 @@ function setActiveView(targetId) {
         case 'config-view':
             if (!initializedViews.config) {
                 console.log("Initializing Config view...");
+                // ▼▼▼【ここを修正】'initConfAigView' -> 'initConfigView' ▼▼▼
                 initConfigView();
+                // ▲▲▲【修正ここまで】▲▲▲
                 initializedViews.config = true;
             }
             loadConfigAndWholesalers();
@@ -108,14 +104,12 @@ function setActiveView(targetId) {
             }
             resetInOutView();
             break;
-        // ▼▼▼【ここに追加】▼▼▼
         case 'deadstock-view':
             if (!initializedViews.deadstock) {
                 console.log("Initializing DeadStock view...");
                 initDeadStockView();
                 initializedViews.deadstock = true;
             }
-            // (ビュー表示時のデフォルトロード処理はなし)
             break;
         case 'precomp-view':
             if (!initializedViews.precomp) {
@@ -125,7 +119,6 @@ function setActiveView(targetId) {
             }
             resetPrecompView();
             break;
-        // ▲▲▲【追加ここまで】▲▲▲
     }
 }
 
@@ -137,7 +130,7 @@ async function handleReprocessAll() {
     window.showLoading('全取引データを再計算中... (時間がかかる場合があります)');
     try {
         const response = await fetch('/api/reprocess/all', {
-            method: 'POST', // 再計算はPOSTリクエストを使用
+            method: 'POST', 
         });
         const result = await response.json();
         if (!response.ok) {
@@ -167,11 +160,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     configViewBtn = document.getElementById('configViewBtn'); 
     inoutViewBtn = document.getElementById('inOutViewBtn');
     reprocessBtn = document.getElementById('reprocessBtn');
-    // ▼▼▼【ここに追加】▼▼▼
     deadStockViewBtn = document.getElementById('deadStockViewBtn');
     precompViewBtn = document.getElementById('precompViewBtn');
-    // ▲▲▲【追加ここまで】▲▲▲
 
+ 
     await loadMasterData();
 
   
@@ -199,14 +191,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (reprocessBtn) {
         reprocessBtn.addEventListener('click', handleReprocessAll);
     }
-    // ▼▼▼【ここに追加】▼▼▼
     if (deadStockViewBtn) {
         deadStockViewBtn.addEventListener('click', () => setActiveView('deadstock-view'));
     }
     if (precompViewBtn) {
         precompViewBtn.addEventListener('click', () => setActiveView('precomp-view'));
     }
-    // ▲▲▲【追加ここまで】▲▲▲
 
     setActiveView('dat-upload-view');
 });

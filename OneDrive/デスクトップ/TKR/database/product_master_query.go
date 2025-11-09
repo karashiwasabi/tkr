@@ -12,7 +12,6 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
-// ▼▼▼【ここから修正】DBTX インターフェースに Exec と Prepare を追加 ▼▼▼
 type DBTX interface {
 	Get(dest interface{}, query string, args ...interface{}) error
 	Select(dest interface{}, query string, args ...interface{}) error
@@ -20,16 +19,10 @@ type DBTX interface {
 	Query(query string, args ...interface{}) (*sql.Rows, error)
 	QueryRow(query string, args ...interface{}) *sql.Row
 	Rebind(query string) string
-	Exec(query string, args ...interface{}) (sql.Result, error) // 追加
-	Prepare(query string) (*sql.Stmt, error)                    // 追加
+	Exec(query string, args ...interface{}) (sql.Result, error)
+	Prepare(query string) (*sql.Stmt, error)
 }
 
-// ▲▲▲【修正ここまで】▲▲▲
-
-// ▼▼▼【ここから追加】(WASABI: db/product_master.go より移植・TKR用にカラム修正) ▼▼▼
-
-// SelectColumns は、product_masterテーブルから全列を取得するためのSQLスニペットです。
-// TKRのスキーマ に合わせて kana_name_short と generic_name を追加しています。
 const SelectColumns = `
 	product_code, yj_code, gs1_code, product_name, kana_name, kana_name_short, 
 	generic_name, maker_name,
@@ -41,8 +34,6 @@ const SelectColumns = `
 	group_code, shelf_number, category, user_notes
 `
 
-// ScanProductMaster は、データベースの行データから model.ProductMaster 構造体に値を割り当てます。
-// TKRのスキーマ に合わせて kana_name_short と generic_name を追加しています。
 func ScanProductMaster(row interface{ Scan(...interface{}) error }) (*model.ProductMaster, error) {
 	var m model.ProductMaster
 	err := row.Scan(
@@ -66,8 +57,6 @@ func ScanProductMaster(row interface{ Scan(...interface{}) error }) (*model.Prod
 	return &m, nil
 }
 
-// GetProductMastersByCodesMap は、複数の製品コードをキーに製品マスターをマップ形式で取得します。
-// (WASABI: db/product_master.go より移植)
 func GetProductMastersByCodesMap(dbtx DBTX, codes []string) (map[string]*model.ProductMaster, error) {
 	if len(codes) == 0 {
 		return make(map[string]*model.ProductMaster), nil
@@ -79,7 +68,6 @@ func GetProductMastersByCodesMap(dbtx DBTX, codes []string) (map[string]*model.P
 		args[i] = code
 	}
 
-	// sqlx.Tx, sqlx.DB どちらでも動作するよう、Query (sql.Rows) を使う
 	rows, err := dbtx.Query(q, args...)
 	if err != nil {
 		return nil, fmt.Errorf("query for masters by codes failed: %w", err)
@@ -97,10 +85,7 @@ func GetProductMastersByCodesMap(dbtx DBTX, codes []string) (map[string]*model.P
 	return mastersMap, nil
 }
 
-// ▲▲▲【追加ここまで】▲▲▲
-
 func GetAllProductMasters(dbtx DBTX) ([]*model.ProductMaster, error) {
-	// ... (変更なし) ...
 	var masters []*model.ProductMaster
 	query := `SELECT * FROM product_master`
 	err := dbtx.Select(&masters, query)
@@ -118,7 +103,6 @@ func GetAllProductMasters(dbtx DBTX) ([]*model.ProductMaster, error) {
 }
 
 func GetFilteredProductMasters(dbtx DBTX, usageClass, kanaName, genericName, shelfNumber string) ([]model.ProductMaster, error) {
-	// ... (変更なし) ...
 	var masters []model.ProductMaster
 
 	query := `SELECT * FROM product_master`
@@ -176,7 +160,6 @@ func GetFilteredProductMasters(dbtx DBTX, usageClass, kanaName, genericName, she
 }
 
 func GetProductMasterByCode(dbtx DBTX, code string) (*model.ProductMaster, error) {
-	// ... (変更なし) ...
 	var master model.ProductMaster
 	query := `SELECT * FROM product_master WHERE product_code = ?`
 	err := dbtx.Get(&master, query, code)
@@ -187,7 +170,6 @@ func GetProductMasterByCode(dbtx DBTX, code string) (*model.ProductMaster, error
 }
 
 func GetProductMasterByGs1Code(dbtx DBTX, gs1Code string) (*model.ProductMaster, error) {
-	// ... (変更なし) ...
 	var master model.ProductMaster
 	query := `SELECT * FROM product_master WHERE gs1_code = ?`
 	err := dbtx.Get(&master, query, gs1Code)
@@ -198,7 +180,6 @@ func GetProductMasterByGs1Code(dbtx DBTX, gs1Code string) (*model.ProductMaster,
 }
 
 func GetProductMasterByBarcode(dbtx DBTX, barcodeStr string) (*model.ProductMaster, error) {
-	// ... (変更なし) ...
 	if barcodeStr == "" {
 		return nil, fmt.Errorf("バーコードが空です")
 	}
@@ -221,7 +202,6 @@ func GetProductMasterByBarcode(dbtx DBTX, barcodeStr string) (*model.ProductMast
 }
 
 func GetProductMastersByYjCode(dbtx DBTX, yjCode string) ([]*model.ProductMaster, error) {
-	// ... (変更なし) ...
 	var masters []*model.ProductMaster
 	query := `SELECT * FROM product_master WHERE yj_code = ?
  ORDER BY product_code`
@@ -239,7 +219,6 @@ func GetProductMastersByYjCode(dbtx DBTX, yjCode string) ([]*model.ProductMaster
 }
 
 func GetProductCodesByYjCodes(dbtx DBTX, yjCodes []string) ([]string, error) {
-	// ... (変更なし) ...
 	if len(yjCodes) == 0 {
 		return []string{}, nil
 	}
@@ -256,7 +235,6 @@ func GetProductCodesByYjCodes(dbtx DBTX, yjCodes []string) ([]string, error) {
 }
 
 func GetProductMasterByKanaNameShort(dbtx DBTX, kanaNameShort string) (*model.ProductMaster, error) {
-	// ... (変更なし) ...
 	var master model.ProductMaster
 	query := `SELECT * FROM product_master WHERE kana_name_short = ?`
 	err := dbtx.Get(&master, query, kanaNameShort)
@@ -288,7 +266,6 @@ is_order_stopped,
 )`
 
 func InsertProductMaster(dbtx DBTX, master *model.ProductMaster) error {
-	// ... (変更なし) ...
 	_, err := dbtx.NamedExec(insertProductMasterQuery, master)
 	if err != nil {
 		return fmt.Errorf("failed to insert product master: %w", err)
@@ -296,20 +273,13 @@ func InsertProductMaster(dbtx DBTX, master *model.ProductMaster) error {
 	return nil
 }
 
-// ▼▼▼【ここから追加】PackageKeyを全件取得するヘルパー関数 ▼▼▼
-
-// MasterPackageKeyInfo は、マスターからPackageKeyを構築するための情報を保持します。
 type MasterPackageKeyInfo struct {
 	PackageKey     string
 	YjCode         string
 	Representative *model.ProductMaster
 }
 
-// GetAllPackageKeysFromMasters は、product_masterテーブルに存在するすべてのPackageKeyと
-// その代表マスター情報をマップで返します。
 func GetAllPackageKeysFromMasters(dbtx DBTX) (map[string]MasterPackageKeyInfo, error) {
-	// ... (変更なし) ...
-	// 1. 全マスターを取得
 	var allMasters []*model.ProductMaster
 	query := `SELECT * FROM product_master WHERE yj_code != ''`
 	err := dbtx.Select(&allMasters, query)
@@ -317,25 +287,20 @@ func GetAllPackageKeysFromMasters(dbtx DBTX) (map[string]MasterPackageKeyInfo, e
 		return nil, fmt.Errorf("failed to select all product masters for package key generation: %w", err)
 	}
 
-	// 2. PackageKey ごとに分類し、代表マスター（JCSHMS優先）を選定
 	mastersByPackageKey := make(map[string][]*model.ProductMaster)
 	keyInfoMap := make(map[string]MasterPackageKeyInfo)
 
 	for _, m := range allMasters {
-		// PackageKeyを生成 (aggregation.go と同じロジック)
 		key := fmt.Sprintf("%s|%s|%g|%s", m.YjCode, m.PackageForm, m.JanPackInnerQty, units.ResolveName(m.YjUnitName))
 		mastersByPackageKey[key] = append(mastersByPackageKey[key], m)
 
-		// 代表マスターを選定
 		if info, ok := keyInfoMap[key]; !ok {
-			// まだキーが登録されていなければ、このマスターを暫定代表とする
 			keyInfoMap[key] = MasterPackageKeyInfo{
 				PackageKey:     key,
 				YjCode:         m.YjCode,
 				Representative: m,
 			}
 		} else {
-			// 既に代表がいる場合、JCSHMS由来のマスターを優先する
 			if info.Representative.Origin != "JCSHMS" && m.Origin == "JCSHMS" {
 				info.Representative = m
 				keyInfoMap[key] = info

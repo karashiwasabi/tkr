@@ -1,32 +1,32 @@
-// C:\Users\wasab\OneDrive\デスクトップ\TKR\precomp\handler.go
 package precomp
 
 import (
+	"bytes"
+	"encoding/csv"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
-	"tkr/database" // TKRのdatabaseを参照
-	"tkr/model"    // TKRのmodelを参照
+	"net/url"
+	"time"
+	"tkr/database"
+	"tkr/model"
+	"tkr/parsers"
+	"tkr/units"
 
-	"github.com/jmoiron/sqlx" // TKRはsqlxを使用
+	"github.com/jmoiron/sqlx"
 )
 
-// PrecompPayload は保存・更新時にフロントエンドから受け取るデータ構造です
-// (WASABI: precomp/handler.go [cite: 1475] より)
 type PrecompPayload struct {
 	PatientNumber string                        `json:"patientNumber"`
 	Records       []database.PrecompRecordInput `json:"records"`
 }
 
-// LoadResponse は呼び出し時にフロントエンドへ返すデータ構造です
-// (WASABI: precomp/handler.go [cite: 1476] より)
 type LoadResponse struct {
 	Status  string                    `json:"status"`
 	Records []model.TransactionRecord `json:"records"`
 }
 
-// SavePrecompHandler は予製データを保存・更新します
-// (WASABI: precomp/handler.go [cite: 1477-1478] より。 *sql.DB -> *sqlx.DB)
 func SavePrecompHandler(conn *sqlx.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var payload PrecompPayload
@@ -40,14 +40,13 @@ func SavePrecompHandler(conn *sqlx.DB) http.HandlerFunc {
 			return
 		}
 
-		tx, err := conn.Beginx() // sqlx.Tx
+		tx, err := conn.Beginx()
 		if err != nil {
 			http.Error(w, "Failed to start transaction", http.StatusInternalServerError)
 			return
 		}
 		defer tx.Rollback()
 
-		// TKRの DBTX (sqlx.Tx が満たす) を渡す
 		if err := database.UpsertPreCompoundingRecordsInTx(tx, payload.PatientNumber, payload.Records); err != nil {
 			log.Printf("ERROR: Failed to save pre-compounding records for patient %s: %v", payload.PatientNumber, err)
 			http.Error(w, "Failed to save pre-compounding records: "+err.Error(), http.StatusInternalServerError)
@@ -64,8 +63,6 @@ func SavePrecompHandler(conn *sqlx.DB) http.HandlerFunc {
 	}
 }
 
-// LoadPrecompHandler は患者の予製データと現在のステータスを返します
-// (WASABI: precomp/handler.go [cite: 1478-1479] より。 *sql.DB -> *sqlx.DB)
 func LoadPrecompHandler(conn *sqlx.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		patientNumber := r.URL.Query().Get("patientNumber")
@@ -74,7 +71,6 @@ func LoadPrecompHandler(conn *sqlx.DB) http.HandlerFunc {
 			return
 		}
 
-		// TKRの DBTX (sqlx.DB が満たす) を渡す
 		status, err := database.GetPreCompoundingStatusByPatient(conn, patientNumber)
 		if err != nil {
 			http.Error(w, "Failed to get pre-compounding status: "+err.Error(), http.StatusInternalServerError)
@@ -95,8 +91,6 @@ func LoadPrecompHandler(conn *sqlx.DB) http.HandlerFunc {
 	}
 }
 
-// ClearPrecompHandler は予製データを完全に削除します
-// (WASABI: precomp/handler.go [cite: 1480-1481] より。 *sql.DB -> *sqlx.DB)
 func ClearPrecompHandler(conn *sqlx.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		patientNumber := r.URL.Query().Get("patientNumber")
@@ -105,7 +99,6 @@ func ClearPrecompHandler(conn *sqlx.DB) http.HandlerFunc {
 			return
 		}
 
-		// TKRの DBTX (sqlx.DB が満たす) を渡す
 		if err := database.DeletePreCompoundingRecordsByPatient(conn, patientNumber); err != nil {
 			http.Error(w, "Failed to clear pre-compounding records: "+err.Error(), http.StatusInternalServerError)
 			return
@@ -116,8 +109,6 @@ func ClearPrecompHandler(conn *sqlx.DB) http.HandlerFunc {
 	}
 }
 
-// SuspendPrecompHandler は予製を中断状態にします
-// (WASABI: precomp/handler.go [cite: 1481-1482] より。 *sql.DB -> *sqlx.DB)
 func SuspendPrecompHandler(conn *sqlx.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var payload struct {
@@ -131,14 +122,13 @@ func SuspendPrecompHandler(conn *sqlx.DB) http.HandlerFunc {
 			http.Error(w, "Patient number is required", http.StatusBadRequest)
 			return
 		}
-		tx, err := conn.Beginx() // sqlx.Tx
+		tx, err := conn.Beginx()
 		if err != nil {
 			http.Error(w, "Failed to start transaction", http.StatusInternalServerError)
 			return
 		}
 		defer tx.Rollback()
 
-		// TKRの DBTX (sqlx.Tx が満たす) を渡す
 		if err := database.SuspendPreCompoundingRecordsByPatient(tx, payload.PatientNumber); err != nil {
 			http.Error(w, "Failed to suspend pre-compounding records: "+err.Error(), http.StatusInternalServerError)
 			return
@@ -152,8 +142,6 @@ func SuspendPrecompHandler(conn *sqlx.DB) http.HandlerFunc {
 	}
 }
 
-// ResumePrecompHandler は予製を再開状態にします
-// (WASABI: precomp/handler.go [cite: 1482-1483] より。 *sql.DB -> *sqlx.DB)
 func ResumePrecompHandler(conn *sqlx.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var payload struct {
@@ -167,14 +155,13 @@ func ResumePrecompHandler(conn *sqlx.DB) http.HandlerFunc {
 			http.Error(w, "Patient number is required", http.StatusBadRequest)
 			return
 		}
-		tx, err := conn.Beginx() // sqlx.Tx
+		tx, err := conn.Beginx()
 		if err != nil {
 			http.Error(w, "Failed to start transaction", http.StatusInternalServerError)
 			return
 		}
 		defer tx.Rollback()
 
-		// TKRの DBTX (sqlx.Tx が満たす) を渡す
 		if err := database.ResumePreCompoundingRecordsByPatient(tx, payload.PatientNumber); err != nil {
 			http.Error(w, "Failed to resume pre-compounding records: "+err.Error(), http.StatusInternalServerError)
 			return
@@ -188,8 +175,6 @@ func ResumePrecompHandler(conn *sqlx.DB) http.HandlerFunc {
 	}
 }
 
-// GetStatusPrecompHandler は予製の現在の状態を返します
-// (WASABI: precomp/handler.go [cite: 1483-1484] より。 *sql.DB -> *sqlx.DB)
 func GetStatusPrecompHandler(conn *sqlx.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		patientNumber := r.URL.Query().Get("patientNumber")
@@ -198,7 +183,6 @@ func GetStatusPrecompHandler(conn *sqlx.DB) http.HandlerFunc {
 			return
 		}
 
-		// TKRの DBTX (sqlx.DB が満たす) を渡す
 		status, err := database.GetPreCompoundingStatusByPatient(conn, patientNumber)
 		if err != nil {
 			http.Error(w, "Failed to get status: "+err.Error(), http.StatusInternalServerError)
@@ -209,4 +193,112 @@ func GetStatusPrecompHandler(conn *sqlx.DB) http.HandlerFunc {
 	}
 }
 
-// (WASABI: precomp/handler.go [cite: 1484-1488] の Export/Import ハンドラは、TKRへの移植指示には含まれていなかったため、一旦スキップします。)
+func ExportAllPrecompHandler(db *sqlx.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		records, err := database.GetAllPreCompoundingRecords(db)
+		if err != nil {
+			http.Error(w, "Failed to get all precomp records: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		var buf bytes.Buffer
+		buf.Write([]byte{0xEF, 0xBB, 0xBF})
+		writer := csv.NewWriter(&buf)
+
+		header := []string{
+			"patient_number", "product_code", "product_name", "quantity_jan", "unit_name",
+		}
+		if err := writer.Write(header); err != nil {
+			http.Error(w, "Failed to write CSV header: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		for _, rec := range records {
+			row := []string{
+				rec.ClientCode,
+				rec.JanCode,
+				rec.ProductName,
+				fmt.Sprintf("%.2f", rec.JanQuantity),
+				units.ResolveName(rec.JanUnitName),
+			}
+			if err := writer.Write(row); err != nil {
+				log.Printf("WARN: Failed to write precomp row to CSV (Patient: %s): %v", rec.ClientCode, err)
+			}
+		}
+		writer.Flush()
+
+		if err := writer.Error(); err != nil {
+			http.Error(w, "Failed to flush CSV writer: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		filename := fmt.Sprintf("TKR予製データ(全件)_%s.csv", time.Now().Format("20060102"))
+		w.Header().Set("Content-Type", "text/csv; charset=utf-8")
+		w.Header().Set("Content-Disposition", "attachment; filename*=UTF-8''"+url.PathEscape(filename))
+		w.Write(buf.Bytes())
+	}
+}
+
+func ImportAllPrecompHandler(db *sqlx.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		file, _, err := r.FormFile("file")
+		if err != nil {
+			http.Error(w, "CSVファイルの読み取りに失敗: "+err.Error(), http.StatusBadRequest)
+			return
+		}
+		defer file.Close()
+
+		// ▼▼▼【ここを修正】戻り値の型を変更 ▼▼▼
+		records, err := parsers.ParsePrecompCSV(file)
+		if err != nil {
+			// ▲▲▲【修正ここまで】▲▲▲
+			http.Error(w, "CSVファイルの解析に失敗: "+err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		if len(records) == 0 {
+			http.Error(w, "CSVから読み込むデータがありません。", http.StatusBadRequest)
+			return
+		}
+
+		// ▼▼▼【ここから修正】新しい `records` スライス（ParsedPrecompCSVRecord）からマップを構築 ▼▼▼
+		recordsByPatient := make(map[string][]database.PrecompRecordInput)
+		for _, rec := range records {
+			patientNumber := rec.PatientNumber
+			recordsByPatient[patientNumber] = append(recordsByPatient[patientNumber], database.PrecompRecordInput{
+				ProductCode: rec.ProductCode,
+				JanQuantity: rec.JanQuantity,
+			})
+		}
+		// ▲▲▲【修正ここまで】▲▲▲
+
+		tx, err := db.Beginx()
+		if err != nil {
+			http.Error(w, "データベーストランザクションの開始に失敗: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		defer tx.Rollback()
+
+		// ▼▼▼【ここから修正】`patientMap` ではなく `recordsByPatient` のキーをイテレート ▼▼▼
+		processedPatients := 0
+		for patientNumber, patientRecords := range recordsByPatient {
+
+			if err := database.UpsertPreCompoundingRecordsInTx(tx, patientNumber, patientRecords); err != nil {
+				http.Error(w, fmt.Sprintf("患者 %s の予製データ登録に失敗: %v", patientNumber, err), http.StatusInternalServerError)
+				return
+			}
+			processedPatients++
+		}
+		// ▲▲▲【修正ここまで】▲▲▲
+
+		if err := tx.Commit(); err != nil {
+			http.Error(w, "データベースのコミットに失敗: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{
+			"message": fmt.Sprintf("%d名の患者の予製データをインポート（洗い替え）しました。", processedPatients),
+		})
+	}
+}

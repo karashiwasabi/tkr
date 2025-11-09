@@ -1,8 +1,7 @@
-// C:\Users\wasab\OneDrive\デスクトップ\TKR\database\transaction_records_query.go
 package database
 
 import (
-	"database/sql" // ▼▼▼【追加】sql パッケージをインポート ▼▼▼
+	"database/sql"
 	"fmt"
 	"strings"
 	"tkr/model"
@@ -27,7 +26,8 @@ func ScanTransactionRecord(row interface{ Scan(...interface{}) error }) (*model.
 		&r.DatQuantity, &r.JanPackInnerQty, &r.JanQuantity, &r.JanPackUnitQty, &r.JanUnitName, &r.JanUnitCode,
 		&r.YjQuantity, &r.YjPackUnitQty, &r.YjUnitName, &r.UnitPrice, &r.PurchasePrice, &r.SupplierWholesale,
 		&r.Subtotal,
-		&r.TaxAmount, &r.TaxRate, &r.ExpiryDate, &r.LotNumber, &r.FlagPoison,
+		&r.TaxAmount,
+		&r.TaxRate, &r.ExpiryDate, &r.LotNumber, &r.FlagPoison,
 		&r.FlagDeleterious, &r.FlagNarcotic, &r.FlagPsychotropic, &r.FlagStimulant,
 		&r.FlagStimulantRaw, &r.ProcessFlagMA,
 	)
@@ -37,9 +37,8 @@ func ScanTransactionRecord(row interface{ Scan(...interface{}) error }) (*model.
 	return &r, nil
 }
 
-// ▼▼▼【修正】[source]タグを文字列の外に移動 ▼▼▼
 const insertTransactionQuery = `
-INSERT INTO transaction_records (
+INSERT OR REPLACE INTO transaction_records (
     transaction_date, client_code, receipt_number, line_number, flag,
     jan_code, yj_code, product_name, kana_name, usage_classification, package_form, package_spec, maker_name,
     dat_quantity, jan_pack_inner_qty, jan_quantity, jan_pack_unit_qty, jan_unit_name, jan_unit_code,
@@ -49,10 +48,11 @@ INSERT INTO transaction_records (
     flag_stimulant_raw, process_flag_ma
 ) VALUES (
     :transaction_date, :client_code, :receipt_number, :line_number, :flag,
-    :jan_code, :yj_code, :product_name, :kana_name, :usage_classification, :package_form, 
- 
+    :jan_code, :yj_code, :product_name, :kana_name, :usage_classification, 
+:package_form, 
 :package_spec, :maker_name,
-    :dat_quantity, :jan_pack_inner_qty, :jan_quantity, :jan_pack_unit_qty, :jan_unit_name, :jan_unit_code,
+    :dat_quantity, 
+:jan_pack_inner_qty, :jan_quantity, :jan_pack_unit_qty, :jan_unit_name, :jan_unit_code,
     :yj_quantity, :yj_pack_unit_qty, :yj_unit_name, :unit_price, :purchase_price, :supplier_wholesale,
     :subtotal, :tax_amount, :tax_rate, :expiry_date, :lot_number, :flag_poison,
     :flag_deleterious, :flag_narcotic, :flag_psychotropic, :flag_stimulant,
@@ -67,7 +67,6 @@ func InsertTransactionRecord(tx *sqlx.Tx, record model.TransactionRecord) error 
 	return nil
 }
 
-// ▼▼▼【修正】[source]タグを文字列の外に移動 ▼▼▼
 const updateTransactionQuery = `
 UPDATE transaction_records SET
     transaction_date = :transaction_date,
@@ -75,7 +74,9 @@ UPDATE transaction_records SET
     receipt_number = :receipt_number,
     line_number = :line_number, 
     flag = :flag,
-    jan_code = :jan_code,
+ 
+   jan_code = 
+:jan_code,
     yj_code = :yj_code,
     product_name = :product_name,
     kana_name = :kana_name,
@@ -92,8 +93,10 @@ UPDATE transaction_records SET
     yj_quantity = :yj_quantity,
     
 yj_pack_unit_qty = :yj_pack_unit_qty, 
-    yj_unit_name = :yj_unit_name,
-    unit_price = :unit_price,
+    
+ yj_unit_name = :yj_unit_name,
+   
+     unit_price = :unit_price,
     purchase_price = :purchase_price,
     supplier_wholesale = :supplier_wholesale,
     subtotal = :subtotal,
@@ -110,8 +113,6 @@ yj_pack_unit_qty = :yj_pack_unit_qty,
     process_flag_ma = :process_flag_ma
 WHERE id = :id`
 
-// ▲▲▲【修正ここまで】▲▲▲
-
 func UpdateFullTransactionInTx(tx *sqlx.Tx, rec *model.TransactionRecord) error {
 	_, err := tx.NamedExec(updateTransactionQuery, rec)
 	if err != nil {
@@ -119,8 +120,6 @@ func UpdateFullTransactionInTx(tx *sqlx.Tx, rec *model.TransactionRecord) error 
 	}
 	return nil
 }
-
-// ▲▲▲【追加ここまで】▲▲▲
 
 func PersistTransactionRecordsInTx(tx *sqlx.Tx, records []model.TransactionRecord) error {
 	stmt, err := tx.PrepareNamed(insertTransactionQuery)
@@ -138,7 +137,6 @@ func PersistTransactionRecordsInTx(tx *sqlx.Tx, records []model.TransactionRecor
 	return nil
 }
 
-// ▼▼▼【修正】[source]タグを文字列の外に移動 ▼▼▼
 func DeleteUsageTransactionsInDateRange(tx *sqlx.Tx, minDate, maxDate string) error {
 	const q = `DELETE FROM transaction_records WHERE flag = '2' AND transaction_date BETWEEN ? AND ?`
 	_, err := tx.Exec(q, minDate, maxDate)
@@ -147,8 +145,6 @@ func DeleteUsageTransactionsInDateRange(tx *sqlx.Tx, minDate, maxDate string) er
 	}
 	return nil
 }
-
-// ▲▲▲【修正ここまで】▲▲▲
 
 func GetTransactionsByProductCodes(db *sqlx.DB, productCodes []string) (map[string][]model.TransactionRecord, error) {
 	transactionsByProductCode := make(map[string][]model.TransactionRecord)
@@ -184,14 +180,13 @@ func GetTransactionsByProductCodes(db *sqlx.DB, productCodes []string) (map[stri
 	return transactionsByProductCode, nil
 }
 
-// ▼▼▼【修正】[source]タグを文字列の外に移動 ▼▼▼
 func SearchTransactions(db *sqlx.DB, janCode string, expiryYYMMDD string, expiryYYMM string, lotNumber string) ([]model.TransactionRecord, error) {
 	var records []model.TransactionRecord
 
 	var queryBuilder strings.Builder
 	queryBuilder.WriteString("SELECT ")
 	queryBuilder.WriteString(TransactionColumns)
-	queryBuilder.WriteString(" FROM transaction_records WHERE flag IN (1, 2)") // 納品(1)と返品(2)のみ対象
+	queryBuilder.WriteString(" FROM transaction_records WHERE flag IN (1, 2)")
 
 	args :=
 		[]interface{}{}
@@ -201,12 +196,10 @@ func SearchTransactions(db *sqlx.DB, janCode string, expiryYYMMDD string, expiry
 		args = append(args, janCode)
 	}
 	if expiryYYMMDD != "" {
-		// YYYYMMDD (8桁) または YYMMDD (6桁)
 		queryBuilder.WriteString(" AND (expiry_date = ? OR expiry_date = ?)")
 		args = append(args, expiryYYMMDD, expiryYYMMDD[2:])
 	}
 	if expiryYYMM != "" {
-		// YYYYMM (6桁)
 		queryBuilder.WriteString(" AND SUBSTR(expiry_date, 1, 6) = ?")
 		args = append(args, expiryYYMM)
 	}
@@ -223,8 +216,6 @@ func SearchTransactions(db *sqlx.DB, janCode string, expiryYYMMDD string, expiry
 	}
 	return records, nil
 }
-
-// ▲▲▲【修正ここまで】▲▲▲
 
 func GetReceiptNumbersByDate(db *sqlx.DB, date string, prefix string, clientCode string) ([]string, error) {
 	var numbers []string
@@ -249,7 +240,6 @@ func GetReceiptNumbersByDate(db *sqlx.DB, date string, prefix string, clientCode
 	return numbers, nil
 }
 
-// ▼▼▼【修正】[source]タグを文字列の外に移動 ▼▼▼
 func GetTransactionsByReceiptNumber(db *sqlx.DB, receiptNumber string) ([]model.TransactionRecord, error) {
 	var records []model.TransactionRecord
 	q := `SELECT ` + TransactionColumns + ` FROM transaction_records WHERE receipt_number = ? ORDER BY line_number`
@@ -261,11 +251,10 @@ func GetTransactionsByReceiptNumber(db *sqlx.DB, receiptNumber string) ([]model.
 	return records, nil
 }
 
-// ▲▲▲【修正ここまで】▲▲▲
-
-// ▼▼▼【ここから追加】TKR_source_OTHERS.txt  から欠落していた関数を復元 ▼▼▼
 func DeleteTransactionsByReceiptNumberInTx(tx *sqlx.Tx, receiptNumber string) error {
+	// ▼▼▼【ここを修正】const q := ... を const q = ... に修正 ▼▼▼
 	const q = `DELETE FROM transaction_records WHERE receipt_number = ?`
+	// ▲▲▲【修正ここまで】▲▲▲
 	_, err := tx.Exec(q, receiptNumber)
 	if err != nil {
 		return fmt.Errorf("failed to delete transactions for receipt %s: %w", receiptNumber, err)
@@ -273,12 +262,7 @@ func DeleteTransactionsByReceiptNumberInTx(tx *sqlx.Tx, receiptNumber string) er
 	return nil
 }
 
-// ▲▲▲【追加ここまで】▲▲▲
-
-// ▼▼▼【ここから追加】最新の棚卸明細を取得する関数 (deadstock.go の代替) ▼▼▼
-// GetLatestInventoryDetailsByYjCode は、指定されたYJコードの最新の棚卸明細(flag=0)を取得します。
 func GetLatestInventoryDetailsByYjCode(dbtx DBTX, yjCode string) ([]model.TransactionRecord, error) {
-	// 1. package_stock から最新の棚卸日を取得
 	var latestInventoryDate sql.NullString
 	err := dbtx.Get(&latestInventoryDate, `
 		SELECT MAX(last_inventory_date) 
@@ -287,26 +271,22 @@ func GetLatestInventoryDetailsByYjCode(dbtx DBTX, yjCode string) ([]model.Transa
 		yjCode)
 
 	if err != nil && err != sql.ErrNoRows {
-		// ▼▼▼【修正】文字列リテラル内の改行を削除
-
 		return nil, fmt.Errorf("failed to get latest inventory date from package_stock for %s: %w", yjCode, err)
-		// ▲▲▲【修正ここまで】▲▲▲
 	}
 
+	// ▼▼▼【ここを修正】if文の改行を修正 ▼▼▼
 	if !latestInventoryDate.Valid || latestInventoryDate.String == "" {
-		// まだ一度も棚卸されていない
+		// ▲▲▲【修正ここまで】▲▲▲
 		return []model.TransactionRecord{}, nil
 	}
 
-	// 2. 最新棚卸日の flag=0 の取引明細を取得
 	var records []model.TransactionRecord
-	// ▼▼▼【修正】文字列リテラル内の改行を削除 ▼▼▼
 	q := `SELECT ` + TransactionColumns + ` 
 		  FROM transaction_records 
-		  WHERE yj_code = ? AND transaction_date = ? 
+		  WHERE yj_code = ?
+ AND transaction_date = ? 
 		  AND flag = 0 
 		  ORDER BY jan_code, expiry_date, lot_number`
-	// ▲▲▲【修正ここまで】▲▲▲
 
 	err = dbtx.Select(&records, q, yjCode, latestInventoryDate.String)
 	if err != nil {
@@ -315,5 +295,3 @@ func GetLatestInventoryDetailsByYjCode(dbtx DBTX, yjCode string) ([]model.Transa
 
 	return records, nil
 }
-
-// ▲▲▲【追加ここまで】▲▲▲
