@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"mime/multipart"
 	"net/http"
 	"os"
 	"strconv"
@@ -33,20 +32,56 @@ func respondJSONError(w http.ResponseWriter, message string, statusCode int) {
 
 func UploadUsageHandler(db *sqlx.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		var file io.Reader
-		var err error
+
+		var processedFiles []string
+		var successfullyInsertedTransactions []model.TransactionRecord
+		var allResults []map[string]interface{}
 
 		if strings.Contains(r.Header.Get("Content-Type"), "multipart/form-data") {
+			// --- A. 手動アップロード (複数ファイル対応) ---
 			log.Println("Processing manual USAGE file upload...")
-			var f multipart.File
-			f, _, err = r.FormFile("file")
+			err := r.ParseMultipartForm(32 << 20) // 32MB
 			if err != nil {
-				respondJSONError(w, "ファイルの取得に失敗しました: "+err.Error(), http.StatusBadRequest)
+				respondJSONError(w, "File upload error: "+err.Error(), http.StatusBadRequest)
 				return
 			}
-			defer f.Close()
-			file = f
+			defer r.MultipartForm.RemoveAll()
+
+			for _, fileHeader := range r.MultipartForm.File["file"] {
+				log.Printf("Processing file: %s", fileHeader.Filename)
+				// ▼▼▼【SA4010 修正】appendの結果を再代入する ▼▼▼
+				processedFiles = append(processedFiles, fileHeader.Filename)
+				// ▲▲▲【修正ここまで】▲▲▲
+				fileResult := map[string]interface{}{"filename": fileHeader.Filename}
+
+				file, openErr := fileHeader.Open()
+				if openErr != nil {
+					log.Printf("Failed to open uploaded file %s: %v", fileHeader.Filename, openErr)
+					fileResult["error"] = fmt.Sprintf("Failed to open file: %v", openErr)
+					allResults = append(allResults, fileResult)
+					continue
+				}
+
+				processedRecords, procErr := processUsageFile(db, file)
+				file.Close() // ファイルごとに閉じる
+
+				if procErr != nil {
+					log.Printf("Failed to process USAGE file %s: %v", fileHeader.Filename, procErr)
+					fileResult["error"] = fmt.Sprintf("Failed to process USAGE file: %v", procErr)
+					allResults = append(allResults, fileResult)
+					continue
+				}
+
+				log.Printf("Successfully processed %d records from %s", len(processedRecords), fileHeader.Filename)
+				fileResult["success"] = true
+				fileResult["records_parsed"] = len(processedRecords) // USAGEではパース=登録
+				fileResult["records_inserted"] = len(processedRecords)
+				allResults = append(allResults, fileResult)
+				successfullyInsertedTransactions = append(successfullyInsertedTransactions, processedRecords...)
+			}
+
 		} else {
+			// --- B. 自動アップロード (単一ファイル) ---
 			log.Println("Processing automatic USAGE file import...")
 			cfg, cfgErr := config.LoadConfig()
 			if cfgErr != nil {
@@ -70,25 +105,31 @@ func UploadUsageHandler(db *sqlx.DB) http.HandlerFunc {
 				return
 			}
 			defer f.Close()
-			file = f
+
+			fileResult := map[string]interface{}{"filename": filePath}
+			processedRecords, procErr := processUsageFile(db, f)
+			if procErr != nil {
+				fileResult["error"] = procErr.Error()
+				allResults = append(allResults, fileResult)
+			} else {
+				fileResult["success"] = true
+				fileResult["records_parsed"] = len(processedRecords)
+				fileResult["records_inserted"] = len(processedRecords)
+				allResults = append(allResults, fileResult)
+				successfullyInsertedTransactions = processedRecords
+			}
 		}
 
-		processedRecords, procErr := processUsageFile(db, file)
-		if procErr != nil {
-			respondJSONError(w, procErr.Error(), http.StatusInternalServerError)
-			return
-		}
-
+		// --- 共通レスポンス ---
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		json.NewEncoder(w).Encode(map[string]interface{}{
-			"message": fmt.Sprintf("%d件の処方データを処理しました。", len(processedRecords)),
-			"results": []interface{}{},
-			"records": processedRecords,
+			"message": fmt.Sprintf("Processed %d USAGE file(s). See results for details.", len(allResults)),
+			"results": allResults,
+			"records": successfullyInsertedTransactions,
 		})
 	}
 }
 
-// ▼▼▼【ここから修正】dat/handler.go のロジック (  ) に合わせて書き換え ▼▼▼
 func processUsageFile(db *sqlx.DB, file io.Reader) ([]model.TransactionRecord, error) {
 	parsed, err := parsers.ParseUsage(file)
 	if err != nil {
@@ -123,7 +164,7 @@ func processUsageFile(db *sqlx.DB, file io.Reader) ([]model.TransactionRecord, e
 	var finalRecords []model.TransactionRecord
 	for i, rec := range filtered {
 		key := rec.JanCode
-		if key == "" || key == "0000000000000" {
+		if key == "" {
 			key = rec.YjCode
 			if key == "" {
 				key = fmt.Sprintf("9999999999999%s", rec.ProductName)
@@ -166,8 +207,6 @@ func processUsageFile(db *sqlx.DB, file io.Reader) ([]model.TransactionRecord, e
 
 	return finalRecords, nil
 }
-
-// ▲▲▲【修正ここまで】▲▲▲
 
 func removeUsageDuplicates(records []model.UnifiedInputRecord) []model.UnifiedInputRecord {
 	seen := make(map[string]struct{})
