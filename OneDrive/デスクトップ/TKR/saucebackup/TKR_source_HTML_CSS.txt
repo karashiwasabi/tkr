@@ -572,6 +572,61 @@
     margin-left: 10px;
 }
 
+----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\css\reorder.css -----
+/* C:\Users\wasab\OneDrive\デスクトップ\TKR\static\css\reorder.css */
+
+/* 発注点リストの検索コントロール */
+.reorder-controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px 16px;
+    align-items: flex-end;
+}
+
+.reorder-controls .form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.reorder-controls .form-group label {
+    font-size: 10px;
+    font-weight: bold;
+}
+
+.reorder-controls .form-group input[type="text"] {
+    padding: 3px;
+    border: 1px solid #ccc;
+    font-size: inherit;
+    min-width: 150px;
+}
+
+.reorder-controls .form-group .radio-group {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 10px;
+    align-items: center;
+    height: 100%;
+}
+
+.reorder-controls .form-group .radio-group label {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    white-space: nowrap;
+    font-weight: normal;
+}
+
+.reorder-controls .form-actions {
+    margin-left: auto;
+}
+
+/* 発注点テーブルの在庫列を赤字（エラー）表示にする */
+#reorder-table td.status-error {
+    color: #dc3545;
+    font-weight: bold;
+}
+
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\css\search_form_group.css -----
 /* C:\Users\wasab\OneDrive\デスクトップ\TKR\static\css\search_form_group.css */
 
@@ -1761,6 +1816,37 @@ class="btn">マスタCSV エクスポート</button>
     </div>
 </div>
 
+----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\views\reorder_view.html -----
+<div id="reorder-view" class="view">
+    <h1>発注点リスト</h1>
+    
+    <div class="reorder-controls filter-container">
+        <div class="form-group">
+            <label>内外注区分:</label>
+            <div class="radio-group" id="reorder-usage-class">
+                <label><input type="radio" name="reorder_usage_class" value="all" checked> すべて</label>
+                <label><input type="radio" name="reorder_usage_class" value="内"> 内</label>
+                <label><input type="radio" name="reorder_usage_class" value="外"> 外</label>
+                <label><input type="radio" name="reorder_usage_class" value="歯"> 歯</label>
+                <label><input type="radio" name="reorder_usage_class" value="注"> 注</label>
+                <label><input type="radio" name="reorder_usage_class" value="機"> 機</label>
+                <label><input type="radio" name="reorder_usage_class" value="他"> 他</label>
+            </div>
+        </div>
+        <div class="form-group">
+            <label for="reorder-kana-search">カナ名 (前方一致):</label>
+            <input type="text" id="reorder-kana-search" autocomplete="off">
+        </div>
+        <div class="form-actions">
+            <button id="reorder-search-btn" class="btn">この条件で検索</button>
+        </div>
+    </div>
+    
+    <div id="reorder-result-container" class="table-container">
+        <p>「この条件で検索」ボタンを押してください。</p>
+    </div>
+</div>
+
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\views\search_form_group.html -----
 // C:\Users\wasab\OneDrive\デスクトップ\TKR\static\views\search_form_group.html
 {{ define "generic_search_form" }}
@@ -1832,9 +1918,10 @@ class="btn">マスタCSV エクスポート</button>
 
     <div class="upload-button-container">
         <button id="usageUploadBtn" class="btn">USAGEファイル選択</button>
-        <input type="file" id="usageFileInput" accept=".csv,.CSV,.txt,.TXT" class="hidden">
-    </div>
-    <div id="usageUploadResultContainer">
+        <input type="file" id="usageFileInput" multiple accept=".csv,.CSV,.txt,.TXT" class="hidden">
+        </div>
+  
+     <div id="usageUploadResultContainer">
         <p>「USAGEファイル選択」ボタンを押してファイルを選んでください。</p>
     </div>
     
@@ -1861,6 +1948,7 @@ class="btn">マスタCSV エクスポート</button>
    <link rel="stylesheet" href="/static/css/modal.css">
     <link rel="stylesheet" href="/static/css/inout.css">
     <link rel="stylesheet" href="/static/css/deadstock.css">
+    <link rel="stylesheet" href="/static/css/reorder.css">
     </head>
 <body>
   
@@ -1870,9 +1958,10 @@ class="btn">マスタCSV エクスポート</button>
         <button id="inOutViewBtn" class="btn">入出庫</button>
         <button id="inventoryAdjustmentViewBtn" class="btn">棚卸調整</button>
         <button id="deadStockViewBtn" class="btn">不動在庫</button>
-  
+        <button id="reorderViewBtn" class="btn">発注点リスト</button>
          <button id="masterEditViewBtn" class="btn">マスタ編集</button>
-        <button id="precompViewBtn" class="btn">予製管理</button>
+     
+       <button id="precompViewBtn" class="btn">予製管理</button>
         <button id="reprocessBtn" class="btn">全取引再計算</button>
         <button id="configViewBtn" class="btn">設定</button>
     
@@ -1886,7 +1975,10 @@ class="btn">マスタCSV エクスポート</button>
                  {{.}}
             {{end}}
         
-         {{else}}
+   
+             <div id="reorder-view" class="view">発注点リストビュー</div>
+             
+             {{else}}
             <div id="dat-upload-view" class="view active">DATビュー</div>
          
          
@@ -1899,6 +1991,8 @@ class="btn">マスタCSV エクスポート</button>
              <div id="config-view" class="view">設定ビュー</div>
      
              <div id="deadstock-view" class="view">不動在庫ビュー</div>
+             
+             <div id="reorder-view" class="view">発注点リストビュー</div>
              {{end}}
      
    </main>
@@ -1909,8 +2003,7 @@ class="btn">マスタCSV エクスポート</button>
     </div>
     <div id="notification-box"></div>
 
- {{ template "common_search_modal" .
-}}
+ {{ template "common_search_modal" . }}
  {{ template "common_input_modal" . }}
     <script type="module" src="/static/js/app.js?v=2025110701"></script>
     </body>

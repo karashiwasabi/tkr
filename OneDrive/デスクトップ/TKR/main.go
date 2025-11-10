@@ -30,6 +30,9 @@ import (
 	"tkr/usage"
 
 	"tkr/precomp"
+	// ▼▼▼【ここに追加】▼▼▼
+	"tkr/reorder"
+	// ▲▲▲【追加ここまで】▲▲▲
 )
 
 var (
@@ -99,6 +102,10 @@ func main() {
 			log.Fatalf("Failed to parse views/common_search_modal.html: %v", err)
 		}
 		appTemplate, err = appTemplate.ParseFS(viewsFS, "common_input_modal.html")
+		if err != nil {
+			// (common_input_modal.html のエラーハンドリングが抜けていたのを修正)
+			log.Fatalf("Failed to parse views/common_input_modal.html: %v", err)
+		}
 	}
 
 	log.Println("HTML templates loaded and parsed.")
@@ -123,6 +130,7 @@ func main() {
 				return
 			}
 			for _, file := range files {
+				// (common_input_modal.html を除外リストに追加)
 				if file != "search_form_group.html" && file != "common_search_modal.html" && file != "common_input_modal.html" {
 					viewFiles = append(viewFiles, file)
 				}
@@ -232,10 +240,8 @@ func main() {
 	mux.HandleFunc("/api/precomp/suspend", precomp.SuspendPrecompHandler(dbConn))
 	mux.HandleFunc("/api/precomp/resume", precomp.ResumePrecompHandler(dbConn))
 	mux.HandleFunc("/api/precomp/status", precomp.GetStatusPrecompHandler(dbConn))
-	// ▼▼▼【ここに追加】一括移行エンドポイント ▼▼▼
 	mux.HandleFunc("/api/precomp/export/all", precomp.ExportAllPrecompHandler(dbConn))
 	mux.HandleFunc("/api/precomp/import/all", precomp.ImportAllPrecompHandler(dbConn))
-	// ▲▲▲【追加ここまで】▲▲▲
 
 	mux.HandleFunc("/api/products/search_filtered", product.SearchProductsHandler(dbConn))
 	mux.HandleFunc("/api/master/adopt", product.AdoptMasterHandler(dbConn))
@@ -295,6 +301,10 @@ func main() {
 
 	mux.HandleFunc("/api/masters/export/all", stock.ExportAllMastersHandler(dbConn))
 	mux.HandleFunc("/api/masters/import/all", stock.ImportAllMastersHandler(dbConn))
+
+	// ▼▼▼【ここに追加】▼▼▼
+	mux.HandleFunc("/api/reorder/list", reorder.GetReorderListHandler(dbConn))
+	// ▲▲▲【追加ここまで】▲▲▲
 
 	port := ":8080"
 	log.Printf("Starting server on http://localhost%s", port)

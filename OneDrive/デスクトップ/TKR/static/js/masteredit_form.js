@@ -1,3 +1,4 @@
+// C:\Users\wasab\OneDrive\デスクトップ\TKR\static\js\masteredit_form.js
 import { showModal } from './search_modal.js';
 import { wholesalerMap } from './master_data.js';
 
@@ -5,20 +6,20 @@ let editFormContainer;
 let saveMasterBtn, cancelEditMasterBtn, referenceJCSHMSBtn;
 let editFormFields = {};
 
+// ▼▼▼【ここを修正】'isOrderStopped' をリストから削除 ▼▼▼
 const jcshmsReadonlyKeys = [
     'yjCode', 'gs1Code', 'productName', 'kanaName', 'kanaNameShort', 'genericName',
     'makerName', 'specification', 'usageClassification', 'packageForm',
     'yjUnitName', 'yjPackUnitQty', 'janPackInnerQty', 'janUnitCode',
     'janPackUnitQty', 'nhiPrice', 'flagPoison', 'flagDeleterious',
-    'flagNarcotic', 'flagPsychotropic', 'flagStimulant', 'flagStimulantRaw',
-    'isOrderStopped'
+    'flagNarcotic', 'flagPsychotropic', 'flagStimulant', 'flagStimulantRaw'
 ];
+// ▲▲▲【修正ここまで】▲▲▲
 
 function populateFormWithJCSHMS(item) {
     console.log("--- JCSHMSデータコピー処理開始 ---");
     console.log("受け取ったJCSHMSデータ (ProductMasterView):", JSON.parse(JSON.stringify(item)));
     console.log("フォーム要素のマップ:", editFormFields);
-    
     const populateAndLog = (key, value) => {
         const targetElement = editFormFields[key];
         if (targetElement) {
@@ -74,6 +75,10 @@ export function populateEditForm(master) {
     }
 
     const isJcshmsOrigin = master.origin === 'JCSHMS';
+    // ★★★【ここに追加】MA2Yコードチェックの変数を定義 ★★★
+    const isMa2yCode = master.yjCode && master.yjCode.startsWith('MA2Y');
+    // ★★★【追加ここまで】★★★
+    
     if (referenceJCSHMSBtn) {
         if (isJcshmsOrigin) {
             referenceJCSHMSBtn.style.display = 'none';
@@ -102,6 +107,18 @@ export function populateEditForm(master) {
                     element.readOnly = true;
                     element.classList.add('readonly-field');
                 } 
+                // ★★★【ここを修正】YJコードの編集可否ロジックを変更 ★★★
+                else if (key === 'yjCode') {
+                    if (isJcshmsOrigin && !isMa2yCode) {
+                         // JCSHMS由来で、かつ MA2Yコードではない（正式なYJコード）場合のみ readonly
+                        element.readOnly = true;
+                        element.classList.add('readonly-field');
+                    } else {
+                        element.readOnly = false;
+                        element.classList.remove('readonly-field');
+                    }
+                }
+                // JCSHMS由来の他の readonly な項目 (YJコード以外)
                 else if (isJcshmsOrigin && jcshmsReadonlyKeys.includes(key)) {
                     element.readOnly = true;
                     element.classList.add('readonly-field'); 
@@ -109,6 +126,7 @@ export function populateEditForm(master) {
                     element.readOnly = false;
                     element.classList.remove('readonly-field');
                 }
+                // ★★★【修正ここまで】★★★
             }
         }
     }
@@ -163,6 +181,7 @@ async function handleSaveMaster() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(inputData),
         });
+        // ▼▼▼【ここから修正】アラートメッセージをハンドリング ▼▼▼
         if (!response.ok) {
             let errorText = `サーバーエラー (HTTP ${response.status})`;
             try {
@@ -174,7 +193,17 @@ async function handleSaveMaster() {
         }
 
         const result = await response.json();
-        window.showNotification(result.message || '保存しました。', 'success');
+        
+        let message = result.message || '保存しました。';
+        let messageType = 'success';
+
+        if (result.alert) {
+            message += `\n\n警告: ${result.alert}`;
+            messageType = 'warning'; // 警告がある場合は warning タイプにする
+        }
+        window.showNotification(message, messageType);
+        // ▲▲▲【修正ここまで】▲▲▲
+
     } catch (error) {
         console.error('Save failed:', error);
         window.showNotification(`保存エラー: ${error.message}`, 'error');
@@ -203,7 +232,6 @@ export function initEditForm() {
     saveMasterBtn = document.getElementById('saveMasterBtn');
     cancelEditMasterBtn = document.getElementById('cancelEditMasterBtn');
     referenceJCSHMSBtn = document.getElementById('referenceJCSHMSBtn');
-    
     const form = document.getElementById('masterEditForm');
     if (!form || !editFormContainer) {
         console.error("Master edit form or modal overlay not found!");
@@ -224,7 +252,6 @@ export function initEditForm() {
             }
         }
     });
-
     setupWholesalerDropdown();
     
     if (saveMasterBtn) {

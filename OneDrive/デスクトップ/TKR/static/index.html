@@ -14,6 +14,7 @@
    <link rel="stylesheet" href="/static/css/modal.css">
     <link rel="stylesheet" href="/static/css/inout.css">
     <link rel="stylesheet" href="/static/css/deadstock.css">
+    <link rel="stylesheet" href="/static/css/reorder.css">
     </head>
 <body>
   
@@ -23,9 +24,10 @@
         <button id="inOutViewBtn" class="btn">入出庫</button>
         <button id="inventoryAdjustmentViewBtn" class="btn">棚卸調整</button>
         <button id="deadStockViewBtn" class="btn">不動在庫</button>
-  
+        <button id="reorderViewBtn" class="btn">発注点リスト</button>
          <button id="masterEditViewBtn" class="btn">マスタ編集</button>
-        <button id="precompViewBtn" class="btn">予製管理</button>
+     
+       <button id="precompViewBtn" class="btn">予製管理</button>
         <button id="reprocessBtn" class="btn">全取引再計算</button>
         <button id="configViewBtn" class="btn">設定</button>
     
@@ -39,7 +41,10 @@
                  {{.}}
             {{end}}
         
-         {{else}}
+   
+             <div id="reorder-view" class="view">発注点リストビュー</div>
+             
+             {{else}}
             <div id="dat-upload-view" class="view active">DATビュー</div>
          
          
@@ -52,6 +57,8 @@
              <div id="config-view" class="view">設定ビュー</div>
      
              <div id="deadstock-view" class="view">不動在庫ビュー</div>
+             
+             <div id="reorder-view" class="view">発注点リストビュー</div>
              {{end}}
      
    </main>
@@ -62,8 +69,7 @@
     </div>
     <div id="notification-box"></div>
 
- {{ template "common_search_modal" .
-}}
+ {{ template "common_search_modal" . }}
  {{ template "common_input_modal" . }}
     <script type="module" src="/static/js/app.js?v=2025110701"></script>
     </body>

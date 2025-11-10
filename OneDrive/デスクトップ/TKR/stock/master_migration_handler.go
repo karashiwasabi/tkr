@@ -23,7 +23,7 @@ import (
 	// ★【残す】
 )
 
-// ヘッダーの定義 (TKR product_master の全カラム)
+// ▼▼▼【ここを修正】masterCSVHeader を（再度）定義 ▼▼▼
 var masterCSVHeader = []string{
 	"product_code", "yj_code", "gs1_code", "product_name", "kana_name", "kana_name_short",
 	"generic_name", "maker_name", "specification", "usage_classification", "package_form",
@@ -34,7 +34,9 @@ var masterCSVHeader = []string{
 	"group_code", "shelf_number", "category", "user_notes",
 }
 
-// ExportAllMastersHandler は product_master の全データをCSVとしてエクスポートします。
+// ▲▲▲【修正ここまで】▲▲▲
+
+// ▼▼▼【ここから修正】ExportAllMastersHandler を「TKRマスタバックアップ」を出力する元のロジックに戻す ▼▼▼
 func ExportAllMastersHandler(db *sqlx.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		masters, err := database.GetAllProductMasters(db)
@@ -49,13 +51,13 @@ func ExportAllMastersHandler(db *sqlx.DB) http.HandlerFunc {
 		// csv.Writer を使用して確実なCSVを生成
 		writer := csv.NewWriter(&buf)
 
-		// 1. ヘッダーを書き込む
+		// 1. ヘッダーを書き込む (masterCSVHeader を使用)
 		if err := writer.Write(masterCSVHeader); err != nil {
 			http.Error(w, "Failed to write CSV header: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
 
-		// 2. データを書き込む
+		// 2. データを書き込む (全カラム)
 		for _, m := range masters {
 			record := []string{
 				m.ProductCode, m.YjCode, m.Gs1Code, m.ProductName, m.KanaName, m.KanaNameShort,
@@ -89,12 +91,15 @@ func ExportAllMastersHandler(db *sqlx.DB) http.HandlerFunc {
 			return
 		}
 
+		// 3. ファイル名を「TKRマスタバックアップ...」に戻す
 		filename := fmt.Sprintf("TKRマスタバックアップ_%s.csv", time.Now().Format("20060102"))
 		w.Header().Set("Content-Type", "text/csv; charset=utf-8")
 		w.Header().Set("Content-Disposition", "attachment; filename*=UTF-8''"+url.PathEscape(filename))
 		w.Write(buf.Bytes())
 	}
 }
+
+// ▲▲▲【修正ここまで】▲▲▲
 
 // ImportAllMastersHandler はマスタCSVを読み込み、JCSHMSとマージしながらUpsertします。
 func ImportAllMastersHandler(db *sqlx.DB) http.HandlerFunc {
@@ -106,9 +111,7 @@ func ImportAllMastersHandler(db *sqlx.DB) http.HandlerFunc {
 		}
 		defer file.Close()
 
-		// ▼▼▼【修正】Shift-JISデコーダーを削除し、UTF-8 BOMスキップのみを行う ▼▼▼
 		reader := csv.NewReader(parsers.SkipBOM(file))
-		// ▲▲▲【修正ここまで】▲▲▲
 
 		reader.LazyQuotes = true
 		reader.FieldsPerRecord = -1 // ヘッダー数と一致かチェックするため
@@ -123,13 +126,11 @@ func ImportAllMastersHandler(db *sqlx.DB) http.HandlerFunc {
 			return
 		}
 
-		// ヘッダーの列インデックスをマップ化
 		colIndex := make(map[string]int, len(header))
 		for i, h := range header {
 			colIndex[strings.TrimSpace(h)] = i
 		}
 
-		// 必須列の確認
 		if _, ok := colIndex["product_code"]; !ok {
 			http.Error(w, "CSVヘッダーに 'product_code' が見つかりません。", http.StatusBadRequest)
 			return
@@ -140,7 +141,7 @@ func ImportAllMastersHandler(db *sqlx.DB) http.HandlerFunc {
 			http.Error(w, "データベーストランザクションの開始に失敗: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
-		defer tx.Rollback()
+		defer tx.Rollback() // コミット成功時以外は自動でロールバックされる
 
 		var importedCount int
 		var errors []string
@@ -156,7 +157,6 @@ func ImportAllMastersHandler(db *sqlx.DB) http.HandlerFunc {
 				continue
 			}
 
-			// CSVの値をマップに読み込むヘルパー
 			get := func(key string) string {
 				if idx, ok := colIndex[key]; ok && idx < len(row) {
 					return strings.TrimSpace(row[idx])
@@ -178,30 +178,33 @@ func ImportAllMastersHandler(db *sqlx.DB) http.HandlerFunc {
 				continue
 			}
 
-			// --- ご要望のマージロジック ---
 			var input model.ProductMasterInput
 
-			// 1. JCSHMSを検索 (JAN優先、なければGS1)
+			// 1. キーの特定: product_code (JAN) のみで JCSHMS を検索
 			jcshmsInfo, _ := database.GetJcshmsInfoByJan(tx, productCode)
-			if jcshmsInfo == nil {
-				gs1Code := get("gs1_code")
-				if gs1Code != "" {
-					jcshmsInfo, _ = database.GetJcshmsInfoByGs1Code(tx, gs1Code)
-				}
-			}
+			// (gs1_code での再検索は行わない)
 
+			// 2. ベースデータの決定
 			if jcshmsInfo != nil {
-				// 2a. JCSHMSに存在した場合: JCSHMSをベースにする
+				// 2A. JCSHMSに情報が見つかった場合
 				input = mastermanager.JcshmsToProductMasterInput(jcshmsInfo)
+				input.Origin = "JCSHMS" // JcshmsToProductMasterInput が設定するが、明示的に "JCSHMS" を維持
+
 			} else {
-				// 2b. JCSHMSに存在しない場合: CSVのJCSHMS由来情報をベースにする
+				// 2B. JCSHMSに情報が見つからなかった場合
+				csvProductName := get("product_name")
+				dbProductName := csvProductName
+				if !strings.HasPrefix(csvProductName, "◆") {
+					dbProductName = "◆" + csvProductName
+				}
+
 				input = model.ProductMasterInput{
-					ProductCode:         productCode,
-					YjCode:              get("yj_code"),
-					Gs1Code:             get("gs1_code"),
-					ProductName:         get("product_name"),
-					KanaName:            get("kana_name"),
-					KanaNameShort:       get("kana_name_short"),
+					ProductCode: productCode,
+					YjCode:      "", // 3B で自動採番するため、ここでは空
+					Gs1Code:     get("gs1_code"),
+					ProductName: dbProductName,
+					KanaName:    get("kana_name"),
+					// KanaNameShort: 4B で設定
 					GenericName:         get("generic_name"),
 					MakerName:           get("maker_name"),
 					Specification:       get("specification"),
@@ -212,7 +215,7 @@ func ImportAllMastersHandler(db *sqlx.DB) http.HandlerFunc {
 					JanPackInnerQty:     getFloat("jan_pack_inner_qty"),
 					JanUnitCode:         getInt("jan_unit_code"),
 					JanPackUnitQty:      getFloat("jan_pack_unit_qty"),
-					Origin:              get("origin"),
+					Origin:              "PROVISIONAL",
 					NhiPrice:            getFloat("nhi_price"),
 					FlagPoison:          getInt("flag_poison"),
 					FlagDeleterious:     getInt("flag_deleterious"),
@@ -221,13 +224,64 @@ func ImportAllMastersHandler(db *sqlx.DB) http.HandlerFunc {
 					FlagStimulant:       getInt("flag_stimulant"),
 					FlagStimulantRaw:    getInt("flag_stimulant_raw"),
 				}
-				// Originが空ならPROVISIONALに設定
-				if input.Origin == "" {
-					input.Origin = "PROVISIONAL"
+			}
+
+			// 3. YJコードの処理 (CSVのYJは無視)
+			if jcshmsInfo != nil {
+				// 3A. JCSHMS由来の場合
+				if jcshmsInfo.YjCode == "" {
+					// JCSHMS由来だがYJなし (JC009が空)
+					newYj, seqErr := database.NextSequenceInTx(tx, "MA2Y", "MA2Y", 8)
+					if seqErr != nil {
+						log.Printf("ERROR: YJコード自動採番失敗 (JCSHMS/YJ無/ProductCode: %s): %v. Rolling back...", productCode, seqErr)
+						http.Error(w, "YJコードの自動採番に失敗しました: "+seqErr.Error(), http.StatusInternalServerError)
+						return
+					}
+					input.YjCode = newYj
+					// input.Origin は "JCSHMS" のまま
+					log.Printf("INFO: Master import (JCSHMS item %s) had no YJ. Assigned MA2Y: %s. Origin remains JCSHMS.", productCode, newYj)
+				}
+				// else (jcshmsInfo.YjCode != ""):
+				// JcshmsToProductMasterInput で input.YjCode に設定済みなので何もしない
+			} else {
+				// 3B. JCSHMSになかった場合 (PROVISIONAL)
+				// CSVのyj_codeは無視し、強制的に自動採番
+				csvYjCode := get("yj_code")
+				if csvYjCode != "" {
+					log.Printf("WARN: Master import ignored CSV YJ_CODE ('%s') for PROVISIONAL item %s.", csvYjCode, productCode)
+				}
+
+				newYj, seqErr := database.NextSequenceInTx(tx, "MA2Y", "MA2Y", 8)
+				if seqErr != nil {
+					log.Printf("ERROR: YJコード自動採番失敗 (PROVISIONAL/ProductCode: %s): %v. Rolling back...", productCode, seqErr)
+					http.Error(w, "YJコードの自動採番に失敗しました: "+seqErr.Error(), http.StatusInternalServerError)
+					return
+				}
+				input.YjCode = newYj
+			}
+
+			// 4. カナ名短縮 (JC019) の処理
+			csvKanaNameShort := get("kana_name_short")
+
+			if jcshmsInfo != nil {
+				// 4A. JCSHMS由来の場合
+				// (input.KanaNameShort には JcshmsToProductMasterInput によって JC019 が入っている)
+				if input.KanaNameShort == "" {
+					// JCSHMS(JC019)が空だった場合のみ、CSVの値をフォールバックとして使用
+					input.KanaNameShort = csvKanaNameShort
+					// (CSVも空なら input.KanaNameShort は "" のまま)
+				}
+			} else {
+				// 4B. JCSHMSになかった場合 (PROVISIONAL)
+				if csvKanaNameShort != "" {
+					input.KanaNameShort = csvKanaNameShort
+				} else {
+					// CSVも空なら、CSVの製品名(◆なし)をフォールバック
+					input.KanaNameShort = get("product_name")
 				}
 			}
 
-			// 3. ユーザー登録部分をCSVの値で上書き
+			// 5. ユーザー設定項目の上書き (JCSHMS由来かどうかにかかわらず、CSVの値を優先)
 			input.PurchasePrice = getFloat("purchase_price")
 			input.IsOrderStopped = getInt("is_order_stopped")
 			input.SupplierWholesale = get("supplier_wholesale")
@@ -236,17 +290,7 @@ func ImportAllMastersHandler(db *sqlx.DB) http.HandlerFunc {
 			input.Category = get("category")
 			input.UserNotes = get("user_notes")
 
-			// 4. YJコードの自動採番
-			if input.YjCode == "" {
-				newYj, seqErr := database.NextSequenceInTx(tx, "MA2Y", "MA2Y", 8)
-				if seqErr != nil {
-					errors = append(errors, fmt.Sprintf("行 %s: YJコード採番失敗: %v", productCode, seqErr))
-					continue
-				}
-				input.YjCode = newYj
-			}
-
-			// 5. DBにUpsert
+			// 6. データベースへ保存
 			if _, err := mastermanager.UpsertProductMasterSqlx(tx, input); err != nil {
 				errors = append(errors, fmt.Sprintf("行 %s: DB登録失敗: %v", productCode, err))
 				continue
@@ -254,15 +298,21 @@ func ImportAllMastersHandler(db *sqlx.DB) http.HandlerFunc {
 			importedCount++
 		}
 
-		// 6. シーケンスの更新 (インポート後に実行)
+		// ▼▼▼【ここを修正】カウンターのリセット処理を「最後」に戻す ▼▼▼
 		if err := database.InitializeSequenceFromMaxYjCode(tx); err != nil {
-			log.Printf("WARN: Failed to re-initialize YJ (MA2Y) sequence after import: %v", err)
+			log.Printf("ERROR: Failed to re-initialize YJ (MA2Y) sequence: %v. Rolling back...", err)
+			http.Error(w, "自動採番カウンター(MA2Y)のリセットに失敗しました: "+err.Error(), http.StatusInternalServerError)
+			return
 		}
 		if err := database.InitializeSequenceFromMaxProductCode(tx); err != nil {
-			log.Printf("WARN: Failed to re-initialize JAN (MA2J) sequence after import: %v", err)
+			log.Printf("ERROR: Failed to re-initialize JAN (MA2J) sequence: %v. Rolling back...", err)
+			http.Error(w, "自動採番カウンター(MA2J)のリセットに失敗しました: "+err.Error(), http.StatusInternalServerError)
+			return
 		}
+		// ▲▲▲【修正ここまで】▲▲▲
 
 		if err := tx.Commit(); err != nil {
+			log.Printf("ERROR: Failed to commit master import transaction: %v. Transaction was rolled back.", err)
 			http.Error(w, "データベースのコミットに失敗: "+err.Error(), http.StatusInternalServerError)
 			return
 		}

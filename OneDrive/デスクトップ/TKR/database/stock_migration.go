@@ -26,7 +26,6 @@ func GetAllPackageStock(db *sqlx.DB) ([]model.PackageStock, error) {
 	const q = `
 		SELECT package_key, yj_code, stock_quantity_yj, last_inventory_date
 		FROM package_stock
-		WHERE stock_quantity_yj > 0
 		ORDER BY yj_code
 	`
 	err := db.Select(&stocks, q)

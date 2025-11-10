@@ -20,7 +20,8 @@ func DeleteTransactionsByFlagAndDateAndCodes(tx *sqlx.Tx, flag int, date string,
 		return nil
 	}
 
-	query, args, err := sqlx.In(`DELETE FROM transaction_records WHERE flag = ? AND transaction_date = ? AND jan_code IN (?)`, flag, date, productCodes) //
+	query, args, err := sqlx.In(`DELETE FROM transaction_records WHERE flag = ?
+ AND transaction_date = ? AND jan_code IN (?)`, flag, date, productCodes) //
 	if err != nil {
 		return fmt.Errorf("failed to create IN query for deleting transactions: %w", err)
 	}
@@ -55,7 +56,8 @@ func SaveGuidedInventoryData(tx *sqlx.Tx, date string, yjCode string, allPackagi
 
 	// ▼▼▼【ここから修正】伝票番号の採番ロジック (WASABI  を参考に変更) ▼▼▼
 	var lastSeq int
-	// ADJyymmddnnnnn (ADJ + 6桁 + 5桁 = 14桁)
+	// ▼▼▼【修正】ADJ(14桁) -> AJ(13桁) ▼▼▼
+	// AJyymmddnnnnn (AJ + 6桁 + 5桁 = 13桁)
 
 	// YYYYMMDD (8桁) -> YYMMDD (6桁)
 	var dateYYMMDD string
@@ -67,12 +69,14 @@ func SaveGuidedInventoryData(tx *sqlx.Tx, date string, yjCode string, allPackagi
 		return fmt.Errorf("invalid date format for receipt number: %s", date)
 	}
 
-	prefix := "ADJ" + dateYYMMDD // "ADJ251031"
+	prefix := "AJ" + dateYYMMDD // "AJ251031"
 
-	// データベースから 'ADJ251031' で始まる最大の伝票番号を取得
+	// データベースから 'AJ251031' で始まる最大の伝票番号を取得
+	// ▲▲▲【修正ここまで】▲▲▲
 	// ▼▼▼【修正】[source]タグを文字列の外に移動 ▼▼▼
 	q := `SELECT receipt_number FROM transaction_records 
-		  WHERE receipt_number LIKE ? ORDER BY receipt_number DESC LIMIT 1` //
+		  WHERE receipt_number LIKE ?
+ ORDER BY receipt_number DESC LIMIT 1` //
 	var lastReceiptNumber string
 	err := tx.Get(&lastReceiptNumber, q, prefix+"%") //
 	// ▲▲▲【修正ここまで】▲▲▲
@@ -83,15 +87,17 @@ func SaveGuidedInventoryData(tx *sqlx.Tx, date string, yjCode string, allPackagi
 
 	lastSeq = 0
 	if lastReceiptNumber != "" {
-		// "ADJ25103100001" (14桁) から "00001" (5桁) の部分を取得
-		if len(lastReceiptNumber) == 14 {
-			seqStr := lastReceiptNumber[9:] // 9文字目以降 (ADJ + 6桁 = 9桁)
+		// ▼▼▼【修正】14桁 -> 13桁, 9文字目 -> 8文字目 ▼▼▼
+		// "AJ25103100001" (13桁) から "00001" (5桁) の部分を取得
+		if len(lastReceiptNumber) == 13 {
+			seqStr := lastReceiptNumber[8:] // 8文字目以降 (AJ + 6桁 = 8桁)
 			lastSeq, _ = strconv.Atoi(seqStr)
 		}
 	}
 
 	newSeq := lastSeq + 1
-	receiptNumber := fmt.Sprintf("%s%05d", prefix, newSeq) // 14桁 (ADJ + 6 + 5)
+	receiptNumber := fmt.Sprintf("%s%05d", prefix, newSeq) // 13桁 (AJ + 6 + 5)
+	// ▲▲▲【修正ここまで】▲▲▲
 
 	// ▼▼▼【削除】productCodesWithInventory (dead_stock_list 用) は不要 ▼▼▼
 	// var productCodesWithInventory []string

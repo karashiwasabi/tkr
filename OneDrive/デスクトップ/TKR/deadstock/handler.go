@@ -1,3 +1,4 @@
+// C:\Users\wasab\OneDrive\デスクトップ\TKR\deadstock\handler.go
 package deadstock
 
 import (
@@ -120,17 +121,21 @@ func registerDeadStockCSVAsInventory(tx *sqlx.Tx, records []parsers.ParsedDeadSt
 	} else {
 		dateYYMMDD = date
 	}
-	prefix := "ADJ" + dateYYMMDD
+	// ▼▼▼【修正】ADJ -> AJ ▼▼▼
+	prefix := "AJ" + dateYYMMDD
+	// ▲▲▲【修正ここまで】▲▲▲
 
 	var lastReceiptNumber string
 	err := tx.Get(&lastReceiptNumber, `SELECT receipt_number FROM transaction_records WHERE receipt_number LIKE ? ORDER BY receipt_number DESC LIMIT 1`, prefix+"%")
 	if err != nil && err != sql.ErrNoRows {
 		return 0, fmt.Errorf("伝票番号の採番に失敗: %w", err)
 	}
-	if lastReceiptNumber != "" && len(lastReceiptNumber) == 14 {
-		seqStr := lastReceiptNumber[9:]
+	// ▼▼▼【修正】14桁 -> 13桁, 9文字目 -> 8文字目 ▼▼▼
+	if lastReceiptNumber != "" && len(lastReceiptNumber) == 13 {
+		seqStr := lastReceiptNumber[8:]
 		lastSeq, _ = strconv.Atoi(seqStr)
 	}
+	// ▲▲▲【修正ここまで】▲▲▲
 
 	for i, rec := range records {
 

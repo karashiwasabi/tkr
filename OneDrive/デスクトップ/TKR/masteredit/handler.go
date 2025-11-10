@@ -1,14 +1,16 @@
+// C:\Users\wasab\OneDrive\デスクトップ\TKR\masteredit\handler.go
 package masteredit
 
 import (
 	"encoding/json"
-	"fmt"
+	"fmt" // 変更
 	"log"
 	"net/http"
 	"strings"
 	"tkr/database"
 	"tkr/mastermanager"
 	"tkr/model"
+	"tkr/units" // 変更
 
 	"github.com/jmoiron/sqlx"
 )
@@ -71,6 +73,7 @@ func renderMasterListHTML(masters []model.ProductMaster, statusMessage string) s
             <th class="col-jan">JANコード</th>
           
    
+
             <th class="col-product">製品名</th>
             <th class="col-kana">カナ名</th>
             <th class="col-maker">メーカー</th>
@@ -86,7 +89,8 @@ func renderMasterListHTML(masters []model.ProductMaster, statusMessage string) s
 		sb.WriteString(`<tr><td colspan="9">データがありません。</td></tr>`)
 	} else {
 		for _, master := range masters {
-			sb.WriteString(fmt.Sprintf(`<tr data-product-code="%s">`, master.ProductCode))
+			sb.WriteString(fmt.Sprintf(`<tr data-product-code="%s">`,
+				master.ProductCode))
 			sb.WriteString(fmt.Sprintf(`<td class="center col-action"><button class="edit-master-btn 
  btn" data-code="%s">編集</button></td>`, master.ProductCode))
 			sb.WriteString(fmt.Sprintf(`<td class="col-yj">%s</td>`, master.YjCode))
@@ -106,6 +110,7 @@ func renderMasterListHTML(masters []model.ProductMaster, statusMessage string) s
 	return sb.String()
 }
 
+// ▼▼▼【ここから修正】UpdateMasterHandler の在庫チェックロジックを削除 ▼▼▼
 func UpdateMasterHandler(db *sqlx.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
@@ -114,7 +119,6 @@ func UpdateMasterHandler(db *sqlx.DB) http.HandlerFunc {
 		}
 
 		var input model.ProductMasterInput
-
 		if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
 			log.Printf("UpdateMasterHandler: Invalid request body: %v", err)
 			http.Error(w, "Invalid request body", http.StatusBadRequest)
@@ -135,6 +139,38 @@ func UpdateMasterHandler(db *sqlx.DB) http.HandlerFunc {
 		}
 		defer tx.Rollback()
 
+		// 1. 編集前のマスタ情報を取得
+		oldMaster, err := database.GetProductMasterByCode(tx, input.ProductCode)
+		if err != nil {
+			log.Printf("UpdateMasterHandler: Failed to get old master (JAN: %s): %v", input.ProductCode, err)
+			http.Error(w, "Failed to retrieve master before edit", http.StatusInternalServerError)
+			return
+		}
+
+		// 2. 編集前後の PackageKey を計算
+		oldYjUnitName := units.ResolveName(oldMaster.YjUnitName)
+		oldKey := fmt.Sprintf("%s|%s|%g|%s", oldMaster.YjCode, oldMaster.PackageForm, oldMaster.JanPackInnerQty, oldYjUnitName)
+
+		newYjUnitName := units.ResolveName(input.YjUnitName)
+		newKey := fmt.Sprintf("%s|%s|%g|%s", input.YjCode, input.PackageForm, input.JanPackInnerQty, newYjUnitName)
+
+		alertMessage := ""
+
+		// 3. PackageKey が変更されたかチェック
+		if oldKey != newKey {
+			// 4. 【条件削除】在庫チェック (GetPackageStockByYjCode) を削除
+
+			// 5. 【条件変更】PackageKeyが変更された場合、無条件でアラートとメモを設定
+			alertMessage = "PackageKeyが変更されました。棚卸（在庫振替）を実施してください。"
+
+			// メモ欄の先頭に追記
+			input.UserNotes = fmt.Sprintf("(自動記録: 旧Key [%s] から在庫振替要) %s", oldKey, input.UserNotes)
+
+			log.Printf("UpdateMasterHandler: PackageKey changed for %s. OldKey [%s] NewKey [%s]. Alert set.",
+				input.ProductCode, oldKey, newKey)
+		}
+
+		// 6. マスタをDBに保存 (input.UserNotes はアラート発生時に更新されている)
 		if _, err := mastermanager.UpsertProductMasterSqlx(tx, input); err != nil {
 			log.Printf("UpdateMasterHandler: Failed to upsert product master (JAN: %s): %v", input.ProductCode, err)
 			http.Error(w, "Failed to upsert product master", http.StatusInternalServerError)
@@ -149,6 +185,16 @@ func UpdateMasterHandler(db *sqlx.DB) http.HandlerFunc {
 
 		log.Printf("UpdateMasterHandler: Successfully saved master (JAN: %s)", input.ProductCode)
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]string{"message": "Saved successfully."})
+
+		// 7. レスポンスにアラートメッセージを含める
+		response := map[string]string{
+			"message": "Saved successfully.",
+		}
+		if alertMessage != "" {
+			response["alert"] = alertMessage
+		}
+		json.NewEncoder(w).Encode(response)
 	}
 }
+
+// ▲▲▲【修正ここまで】▲▲▲

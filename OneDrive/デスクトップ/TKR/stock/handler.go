@@ -9,7 +9,8 @@ import (
 	"net/http"
 	"net/url"
 
-	// "strconv" // (未使用)
+	"database/sql" // ▼▼▼【追加】sql パッケージをインポート ▼▼▼
+	"strconv"      // ▼▼▼【追加】strconv パッケージをインポート ▼▼▼
 	"strings"
 	"time"
 	"tkr/database"
@@ -28,23 +29,19 @@ func quoteAll(s string) string {
 	return `"` + strings.ReplaceAll(s, `"`, `""`) + `"`
 }
 
-// (ExportCurrentStockHandler 関数は変更なし)
+// ▼▼▼【ここから修正】ExportCurrentStockHandler を product_master 基準に変更 ▼▼▼
 func ExportCurrentStockHandler(db *sqlx.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 
-		// 1. 在庫起点テーブル (package_stock) から全在庫データを取得
-		stocks, err := database.GetAllPackageStock(db)
+		// 1. 在庫起点テーブル (package_stock) ではなく、
+		//    product_master から全ての PackageKey 情報を取得
+		allMasterKeysMap, err := database.GetAllPackageKeysFromMasters(db)
 		if err != nil {
-			http.Error(w, "Failed to get all package stock: "+err.Error(), http.StatusInternalServerError)
+			http.Error(w, "Failed to get all package keys from masters: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
 
-		// 2. YJコードと代表品名のマップを取得
-		nameMap, err := database.GetRepresentativeProductNameMap(db)
-		if err != nil {
-			http.Error(w, "Failed to get representative product names: "+err.Error(), http.StatusInternalServerError)
-			return
-		}
+		// (GetRepresentativeProductNameMap は不要)
 
 		var buf bytes.Buffer
 		buf.Write([]byte{0xEF, 0xBB, 0xBF}) // UTF-8 BOM
@@ -57,34 +54,27 @@ func ExportCurrentStockHandler(db *sqlx.DB) http.HandlerFunc {
 		}
 		buf.WriteString(strings.Join(header, ",") + "\r\n")
 
-		// 4. データをCSV行に変換
-		for _, pkg := range stocks {
-			// PackageKey を解析して JanPackInnerQty を取得
-			parsedKey, err := database.ParsePackageKey(pkg.PackageKey)
-
-			if err != nil {
-				log.Printf("WARN: Skipping invalid PackageKey in export: %s", pkg.PackageKey)
+		// 4. データをCSV行に変換 (allMasterKeysMap をループ)
+		for key, keyInfo := range allMasterKeysMap {
+			if keyInfo.Representative == nil {
+				log.Printf("WARN: Skipping invalid PackageKey in export (no representative): %s", key)
 				continue
 			}
 
-			// YJ数量 を JAN数量 に換算
-			var janQty float64
-			if parsedKey.JanPackInnerQty > 0 {
-				janQty = pkg.StockQuantityYj / parsedKey.JanPackInnerQty
-			} else {
-				janQty = 0 // 内入数が0ならJAN数量も0
-			}
+			// YJ数量 ではなく、JAN数量を 0.00 として出力
+			janQty := 0.0
 
 			// 代表品名を取得
-			productName := nameMap[pkg.YjCode]
+			productName := keyInfo.Representative.ProductName
 
 			record := []string{
-				quoteAll(pkg.PackageKey),
+				quoteAll(key), // マスタから取得した最新の PackageKey
 				quoteAll(productName),
-				quoteAll(fmt.Sprintf("%.2f", janQty)),
+				quoteAll(fmt.Sprintf("%.2f", janQty)), // JAN数量は 0.00 固定
 			}
 			buf.WriteString(strings.Join(record, ",") + "\r\n")
 		}
+		// ▲▲▲【修正ここまで】▲▲▲
 
 		today := time.Now().Format("20060102")
 		filename := fmt.Sprintf("TKR在庫データ_%s.csv", today) // ファイル名を変更
@@ -96,7 +86,7 @@ func ExportCurrentStockHandler(db *sqlx.DB) http.HandlerFunc {
 	}
 }
 
-// ▼▼▼【ここから修正】ImportTKRStockCSVHandler を「完全洗い替え」ロジックに変更 ▼▼▼
+// ▼▼▼ ImportTKRStockCSVHandler は変更なし (ご要望の「洗い替え」ロジックを実装済み) ▼▼▼
 func ImportTKRStockCSVHandler(db *sqlx.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
@@ -139,7 +129,9 @@ func ImportTKRStockCSVHandler(db *sqlx.DB) http.HandlerFunc {
 		} else {
 			dateYYMMDD = date
 		}
-		receiptNumber := "MIG_TKR_" + dateYYMMDD
+		// ▼▼▼【削除】古い伝票番号プレフィックス ▼▼▼
+		// receiptNumber := "MIG_TKR_" + dateYYMMDD
+		// ▲▲▲【削除ここまで】▲▲▲
 
 		tx, err := db.Beginx()
 		if err != nil {
@@ -147,6 +139,25 @@ func ImportTKRStockCSVHandler(db *sqlx.DB) http.HandlerFunc {
 			return
 		}
 		defer tx.Rollback()
+
+		// ▼▼▼【ここから追加】伝票番号採番ロジック (AJ/IO/ADJ と同様) ▼▼▼
+		var lastSeq int
+		prefix := "MG" + dateYYMMDD // プレフィックスを "MG" (2桁) に変更 (Migrate)
+
+		var lastReceiptNumber string
+		// 'MG' + yymmdd で始まる最大の伝票番号を取得
+		err = tx.Get(&lastReceiptNumber, `SELECT receipt_number FROM transaction_records WHERE receipt_number LIKE ? ORDER BY receipt_number DESC LIMIT 1`, prefix+"%")
+		if err != nil && err != sql.ErrNoRows {
+			http.Error(w, "伝票番号の採番に失敗: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		lastSeq = 0
+		if lastReceiptNumber != "" && len(lastReceiptNumber) == 13 { // 13桁チェック (MG+6+5)
+			seqStr := lastReceiptNumber[8:] // 8文字目以降 (MG + 6桁 = 8桁)
+			lastSeq, _ = strconv.Atoi(seqStr)
+		}
+		// ▲▲▲【追加ここまで】▲▲▲
 
 		// 3. 【洗い替え】既存の在庫データをすべて削除
 		// (package_stock と flag=0 の transaction_records)
@@ -182,27 +193,34 @@ func ImportTKRStockCSVHandler(db *sqlx.DB) http.HandlerFunc {
 
 			yjQty := janQty * master.JanPackInnerQty
 
-			// 5a. package_stock を更新（これが在庫の起点となる）
+			// 5a.package_stock を更新（これが在庫の起点となる）
 			if err :=
 				database.UpsertPackageStockInTx(tx, key, master.YjCode, yjQty, date); err != nil {
 				http.Error(w, "在庫起点(package_stock)の更新に失敗: "+err.Error(), http.StatusInternalServerError)
 				return
 			}
 
-			// 5b. transaction_records に棚卸明細(flag=0)を登録
+			// ▼▼▼【ここから修正】13桁の伝票番号を生成 ▼▼▼
+			newSeq := lastSeq + lineCounter // 連番を計算 (i ではなく lineCounter を使用)
+			receiptNumber := fmt.Sprintf("%s%05d", prefix, newSeq)
+			// ▲▲▲【修正ここまで】▲▲▲
+
+			// 5b.transaction_records に棚卸明細(flag=0)を登録
 			// (期限・ロットは不明のため、代表マスターのJANで合計行を1行だけ登録)
 			tr := model.TransactionRecord{
 				TransactionDate: date,
 				Flag:            0,
-				ReceiptNumber:   fmt.Sprintf("%s-%d", receiptNumber, lineCounter),
-				LineNumber:      "1",
-				JanCode:         master.ProductCode,
-				JanQuantity:     janQty,
-				YjQuantity:      yjQty,
-				UnitPrice:       master.NhiPrice,
-				Subtotal:        yjQty * master.NhiPrice,
-				ExpiryDate:      "", // 期限不明
-				LotNumber:       "", // ロット不明
+				// ▼▼▼【修正】ハイフン連結をやめ、生成した13桁の番号を使用 ▼▼▼
+				ReceiptNumber: receiptNumber,
+				// ▲▲▲【修正ここまで】▲▲▲
+				LineNumber:  "1",
+				JanCode:     master.ProductCode,
+				JanQuantity: janQty,
+				YjQuantity:  yjQty,
+				UnitPrice:   master.NhiPrice,
+				Subtotal:    yjQty * master.NhiPrice,
+				ExpiryDate:  "", // 期限不明
+				LotNumber:   "", // ロット不明
 			}
 			mappers.MapMasterToTransaction(&tr, master)
 
@@ -211,7 +229,6 @@ func ImportTKRStockCSVHandler(db *sqlx.DB) http.HandlerFunc {
 				return
 			}
 		}
-		// ▲▲▲【修正ここまで】▲▲▲
 
 		if err := tx.Commit(); err != nil {
 			http.Error(w, "データベースのコミットに失敗: "+err.Error(), http.StatusInternalServerError)

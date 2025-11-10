@@ -9,9 +9,14 @@ import { loadMasterData } from './master_data.js';
 import { initInOut, resetInOutView } from './inout.js';
 import { initDeadStockView } from './deadstock.js';
 import { initPrecomp, resetPrecompView } from './precomp.js';
+// ▼▼▼【ここに追加】▼▼▼
+import { initReorderView, fetchAndRenderReorder } from './reorder.js';
+// ▲▲▲【追加ここまで】▲▲▲
 
 let loadingOverlay, loadingMessage, notificationBox;
-let views, datViewBtn, usageViewBtn, inventoryAdjustmentViewBtn, masterEditViewBtn, configViewBtn, inoutViewBtn, reprocessBtn, deadStockViewBtn, precompViewBtn;
+// ▼▼▼【ここに追加】reorderViewBtn ▼▼▼
+let views, datViewBtn, usageViewBtn, inventoryAdjustmentViewBtn, masterEditViewBtn, configViewBtn, inoutViewBtn, reprocessBtn, deadStockViewBtn, precompViewBtn, reorderViewBtn;
+// ▲▲▲【追加ここまで】▲▲▲
 const initializedViews = {
     dat: false,
     usage: false,
@@ -21,6 +26,9 @@ const initializedViews = {
     inout: false,
     deadstock: false,
     precomp: false,
+    // ▼▼▼【ここに追加】▼▼▼
+    reorder: false,
+    // ▲▲▲【追加ここまで】▲▲▲
 };
 window.showLoading = (message = '処理中...') => {
     if (!loadingOverlay) loadingOverlay = document.getElementById('loading-overlay');
@@ -119,6 +127,16 @@ function setActiveView(targetId) {
             }
             resetPrecompView();
             break;
+        // ▼▼▼【ここに追加】▼▼▼
+        case 'reorder-view':
+            if (!initializedViews.reorder) {
+                console.log("Initializing Reorder view...");
+                initReorderView();
+                initializedViews.reorder = true;
+            }
+            fetchAndRenderReorder();
+            break;
+        // ▲▲▲【追加ここまで】▲▲▲
     }
 }
 
@@ -162,12 +180,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     reprocessBtn = document.getElementById('reprocessBtn');
     deadStockViewBtn = document.getElementById('deadStockViewBtn');
     precompViewBtn = document.getElementById('precompViewBtn');
-
+    // ▼▼▼【ここに追加】▼▼▼
+    reorderViewBtn = document.getElementById('reorderViewBtn');
+    // ▲▲▲【追加ここまで】▲▲▲
  
     await loadMasterData();
 
   
-    initSearchModal();
+   
+     initSearchModal();
 
     if (datViewBtn) {
         datViewBtn.addEventListener('click', () => setActiveView('dat-upload-view'));
@@ -197,6 +218,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (precompViewBtn) {
         precompViewBtn.addEventListener('click', () => setActiveView('precomp-view'));
     }
+    // ▼▼▼【ここに追加】▼▼▼
+    if (reorderViewBtn) {
+        reorderViewBtn.addEventListener('click', () => setActiveView('reorder-view'));
+    }
+    // ▲▲▲【追加ここまで】▲▲▲
 
     setActiveView('dat-upload-view');
 });

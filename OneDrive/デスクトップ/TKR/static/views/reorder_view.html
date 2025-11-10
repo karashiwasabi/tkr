@@ -1,0 +1,29 @@
+<div id="reorder-view" class="view">
+    <h1>発注点リスト</h1>
+    
+    <div class="reorder-controls filter-container">
+        <div class="form-group">
+            <label>内外注区分:</label>
+            <div class="radio-group" id="reorder-usage-class">
+                <label><input type="radio" name="reorder_usage_class" value="all" checked> すべて</label>
+                <label><input type="radio" name="reorder_usage_class" value="内"> 内</label>
+                <label><input type="radio" name="reorder_usage_class" value="外"> 外</label>
+                <label><input type="radio" name="reorder_usage_class" value="歯"> 歯</label>
+                <label><input type="radio" name="reorder_usage_class" value="注"> 注</label>
+                <label><input type="radio" name="reorder_usage_class" value="機"> 機</label>
+                <label><input type="radio" name="reorder_usage_class" value="他"> 他</label>
+            </div>
+        </div>
+        <div class="form-group">
+            <label for="reorder-kana-search">カナ名 (前方一致):</label>
+            <input type="text" id="reorder-kana-search" autocomplete="off">
+        </div>
+        <div class="form-actions">
+            <button id="reorder-search-btn" class="btn">この条件で検索</button>
+        </div>
+    </div>
+    
+    <div id="reorder-result-container" class="table-container">
+        <p>「この条件で検索」ボタンを押してください。</p>
+    </div>
+</div>
