@@ -1,83 +1,186 @@
+// C:\Users\wasab\OneDrive\デスクトップ\TKR\reorder\handler.go
 package reorder
 
 import (
 	"encoding/json"
-	"log"
+	"fmt" // TKRはlogを使う
 	"net/http"
+	"strconv"
 	"time"
-	"tkr/aggregation"
+	"tkr/aggregation" // TKRのaggregation
 	"tkr/config"
+	"tkr/database" // TKRのdatabase
+	"tkr/mappers"  // TKRのmappers
 	"tkr/model"
+	"tkr/units" // ★★★ units をインポート
 
 	"github.com/jmoiron/sqlx"
 )
 
-// ReorderItemView は発注点リストの表示用構造体です
-type ReorderItemView struct {
-	YjCode                 string  `json:"yjCode"`
-	ProductName            string  `json:"productName"`
-	PackageKey             string  `json:"packageKey"`
-	YjUnitName             string  `json:"yjUnitName"`
-	EffectiveEndingBalance float64 `json:"effectiveEndingBalance"` // TKRでは YJ単位
-	ReorderPoint           float64 `json:"reorderPoint"`           // TKRでは YJ単位
-	MaxUsage               float64 `json:"maxUsage"`               // TKRでは YJ単位
-	PrecompoundedTotal     float64 `json:"precompoundedTotal"`     // TKRでは YJ単位
+// OrderCandidatesResponse は発注候補画面のレスポンスです。
+// (WASABI: orders/handlee.go より)
+type OrderCandidatesResponse struct {
+	Candidates  []OrderCandidateYJGroup `json:"candidates"`
+	Wholesalers []model.Wholesaler      `json:"wholesalers"`
 }
 
-// GetReorderListHandler は発注が必要な品目リストを返します
-func GetReorderListHandler(conn *sqlx.DB) http.HandlerFunc {
+// OrderCandidateYJGroup は発注候補のYJグループです。
+// (WASABI: orders/handlee.go より)
+type OrderCandidateYJGroup struct {
+	model.StockLedgerYJGroup
+	PackageLedgers []OrderCandidatePackageGroup `json:"packageLedgers"`
+}
+
+// OrderCandidatePackageGroup は発注候補の包装グループです。
+// (WASABI: orders/handlee.go より)
+type OrderCandidatePackageGroup struct {
+	model.StockLedgerPackageGroup
+	Masters            []model.ProductMasterView `json:"masters"`
+	ExistingBackorders []model.Backorder         `json:"existingBackorders"`
+}
+
+// GenerateOrderCandidatesHandler は発注候補リストを生成します。
+// (WASABI: orders/handlee.go を TKR 用に修正)
+func GenerateOrderCandidatesHandler(conn *sqlx.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		q := r.URL.Query()
 		kanaName := q.Get("kanaName")
-		dosageForm := q.Get("dosageForm") // "all", "内", "外", ...
+		dosageForm := q.Get("dosageForm")
+		shelfNumber := q.Get("shelfNumber")
+		coefficientStr := q.Get("coefficient")
+		coefficient, err := strconv.ParseFloat(coefficientStr, 64)
+		if err != nil {
+			coefficient = 1.3 // TKRのデフォルト
+		}
 
-		// 1. 集計期間の設定
 		cfg, err := config.LoadConfig()
 		if err != nil {
-			http.Error(w, "設定ファイルの読み込みに失敗: "+err.Error(), http.StatusInternalServerError)
+			http.Error(w, "設定ファイルの読み込みに失敗しました: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
+
 		now := time.Now()
+		// TKRの集計ロジックはEndDateを「本日」とする
 		endDate := now
 		startDate := now.AddDate(0, 0, -cfg.CalculationPeriodDays)
 
-		// 2. 在庫台帳（発注点計算済み）を取得
 		filters := model.AggregationFilters{
 			StartDate:   startDate.Format("20060102"),
-			EndDate:     endDate.Format("20060102"),
+			EndDate:     endDate.Format("20060102"), // TKRは "99991231" ではなく本日
 			KanaName:    kanaName,
 			DosageForm:  dosageForm,
-			Coefficient: 1.5, // TKRでは安全係数を固定 (将来的にConfigから取得も可)
+			ShelfNumber: shelfNumber,
+			Coefficient: coefficient,
 		}
-		ledger, err := aggregation.GetStockLedger(conn, filters)
+
+		// TKRの集計関数を呼ぶ
+		// ★★★ 注意: TKRの aggregation.GetStockLedger は発注残を考慮するよう修正が必要
+		yjGroups, err := aggregation.GetStockLedger(conn, filters)
 		if err != nil {
-			log.Printf("ERROR: GetStockLedger failed: %v", err)
-			http.Error(w, "Failed to get stock ledger: "+err.Error(), http.StatusInternalServerError)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 
-		// 3. 発注が必要な品目 (PackageKey単位) のみを抽出
-		var reorderList []ReorderItemView
-		for _, yjGroup := range ledger {
-			for _, pkg := range yjGroup.PackageLedgers {
-				if pkg.IsReorderNeeded {
-					reorderList = append(reorderList, ReorderItemView{
-						YjCode:                 yjGroup.YjCode,
-						ProductName:            yjGroup.ProductName,
-						PackageKey:             pkg.PackageKey,
-						YjUnitName:             yjGroup.YjUnitName,
-						EffectiveEndingBalance: pkg.EffectiveEndingBalance,
-						ReorderPoint:           pkg.ReorderPoint,
-						MaxUsage:               pkg.MaxUsage,
-						PrecompoundedTotal:     pkg.PrecompoundedTotal,
-					})
+		// TKRのDB関数を呼ぶ
+		allBackorders, err := database.GetAllBackordersList(conn)
+		if err != nil {
+			http.Error(w, "Failed to get backorder list for candidates", http.StatusInternalServerError)
+			return
+		}
+
+		// TKRの aggregation.go のキー生成ロジック (units.ResolveName) に合わせる
+		backordersByPackageKey := make(map[string][]model.Backorder)
+		for _, bo := range allBackorders {
+			// units.ResolveName を使って単位名を解決する
+			resolvedKey := fmt.Sprintf("%s|%s|%g|%s", bo.YjCode, bo.PackageForm, bo.JanPackInnerQty, units.ResolveName(bo.YjUnitName))
+			backordersByPackageKey[resolvedKey] = append(backordersByPackageKey[resolvedKey], bo)
+		}
+
+		var candidates []OrderCandidateYJGroup
+		for _, group := range yjGroups {
+			if group.IsReorderNeeded {
+				newYjGroup := OrderCandidateYJGroup{
+					StockLedgerYJGroup: group,
+					PackageLedgers:     []OrderCandidatePackageGroup{},
 				}
+
+				for _, pkg := range group.PackageLedgers {
+					newPkgGroup := OrderCandidatePackageGroup{
+						StockLedgerPackageGroup: pkg,
+						Masters:                 []model.ProductMasterView{},
+						// TKRの aggregation.go は Resolved なキーを使っているので、
+						// ここでも Resolved なキー (pkg.PackageKey) でマップを引く
+						ExistingBackorders: backordersByPackageKey[pkg.PackageKey],
+					}
+
+					// TKRの mappers を使って View を生成
+					for _, master := range pkg.Masters {
+						masterView := mappers.ToProductMasterView(master)
+						newPkgGroup.Masters = append(newPkgGroup.Masters, masterView)
+					}
+					newYjGroup.PackageLedgers = append(newYjGroup.PackageLedgers, newPkgGroup)
+				}
+				candidates = append(candidates, newYjGroup)
 			}
 		}
 
-		log.Printf("Reorder list generated. Filters (Kana: %s, Dosage: %s), Found: %d items", kanaName, dosageForm, len(reorderList))
+		// TKRのDB関数を呼ぶ
+		wholesalers, err := database.GetAllWholesalers(conn)
+		if err != nil {
+			http.Error(w, "Failed to get wholesalers", http.StatusInternalServerError)
+			return
+		}
+
+		response := OrderCandidatesResponse{
+			Candidates:  candidates,
+			Wholesalers: wholesalers,
+		}
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(reorderList)
+		json.NewEncoder(w).Encode(response)
+	}
+}
+
+// PlaceOrderHandler は発注内容を発注残として登録します。
+// (WASABI: orders/handlee.go を TKR 用に修正)
+func PlaceOrderHandler(conn *sqlx.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var payload []model.Backorder
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			http.Error(w, "Invalid request body", http.StatusBadRequest)
+			return
+		}
+
+		tx, err := conn.Beginx()
+		if err != nil {
+			http.Error(w, "Failed to start transaction", http.StatusInternalServerError)
+			return
+		}
+		defer tx.Rollback()
+
+		today := time.Now().Format("20060102")
+		for i := range payload {
+			if payload[i].OrderDate == "" {
+				payload[i].OrderDate = today
+			}
+			// YjQuantity (フロントから来る発注単位数 * 包装単位量) を
+			// OrderQuantity (発注数量) と RemainingQuantity (残数量) にコピー
+			payload[i].OrderQuantity = payload[i].YjQuantity
+			payload[i].RemainingQuantity = payload[i].YjQuantity
+		}
+
+		// TKRのDB関数を呼ぶ
+		if err := database.InsertBackordersInTx(tx, payload); err != nil {
+			http.Error(w, "Failed to save backorders", http.StatusInternalServerError)
+			return
+		}
+
+		if err := tx.Commit(); err != nil {
+			http.Error(w, "Failed to commit transaction", http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"message": "発注内容を発注残として登録しました。"})
 	}
 }

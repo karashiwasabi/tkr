@@ -1,0 +1,26 @@
+<div id="backorder-view" class="view">
+    <h1>発注残管理</h1>
+    
+    <div class="filter-container">
+        <fieldset>
+            <legend>表示フィルタ</legend>
+            <div class="search-form-container">
+                <div class="search-filter-row">
+                    <div class="form-group">
+                        <label for="bo-search-kana">品名・カナ名 (部分一致):</label>
+                        <input type="text" id="bo-search-kana" class="search-filter-input" autocomplete="off">
+                    </div>
+                    <div class="form-group">
+                        <label for="bo-search-wholesaler">卸コード:</label>
+                        <input type="text" id="bo-search-wholesaler" class="search-filter-input" autocomplete="off" style="width: 150px;">
+                    </div>
+                    <button id="bo-search-btn" class="btn search-submit-button">この条件で絞込</button>
+                </div>
+            </div>
+        </fieldset>
+    </div>
+    
+    <div id="backorder-output-container" class="table-container">
+        <p>読み込み中...</p>
+    </div>
+</div>

@@ -14,12 +14,18 @@ import (
 
 func signedYjQty(flag int, yjQty float64) float64 {
 	switch flag {
+	// ▼▼▼【ここから修正】TKRの入出庫フラグ (11, 12) も考慮 ▼▼▼
 	case 1: // 納品
+		return yjQty
+	case 11: // 入庫
 		return yjQty
 	case 3: // 処方
 		return -yjQty
 	case 2: // 返品
 		return -yjQty
+	case 12: // 出庫
+		return -yjQty
+	// ▲▲▲【修正ここまで】▲▲▲
 	default: // 棚卸(0), その他
 		return 0
 	}
@@ -46,6 +52,13 @@ func GetStockLedger(conn *sqlx.DB, filters model.AggregationFilters) ([]model.St
 	if err != nil {
 		return nil, fmt.Errorf("failed to get pre-compounding totals for aggregation: %w", err)
 	}
+
+	// ▼▼▼【ここから追加】発注残マップの取得 (WASABI: db/aggregation.go より) ▼▼▼
+	backordersMap, err := database.GetAllBackordersMap(conn)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get backorders for aggregation: %w", err)
+	}
+	// ▲▲▲【追加ここまで】▲▲▲
 
 	packageStockMap, err := database.GetPackageStockByYjCode(conn, filters.YjCode) //
 	if err != nil {
@@ -143,9 +156,11 @@ func GetStockLedger(conn *sqlx.DB, filters model.AggregationFilters) ([]model.St
 				if t.Flag == 0 {
 					periodInventorySums[t.TransactionDate] += t.YjQuantity //
 				}
+				// ▼▼▼【ここを修正】TKRの処方フラグ(3)のみで最大使用量を計算 ▼▼▼
 				if t.Flag == 3 && t.YjQuantity > maxUsage {
 					maxUsage = t.YjQuantity
 				}
+				// ▲▲▲【修正ここまで】▲▲▲
 			}
 
 			lastProcessedDate := ""
@@ -157,6 +172,7 @@ func GetStockLedger(conn *sqlx.DB, filters model.AggregationFilters) ([]model.St
 				}
 
 				if t.Flag == 0 {
+					// 棚卸データ(flag=0)は runningBalance に影響を与えない (次のループの開始時に適用される)
 				} else {
 					runningBalance += signedYjQty(t.Flag, t.YjQuantity) //
 				}
@@ -169,8 +185,10 @@ func GetStockLedger(conn *sqlx.DB, filters model.AggregationFilters) ([]model.St
 				runningBalance = inventorySum //
 			}
 
-			backorderQty := 0.0
+			// ▼▼▼【ここから修正】発注残(backorderQty)を考慮 (WASABI: db/aggregation.go より) ▼▼▼
+			backorderQty := backordersMap[key] //
 			effectiveEndingBalance := runningBalance + backorderQty
+			// ▲▲▲【修正ここまで】▲▲▲
 
 			pkg := model.StockLedgerPackageGroup{
 				PackageKey:             key,
@@ -179,7 +197,7 @@ func GetStockLedger(conn *sqlx.DB, filters model.AggregationFilters) ([]model.St
 				Transactions:           transactionsInPeriod,
 				NetChange:              netChangeInPeriod, //
 				Masters:                mastersInPackageGroup,
-				EffectiveEndingBalance: effectiveEndingBalance,
+				EffectiveEndingBalance: effectiveEndingBalance, // 修正後の値
 				MaxUsage:               maxUsage,
 			}
 
@@ -193,13 +211,18 @@ func GetStockLedger(conn *sqlx.DB, filters model.AggregationFilters) ([]model.St
 			pkg.BaseReorderPoint = maxUsage * filters.Coefficient
 			pkg.PrecompoundedTotal = precompTotalForPackage
 			pkg.ReorderPoint = pkg.BaseReorderPoint + pkg.PrecompoundedTotal
+			// ▼▼▼【ここを修正】発注判定を effectiveEndingBalance (発注残込み) で行う ▼▼▼
 			pkg.IsReorderNeeded = effectiveEndingBalance < pkg.ReorderPoint && pkg.MaxUsage > 0
+			// ▲▲▲【修正ここまで】▲▲▲
 
 			allPackageLedgers = append(allPackageLedgers, pkg)
 		}
 		if len(allPackageLedgers) > 0 { //
 			var yjTotalEnding, yjTotalNetChange, yjTotalStarting float64
 			var yjTotalReorderPoint, yjTotalBaseReorderPoint, yjTotalPrecompounded float64
+			// ▼▼▼【ここに追加】YJグループ全体の発注残込み在庫 (表示用) ▼▼▼
+			var yjTotalEffectiveEnding float64
+			// ▲▲▲【追加ここまで】▲▲▲
 			isYjReorderNeeded := false
 
 			for _, pkg := range allPackageLedgers {
@@ -209,6 +232,9 @@ func GetStockLedger(conn *sqlx.DB, filters model.AggregationFilters) ([]model.St
 				if end, ok := pkg.EndingBalance.(float64); ok { //
 					yjTotalEnding += end
 				}
+				// ▼▼▼【ここに追加】YJグループ全体の発注残込み在庫 (表示用) ▼▼▼
+				yjTotalEffectiveEnding += pkg.EffectiveEndingBalance
+				// ▲▲▲【追加ここまで】▲▲▲
 				yjTotalNetChange += pkg.NetChange
 				yjTotalReorderPoint += pkg.ReorderPoint
 				yjTotalBaseReorderPoint += pkg.BaseReorderPoint
@@ -219,6 +245,11 @@ func GetStockLedger(conn *sqlx.DB, filters model.AggregationFilters) ([]model.St
 			}
 			yjGroup.StartingBalance = yjTotalStarting
 			yjGroup.EndingBalance = yjTotalEnding
+			// ▼▼▼【ここに追加】YJグループ全体の発注残込み在庫 (表示用) ▼▼▼
+			// (model.StockLedgerYJGroup に EffectiveEndingBalance フィールドはないが、
+			// TKRでは ReorderItemView にコピーされるため、計算だけはしておく)
+			// yjGroup.EffectiveEndingBalance = yjTotalEffectiveEnding
+			// ▲▲▲【追加ここまで】▲▲▲
 			yjGroup.NetChange = yjTotalNetChange
 			yjGroup.PackageLedgers = allPackageLedgers
 			yjGroup.TotalReorderPoint = yjTotalReorderPoint
@@ -229,16 +260,18 @@ func GetStockLedger(conn *sqlx.DB, filters model.AggregationFilters) ([]model.St
 		}
 	}
 	sort.Slice(result, func(i, j int) bool { //
-		prio := map[string]int{"内": 1, "外": 2, "注": 3, "他": 4}
+		// ▼▼▼【ここを修正】TKRの剤型順序に合わせる ▼▼▼
+		prio := map[string]int{"内": 1, "外": 2, "歯": 3, "注": 4, "機": 5, "他": 6}
+		// ▲▲▲【修正ここまで】▲▲▲
 		masterI := mastersByYjCode[result[i].YjCode][0]
 		masterJ := mastersByYjCode[result[j].YjCode][0]
 		prioI, okI := prio[strings.TrimSpace(masterI.UsageClassification)]
 		if !okI {
-			prioI = 5
+			prioI = 7 //
 		}
 		prioJ, okJ := prio[strings.TrimSpace(masterJ.UsageClassification)]
 		if !okJ {
-			prioJ = 5
+			prioJ = 7 //
 		}
 		if prioI != prioJ {
 			return prioI < prioJ

@@ -1,3 +1,4 @@
+// C:\Users\wasab\OneDrive\デスクトップ\TKR\dat\handler.go
 package dat
 
 import (
@@ -81,6 +82,38 @@ func UploadDatHandler(db *sqlx.DB) http.HandlerFunc {
 				tx.Rollback()
 				continue
 			}
+
+			// ▼▼▼【ここから追加】発注残の自動消し込みロジック ▼▼▼
+			// (WASABI: dat/handler.go より移植・TKR用に修正)
+			if len(insertedTransactions) > 0 {
+				var deliveredItems []model.Backorder
+				for _, rec := range insertedTransactions {
+					// 納品(flag=1)の取引のみを消し込み対象とする
+					if rec.Flag == 1 {
+						deliveredItems = append(deliveredItems, model.Backorder{
+							YjCode:          rec.YjCode,
+							PackageForm:     rec.PackageForm,
+							JanPackInnerQty: rec.JanPackInnerQty,
+							YjUnitName:      rec.YjUnitName,
+							YjQuantity:      rec.YjQuantity, // 納品されたYJ数量
+						})
+					}
+				}
+
+				if len(deliveredItems) > 0 {
+					// TKRで移植した ReconcileBackorders は *sqlx.Tx を引数に取る
+					if err := database.ReconcileBackorders(tx, deliveredItems); err != nil {
+						// 消し込みに失敗しても、納品登録自体は完了しているため、エラーログを出力するに留める
+						log.Printf("WARN: Failed to reconcile backorders after DAT import: %v", err)
+						// fileResultにエラーメッセージを追加
+						fileResult["error"] = fmt.Sprintf("納品登録成功、発注残消込失敗: %v", err)
+						// トランザクションはロールバックせず、コミットに進ませる
+					} else {
+						log.Printf("Successfully reconciled %d backorder items for %s.", len(deliveredItems), fileHeader.Filename)
+					}
+				}
+			}
+			// ▲▲▲【追加ここまで】▲▲▲
 
 			if commitErr := tx.Commit(); commitErr != nil {
 				log.Printf("Failed to commit transaction for %s: %v", fileHeader.Filename, commitErr)

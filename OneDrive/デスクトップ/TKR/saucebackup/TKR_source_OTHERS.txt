@@ -1233,7 +1233,8 @@ func DeleteTransactionsByFlagAndDateAndCodes(tx *sqlx.Tx, flag int, date string,
 		return nil
 	}
 
-	query, args, err := sqlx.In(`DELETE FROM transaction_records WHERE flag = ? AND transaction_date = ? AND jan_code IN (?)`, flag, date, productCodes) //
+	query, args, err := sqlx.In(`DELETE FROM transaction_records WHERE flag = ?
+ AND transaction_date = ? AND jan_code IN (?)`, flag, date, productCodes) //
 	if err != nil {
 		return fmt.Errorf("failed to create IN query for deleting transactions: %w", err)
 	}
@@ -1268,7 +1269,8 @@ func SaveGuidedInventoryData(tx *sqlx.Tx, date string, yjCode string, allPackagi
 
 	// ▼▼▼【ここから修正】伝票番号の採番ロジック (WASABI  を参考に変更) ▼▼▼
 	var lastSeq int
-	// ADJyymmddnnnnn (ADJ + 6桁 + 5桁 = 14桁)
+	// ▼▼▼【修正】ADJ(14桁) -> AJ(13桁) ▼▼▼
+	// AJyymmddnnnnn (AJ + 6桁 + 5桁 = 13桁)
 
 	// YYYYMMDD (8桁) -> YYMMDD (6桁)
 	var dateYYMMDD string
@@ -1280,12 +1282,14 @@ func SaveGuidedInventoryData(tx *sqlx.Tx, date string, yjCode string, allPackagi
 		return fmt.Errorf("invalid date format for receipt number: %s", date)
 	}
 
-	prefix := "ADJ" + dateYYMMDD // "ADJ251031"
+	prefix := "AJ" + dateYYMMDD // "AJ251031"
 
-	// データベースから 'ADJ251031' で始まる最大の伝票番号を取得
+	// データベースから 'AJ251031' で始まる最大の伝票番号を取得
+	// ▲▲▲【修正ここまで】▲▲▲
 	// ▼▼▼【修正】[source]タグを文字列の外に移動 ▼▼▼
 	q := `SELECT receipt_number FROM transaction_records 
-		  WHERE receipt_number LIKE ? ORDER BY receipt_number DESC LIMIT 1` //
+		  WHERE receipt_number LIKE ?
+ ORDER BY receipt_number DESC LIMIT 1` //
 	var lastReceiptNumber string
 	err := tx.Get(&lastReceiptNumber, q, prefix+"%") //
 	// ▲▲▲【修正ここまで】▲▲▲
@@ -1296,15 +1300,17 @@ func SaveGuidedInventoryData(tx *sqlx.Tx, date string, yjCode string, allPackagi
 
 	lastSeq = 0
 	if lastReceiptNumber != "" {
-		// "ADJ25103100001" (14桁) から "00001" (5桁) の部分を取得
-		if len(lastReceiptNumber) == 14 {
-			seqStr := lastReceiptNumber[9:] // 9文字目以降 (ADJ + 6桁 = 9桁)
+		// ▼▼▼【修正】14桁 -> 13桁, 9文字目 -> 8文字目 ▼▼▼
+		// "AJ25103100001" (13桁) から "00001" (5桁) の部分を取得
+		if len(lastReceiptNumber) == 13 {
+			seqStr := lastReceiptNumber[8:] // 8文字目以降 (AJ + 6桁 = 8桁)
 			lastSeq, _ = strconv.Atoi(seqStr)
 		}
 	}
 
 	newSeq := lastSeq + 1
-	receiptNumber := fmt.Sprintf("%s%05d", prefix, newSeq) // 14桁 (ADJ + 6 + 5)
+	receiptNumber := fmt.Sprintf("%s%05d", prefix, newSeq) // 13桁 (AJ + 6 + 5)
+	// ▲▲▲【修正ここまで】▲▲▲
 
 	// ▼▼▼【削除】productCodesWithInventory (dead_stock_list 用) は不要 ▼▼▼
 	// var productCodesWithInventory []string
@@ -2985,6 +2991,7 @@ func DeleteWholesaler(db *sqlx.DB, code string) error {
 
 
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\deadstock\handler.go -----
+// C:\Users\wasab\OneDrive\デスクトップ\TKR\deadstock\handler.go
 package deadstock
 
 import (
@@ -3107,17 +3114,21 @@ func registerDeadStockCSVAsInventory(tx *sqlx.Tx, records []parsers.ParsedDeadSt
 	} else {
 		dateYYMMDD = date
 	}
-	prefix := "ADJ" + dateYYMMDD
+	// ▼▼▼【修正】ADJ -> AJ ▼▼▼
+	prefix := "AJ" + dateYYMMDD
+	// ▲▲▲【修正ここまで】▲▲▲
 
 	var lastReceiptNumber string
 	err := tx.Get(&lastReceiptNumber, `SELECT receipt_number FROM transaction_records WHERE receipt_number LIKE ? ORDER BY receipt_number DESC LIMIT 1`, prefix+"%")
 	if err != nil && err != sql.ErrNoRows {
 		return 0, fmt.Errorf("伝票番号の採番に失敗: %w", err)
 	}
-	if lastReceiptNumber != "" && len(lastReceiptNumber) == 14 {
-		seqStr := lastReceiptNumber[9:]
+	// ▼▼▼【修正】14桁 -> 13桁, 9文字目 -> 8文字目 ▼▼▼
+	if lastReceiptNumber != "" && len(lastReceiptNumber) == 13 {
+		seqStr := lastReceiptNumber[8:]
 		lastSeq, _ = strconv.Atoi(seqStr)
 	}
+	// ▲▲▲【修正ここまで】▲▲▲
 
 	for i, rec := range records {
 
@@ -4436,6 +4447,42 @@ var ma2jCodeRegex = regexp.MustCompile(`^MA2J[0-9]{9}$`)
 
 func FindOrCreateMaster(tx *sqlx.Tx, productCodeOrKey string, productName string) (*model.ProductMaster, error) {
 
+	// ▼▼▼【ここから修正】0埋めJANまたは空JANの場合、kana_name_short で検索するロジック ▼▼▼
+	if productCodeOrKey == "0000000000000" || productCodeOrKey == "" {
+		if productName != "" {
+			// ▼▼▼【ログ追加】▼▼▼
+			log.Printf("[FindOrCreateMaster] DEBUG: Key is 000.../empty. Attempting search by KanaNameShort: [%s]", productName)
+			// ▲▲▲【ログ追加ここまで】▲▲▲
+			var existingMaster model.ProductMaster
+			// 1. productName (DATの半角カナ) で kana_name_short を検索
+			err := tx.Get(&existingMaster, "SELECT * FROM product_master WHERE kana_name_short = ?", productName)
+
+			if err == nil {
+				// 1a. 見つかった場合
+				// ▼▼▼【ログ修正】▼▼▼
+				log.Printf("[FindOrCreateMaster] DEBUG: Search by KanaNameShort SUCCEEDED. Found existing master (ProductCode: %s, YJ: %s)", existingMaster.ProductCode, existingMaster.YjCode)
+				// ▲▲▲【ログ修正ここまで】▲▲▲
+				return &existingMaster, nil
+			}
+			if err != sql.ErrNoRows {
+				// 1b. DBエラー
+				// ▼▼▼【ログ追加】▼▼▼
+				log.Printf("[FindOrCreateMaster] DEBUG: Search by KanaNameShort FAILED (DB Error): %v", err)
+				// ▲▲▲【ログ追加ここまで】▲▲▲
+				return nil, fmt.Errorf("failed to query product_master by kana_name_short for %s: %w", productName, err)
+			}
+
+			// 1c. 見つからなかった場合 (sql.ErrNoRows)
+			// ▼▼▼【ログ追加】▼▼▼
+			log.Printf("[FindOrCreateMaster] DEBUG: Search by KanaNameShort FAILED (Not Found). Proceeding to create new master.")
+			// ▲▲▲【ログ追加ここまで】▲▲▲
+			log.Printf("Product master not found in DB by KanaNameShort: %s. Creating provisional master...", productName)
+			// そのまま以下の仮マスター作成ロジック（MA2J採番）に進む
+		}
+		// productName も空の場合は、そのまま以下の仮マスター作成ロジックに進む
+	}
+	// ▲▲▲【修正ここまで】▲▲▲
+
 	var existingMaster model.ProductMaster
 	var err error
 
@@ -4446,31 +4493,48 @@ func FindOrCreateMaster(tx *sqlx.Tx, productCodeOrKey string, productName string
 
 	if isYJKey {
 		query := "SELECT * FROM product_master WHERE yj_code = ?"
+		// ▼▼▼【ログ追加】▼▼▼
+		log.Printf("[FindOrCreateMaster] DEBUG: Attempting search by YJ Code: [%s]", productCodeOrKey)
+		// ▲▲▲【ログ追加ここまで】▲▲▲
 		err = tx.Get(&existingMaster, query, productCodeOrKey)
-		log.Printf("Searching master by YJ Code: %s", productCodeOrKey)
 	} else if isJANKey || isMA2JKey {
 		query := "SELECT * FROM product_master WHERE product_code = ?"
+		// ▼▼▼【ログ追加】▼▼▼
+		log.Printf("[FindOrCreateMaster] DEBUG: Attempting search by JAN/MA2J Code (Product Code): [%s]", productCodeOrKey)
+		// ▲▲▲【ログ追加ここまで】▲▲▲
 		err = tx.Get(&existingMaster, query, productCodeOrKey)
-		log.Printf("Searching master by JAN/MA2J Code (Product Code): %s", productCodeOrKey)
 	} else if isGS1Key {
 		query := "SELECT * FROM product_master WHERE gs1_code = ?"
+		// ▼▼▼【ログ追加】▼▼▼
+		log.Printf("[FindOrCreateMaster] DEBUG: Attempting search by GS1 Code (gs1_code): [%s]", productCodeOrKey)
+		// ▲▲▲【ログ追加ここまで】▲▲▲
 		err = tx.Get(&existingMaster, query, productCodeOrKey)
-		log.Printf("Searching master by GS1 Code (gs1_code): %s", productCodeOrKey)
 	} else {
+		// ▼▼▼【修正】0埋めJAN/空JAN以外のキーの場合、product_codeで検索 ▼▼▼
 		query := "SELECT * FROM product_master WHERE product_code = ?"
+		// ▼▼▼【ログ追加】▼▼▼
+		log.Printf("[FindOrCreateMaster] DEBUG: Attempting search by Generic Key (Product Code): [%s]", productCodeOrKey)
+		// ▲▲▲【ログ追加ここまで】▲▲▲
 		err = tx.Get(&existingMaster, query, productCodeOrKey)
-		log.Printf("Searching master by Generic Key (Product Code): %s", productCodeOrKey)
+		// ▲▲▲【修正ここまで】▲▲▲
 	}
 
 	if err == nil {
-		log.Printf("Found existing master in DB (ProductCode: %s, YJ: %s)", existingMaster.ProductCode, existingMaster.YjCode)
+		// ▼▼▼【ログ修正】▼▼▼
+		log.Printf("[FindOrCreateMaster] DEBUG: Search by Key SUCCEEDED. (ProductCode: %s, YJ: %s)", existingMaster.ProductCode, existingMaster.YjCode)
+		// ▲▲▲【ログ修正ここまで】▲▲▲
 		return &existingMaster, nil
 	}
 	if err != sql.ErrNoRows {
+		// ▼▼▼【ログ追加】▼▼▼
+		log.Printf("[FindOrCreateMaster] DEBUG: Search by Key FAILED (DB Error): %v", err)
+		// ▲▲▲【ログ追加ここまで】▲▲▲
 		return nil, fmt.Errorf("failed to query product_master for key %s: %w", productCodeOrKey, err)
 	}
 
-	log.Printf("Product master not found in DB for key: %s. Attempting to create...", productCodeOrKey)
+	// ▼▼▼【ログ修正】▼▼▼
+	log.Printf("[FindOrCreateMaster] DEBUG: Search by Key FAILED (Not Found) for key: %s. Attempting to create...", productCodeOrKey)
+	// ▲▲▲【ログ修正ここまで】▲▲▲
 
 	if (isJANKey || isGS1Key) && !strings.HasPrefix(productCodeOrKey, "999") && productCodeOrKey != "0000000000000" && productCodeOrKey != "" {
 
@@ -6587,7 +6651,8 @@ import (
 	"net/http"
 	"net/url"
 
-	// "strconv" // (未使用)
+	"database/sql" // ▼▼▼【追加】sql パッケージをインポート ▼▼▼
+	"strconv"      // ▼▼▼【追加】strconv パッケージをインポート ▼▼▼
 	"strings"
 	"time"
 	"tkr/database"
@@ -6706,8 +6771,9 @@ func ImportTKRStockCSVHandler(db *sqlx.DB) http.HandlerFunc {
 		} else {
 			dateYYMMDD = date
 		}
-		receiptNumber :=
-			"MIG_TKR_" + dateYYMMDD
+		// ▼▼▼【削除】古い伝票番号プレフィックス ▼▼▼
+		// receiptNumber := "MIG_TKR_" + dateYYMMDD
+		// ▲▲▲【削除ここまで】▲▲▲
 
 		tx, err := db.Beginx()
 		if err != nil {
@@ -6715,6 +6781,25 @@ func ImportTKRStockCSVHandler(db *sqlx.DB) http.HandlerFunc {
 			return
 		}
 		defer tx.Rollback()
+
+		// ▼▼▼【ここから追加】伝票番号採番ロジック (AJ/IO/ADJ と同様) ▼▼▼
+		var lastSeq int
+		prefix := "MG" + dateYYMMDD // プレフィックスを "MG" (2桁) に変更 (Migrate)
+
+		var lastReceiptNumber string
+		// 'MG' + yymmdd で始まる最大の伝票番号を取得
+		err = tx.Get(&lastReceiptNumber, `SELECT receipt_number FROM transaction_records WHERE receipt_number LIKE ? ORDER BY receipt_number DESC LIMIT 1`, prefix+"%")
+		if err != nil && err != sql.ErrNoRows {
+			http.Error(w, "伝票番号の採番に失敗: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		lastSeq = 0
+		if lastReceiptNumber != "" && len(lastReceiptNumber) == 13 { // 13桁チェック (MG+6+5)
+			seqStr := lastReceiptNumber[8:] // 8文字目以降 (MG + 6桁 = 8桁)
+			lastSeq, _ = strconv.Atoi(seqStr)
+		}
+		// ▲▲▲【追加ここまで】▲▲▲
 
 		// 3. 【洗い替え】既存の在庫データをすべて削除
 		// (package_stock と flag=0 の transaction_records)
@@ -6757,20 +6842,27 @@ func ImportTKRStockCSVHandler(db *sqlx.DB) http.HandlerFunc {
 				return
 			}
 
+			// ▼▼▼【ここから修正】13桁の伝票番号を生成 ▼▼▼
+			newSeq := lastSeq + lineCounter // 連番を計算 (i ではなく lineCounter を使用)
+			receiptNumber := fmt.Sprintf("%s%05d", prefix, newSeq)
+			// ▲▲▲【修正ここまで】▲▲▲
+
 			// 5b.transaction_records に棚卸明細(flag=0)を登録
 			// (期限・ロットは不明のため、代表マスターのJANで合計行を1行だけ登録)
 			tr := model.TransactionRecord{
 				TransactionDate: date,
 				Flag:            0,
-				ReceiptNumber:   fmt.Sprintf("%s-%d", receiptNumber, lineCounter),
-				LineNumber:      "1",
-				JanCode:         master.ProductCode,
-				JanQuantity:     janQty,
-				YjQuantity:      yjQty,
-				UnitPrice:       master.NhiPrice,
-				Subtotal:        yjQty * master.NhiPrice,
-				ExpiryDate:      "", // 期限不明
-				LotNumber:       "", // ロット不明
+				// ▼▼▼【修正】ハイフン連結をやめ、生成した13桁の番号を使用 ▼▼▼
+				ReceiptNumber: receiptNumber,
+				// ▲▲▲【修正ここまで】▲▲▲
+				LineNumber:  "1",
+				JanCode:     master.ProductCode,
+				JanQuantity: janQty,
+				YjQuantity:  yjQty,
+				UnitPrice:   master.NhiPrice,
+				Subtotal:    yjQty * master.NhiPrice,
+				ExpiryDate:  "", // 期限不明
+				LotNumber:   "", // ロット不明
 			}
 			mappers.MapMasterToTransaction(&tr, master)
 
@@ -6976,56 +7068,31 @@ func ImportAllMastersHandler(db *sqlx.DB) http.HandlerFunc {
 
 			var input model.ProductMasterInput
 
+			// 1. キーの特定: product_code (JAN) のみで JCSHMS を検索
 			jcshmsInfo, _ := database.GetJcshmsInfoByJan(tx, productCode)
-			if jcshmsInfo == nil {
-				gs1Code := get("gs1_code")
-				if gs1Code != "" {
-					jcshmsInfo, _ = database.GetJcshmsInfoByGs1Code(tx, gs1Code)
-				}
-			}
+			// (gs1_code での再検索は行わない)
 
-			// JCSHMS情報が見つかった場合の処理
+			// 2. ベースデータの決定
 			if jcshmsInfo != nil {
-
-				// JCSHMSの情報をベースに初期化 (YJコードの有無は問わない)
+				// 2A. JCSHMSに情報が見つかった場合
 				input = mastermanager.JcshmsToProductMasterInput(jcshmsInfo)
-
-				// YJコードがない場合、OriginをPROVISIONALに上書き (お客様の指示)
-				if jcshmsInfo.YjCode == "" {
-					log.Printf("WARN: Master import found JCSHMS for %s but YJ_CODE is empty. Overriding origin to PROVISIONAL.", productCode)
-					input.Origin = "PROVISIONAL"
-				}
+				input.Origin = "JCSHMS" // JcshmsToProductMasterInput が設定するが、明示的に "JCSHMS" を維持
 
 			} else {
-				// JCSHMSに情報がない場合、すべてCSVデータから初期化（Origin: PROVISIONAL）
-
+				// 2B. JCSHMSに情報が見つからなかった場合
 				csvProductName := get("product_name")
 				dbProductName := csvProductName
-
-				// JCSHMSがない場合の KanaNameShort のフォールバック
-				csvKanaNameShort := get("kana_name_short")
-				if csvKanaNameShort == "" {
-					// DAT/USAGE経路と一貫させるため、製品名を使用
-					csvKanaNameShort = csvProductName
-				}
-
 				if !strings.HasPrefix(csvProductName, "◆") {
 					dbProductName = "◆" + csvProductName
 				}
 
-				// YJコードはCSVの値を無視し、強制的に空 ("") で初期化 (自動採番を確実にするため)
-				csvYjCode := get("yj_code")
-				if csvYjCode != "" {
-					log.Printf("WARN: Master import ignored CSV YJ_CODE ('%s') for PROVISIONAL item %s.", csvYjCode, productCode)
-				}
-
 				input = model.ProductMasterInput{
-					ProductCode:         productCode,
-					YjCode:              "", // ★ 修正: CSVの値を無視し、強制的に "" にする
-					Gs1Code:             get("gs1_code"),
-					ProductName:         dbProductName,
-					KanaName:            get("kana_name"),
-					KanaNameShort:       csvKanaNameShort,
+					ProductCode: productCode,
+					YjCode:      "", // 3B で自動採番するため、ここでは空
+					Gs1Code:     get("gs1_code"),
+					ProductName: dbProductName,
+					KanaName:    get("kana_name"),
+					// KanaNameShort: 4B で設定
 					GenericName:         get("generic_name"),
 					MakerName:           get("maker_name"),
 					Specification:       get("specification"),
@@ -7047,8 +7114,62 @@ func ImportAllMastersHandler(db *sqlx.DB) http.HandlerFunc {
 				}
 			}
 
-			// 2. CSVのユーザー設定項目で上書き (JCSHMS由来かどうかにかかわらず)
-			// ★★★ 顧客設定項目は全てCSVが優先される ★★★
+			// 3. YJコードの処理 (CSVのYJは無視)
+			if jcshmsInfo != nil {
+				// 3A. JCSHMS由来の場合
+				if jcshmsInfo.YjCode == "" {
+					// JCSHMS由来だがYJなし (JC009が空)
+					newYj, seqErr := database.NextSequenceInTx(tx, "MA2Y", "MA2Y", 8)
+					if seqErr != nil {
+						log.Printf("ERROR: YJコード自動採番失敗 (JCSHMS/YJ無/ProductCode: %s): %v. Rolling back...", productCode, seqErr)
+						http.Error(w, "YJコードの自動採番に失敗しました: "+seqErr.Error(), http.StatusInternalServerError)
+						return
+					}
+					input.YjCode = newYj
+					// input.Origin は "JCSHMS" のまま
+					log.Printf("INFO: Master import (JCSHMS item %s) had no YJ. Assigned MA2Y: %s. Origin remains JCSHMS.", productCode, newYj)
+				}
+				// else (jcshmsInfo.YjCode != ""):
+				// JcshmsToProductMasterInput で input.YjCode に設定済みなので何もしない
+			} else {
+				// 3B. JCSHMSになかった場合 (PROVISIONAL)
+				// CSVのyj_codeは無視し、強制的に自動採番
+				csvYjCode := get("yj_code")
+				if csvYjCode != "" {
+					log.Printf("WARN: Master import ignored CSV YJ_CODE ('%s') for PROVISIONAL item %s.", csvYjCode, productCode)
+				}
+
+				newYj, seqErr := database.NextSequenceInTx(tx, "MA2Y", "MA2Y", 8)
+				if seqErr != nil {
+					log.Printf("ERROR: YJコード自動採番失敗 (PROVISIONAL/ProductCode: %s): %v. Rolling back...", productCode, seqErr)
+					http.Error(w, "YJコードの自動採番に失敗しました: "+seqErr.Error(), http.StatusInternalServerError)
+					return
+				}
+				input.YjCode = newYj
+			}
+
+			// 4. カナ名短縮 (JC019) の処理
+			csvKanaNameShort := get("kana_name_short")
+
+			if jcshmsInfo != nil {
+				// 4A. JCSHMS由来の場合
+				// (input.KanaNameShort には JcshmsToProductMasterInput によって JC019 が入っている)
+				if input.KanaNameShort == "" {
+					// JCSHMS(JC019)が空だった場合のみ、CSVの値をフォールバックとして使用
+					input.KanaNameShort = csvKanaNameShort
+					// (CSVも空なら input.KanaNameShort は "" のまま)
+				}
+			} else {
+				// 4B. JCSHMSになかった場合 (PROVISIONAL)
+				if csvKanaNameShort != "" {
+					input.KanaNameShort = csvKanaNameShort
+				} else {
+					// CSVも空なら、CSVの製品名(◆なし)をフォールバック
+					input.KanaNameShort = get("product_name")
+				}
+			}
+
+			// 5. ユーザー設定項目の上書き (JCSHMS由来かどうかにかかわらず、CSVの値を優先)
 			input.PurchasePrice = getFloat("purchase_price")
 			input.IsOrderStopped = getInt("is_order_stopped")
 			input.SupplierWholesale = get("supplier_wholesale")
@@ -7057,34 +7178,7 @@ func ImportAllMastersHandler(db *sqlx.DB) http.HandlerFunc {
 			input.Category = get("category")
 			input.UserNotes = get("user_notes")
 
-			// 3. JCSHMS由来でYJコードが空の場合も、カナ名短縮はJCSHMSの値を優先する
-			if jcshmsInfo != nil {
-				// JCSHMSから取得した KanaNameShort (JC019) が input.KanaNameShort に入っていることを利用し、
-				// JCSHMSの Origin の値によってのみ、CSVの値を上書きするかどうかを制御する
-
-				// JCSHMS由来 (Origin=JCSHMS) のマスタが、なぜか KanaNameShort が空の場合、CSVの値を補完する
-				if input.Origin == "JCSHMS" && input.KanaNameShort == "" {
-					csvKanaNameShort := get("kana_name_short")
-					if csvKanaNameShort != "" {
-						input.KanaNameShort = csvKanaNameShort
-					} else {
-						// JCSHMS/CSV両方空の場合、DATと同様に製品名にフォールバック
-						input.KanaNameShort = get("product_name")
-					}
-				}
-			}
-
-			// 4. YJコードが空の場合、MA2Yを採番するロジック (JCSHMSのYJコードが空の場合も、ここでMA2Yが割り当てられる)
-			if input.YjCode == "" {
-				newYj, seqErr := database.NextSequenceInTx(tx, "MA2Y", "MA2Y", 8)
-				if seqErr != nil {
-					log.Printf("ERROR: YJコード自動採番失敗 (ProductCode: %s): %v. Rolling back...", productCode, seqErr)
-					http.Error(w, "YJコードの自動採番に失敗しました: "+seqErr.Error(), http.StatusInternalServerError)
-					return
-				}
-				input.YjCode = newYj
-			}
-
+			// 6. データベースへ保存
 			if _, err := mastermanager.UpsertProductMasterSqlx(tx, input); err != nil {
 				errors = append(errors, fmt.Sprintf("行 %s: DB登録失敗: %v", productCode, err))
 				continue

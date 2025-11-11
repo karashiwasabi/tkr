@@ -2,6 +2,7 @@
 package masteredit
 
 import (
+	"database/sql" // sql をインポート
 	"encoding/json"
 	"fmt" // 変更
 	"log"
@@ -74,6 +75,7 @@ func renderMasterListHTML(masters []model.ProductMaster, statusMessage string) s
           
    
 
+
             <th class="col-product">製品名</th>
             <th class="col-kana">カナ名</th>
             <th class="col-maker">メーカー</th>
@@ -91,7 +93,8 @@ func renderMasterListHTML(masters []model.ProductMaster, statusMessage string) s
 		for _, master := range masters {
 			sb.WriteString(fmt.Sprintf(`<tr data-product-code="%s">`,
 				master.ProductCode))
-			sb.WriteString(fmt.Sprintf(`<td class="center col-action"><button class="edit-master-btn 
+			sb.WriteString(fmt.Sprintf(`<td 
+class="center col-action"><button class="edit-master-btn 
  btn" data-code="%s">編集</button></td>`, master.ProductCode))
 			sb.WriteString(fmt.Sprintf(`<td class="col-yj">%s</td>`, master.YjCode))
 			sb.WriteString(fmt.Sprintf(`<td class="col-gs1">%s</td>`,
@@ -110,7 +113,7 @@ func renderMasterListHTML(masters []model.ProductMaster, statusMessage string) s
 	return sb.String()
 }
 
-// ▼▼▼【ここから修正】UpdateMasterHandler の在庫チェックロジックを削除 ▼▼▼
+// ▼▼▼【ここを修正】UpdateMasterHandler の在庫チェックロジックを削除 ▼▼▼
 func UpdateMasterHandler(db *sqlx.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
@@ -156,19 +159,16 @@ func UpdateMasterHandler(db *sqlx.DB) http.HandlerFunc {
 
 		alertMessage := ""
 
-		// 3. PackageKey が変更されたかチェック
+		// ▼▼▼【ここから修正】コメントアウトと不正な改行を削除 ▼▼▼
 		if oldKey != newKey {
-			// 4. 【条件削除】在庫チェック (GetPackageStockByYjCode) を削除
-
-			// 5. 【条件変更】PackageKeyが変更された場合、無条件でアラートとメモを設定
 			alertMessage = "PackageKeyが変更されました。棚卸（在庫振替）を実施してください。"
 
-			// メモ欄の先頭に追記
 			input.UserNotes = fmt.Sprintf("(自動記録: 旧Key [%s] から在庫振替要) %s", oldKey, input.UserNotes)
 
 			log.Printf("UpdateMasterHandler: PackageKey changed for %s. OldKey [%s] NewKey [%s]. Alert set.",
 				input.ProductCode, oldKey, newKey)
 		}
+		// ▲▲▲【修正ここまで】▲▲▲
 
 		// 6. マスタをDBに保存 (input.UserNotes はアラート発生時に更新されている)
 		if _, err := mastermanager.UpsertProductMasterSqlx(tx, input); err != nil {
@@ -198,3 +198,69 @@ func UpdateMasterHandler(db *sqlx.DB) http.HandlerFunc {
 }
 
 // ▲▲▲【修正ここまで】▲▲▲
+
+// ▼▼▼【ここから追加】(WASABI: masteredit/handler.go より移植) ▼▼▼
+
+type SetOrderStoppedRequest struct {
+	ProductCode string `json:"productCode"`
+	Status      int    `json:"status"` // 0: 発注可, 1: 発注不可
+}
+
+func SetOrderStoppedHandler(conn *sqlx.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var req SetOrderStoppedRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "Invalid request body", http.StatusBadRequest)
+			return
+		}
+		if req.ProductCode == "" {
+			http.Error(w, "productCode is required", http.StatusBadRequest)
+			return
+		}
+
+		tx, err := conn.Beginx() // TKR用に .Beginx() を使用
+		if err != nil {
+			http.Error(w, "Failed to start transaction", http.StatusInternalServerError)
+			return
+		}
+		defer tx.Rollback()
+
+		// TKRの GetProductMasterByCode を使用
+		master, err := database.GetProductMasterByCode(tx, req.ProductCode)
+		if err != nil {
+			// ▼▼▼【修正】エラーハンドリング (sql.ErrNoRows を考慮) ▼▼▼
+			if err == sql.ErrNoRows {
+				http.Error(w, "Product not found", http.StatusNotFound)
+			} else {
+				http.Error(w, "Failed to get product master: "+err.Error(), http.StatusInternalServerError)
+			}
+			// ▲▲▲【修正ここまで】▲▲▲
+			return
+		}
+		if master == nil {
+			http.Error(w, "Product not found", http.StatusNotFound)
+			return
+		}
+
+		// ステータスを更新
+		master.IsOrderStopped = req.Status
+
+		// TKRの mastermanager.MasterToInput を使用
+		input := mastermanager.MasterToInput(master)
+
+		// TKRの UpsertProductMasterSqlx を使用
+		if _, err := mastermanager.UpsertProductMasterSqlx(tx, input); err != nil {
+			http.Error(w, "Failed to update product master", http.StatusInternalServerError)
+			return
+		}
+
+		if err := tx.Commit(); err != nil {
+			http.Error(w, "Failed to commit transaction", http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"message": "更新しました。"})
+	}
+}
+
+// ▲▲▲【追加ここまで】▲▲▲
