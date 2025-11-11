@@ -21,6 +21,42 @@ var ma2jCodeRegex = regexp.MustCompile(`^MA2J[0-9]{9}$`)
 
 func FindOrCreateMaster(tx *sqlx.Tx, productCodeOrKey string, productName string) (*model.ProductMaster, error) {
 
+	// ▼▼▼【ここから修正】0埋めJANまたは空JANの場合、kana_name_short で検索するロジック ▼▼▼
+	if productCodeOrKey == "0000000000000" || productCodeOrKey == "" {
+		if productName != "" {
+			// ▼▼▼【ログ追加】▼▼▼
+			log.Printf("[FindOrCreateMaster] DEBUG: Key is 000.../empty. Attempting search by KanaNameShort: [%s]", productName)
+			// ▲▲▲【ログ追加ここまで】▲▲▲
+			var existingMaster model.ProductMaster
+			// 1. productName (DATの半角カナ) で kana_name_short を検索
+			err := tx.Get(&existingMaster, "SELECT * FROM product_master WHERE kana_name_short = ?", productName)
+
+			if err == nil {
+				// 1a. 見つかった場合
+				// ▼▼▼【ログ修正】▼▼▼
+				log.Printf("[FindOrCreateMaster] DEBUG: Search by KanaNameShort SUCCEEDED. Found existing master (ProductCode: %s, YJ: %s)", existingMaster.ProductCode, existingMaster.YjCode)
+				// ▲▲▲【ログ修正ここまで】▲▲▲
+				return &existingMaster, nil
+			}
+			if err != sql.ErrNoRows {
+				// 1b. DBエラー
+				// ▼▼▼【ログ追加】▼▼▼
+				log.Printf("[FindOrCreateMaster] DEBUG: Search by KanaNameShort FAILED (DB Error): %v", err)
+				// ▲▲▲【ログ追加ここまで】▲▲▲
+				return nil, fmt.Errorf("failed to query product_master by kana_name_short for %s: %w", productName, err)
+			}
+
+			// 1c. 見つからなかった場合 (sql.ErrNoRows)
+			// ▼▼▼【ログ追加】▼▼▼
+			log.Printf("[FindOrCreateMaster] DEBUG: Search by KanaNameShort FAILED (Not Found). Proceeding to create new master.")
+			// ▲▲▲【ログ追加ここまで】▲▲▲
+			log.Printf("Product master not found in DB by KanaNameShort: %s. Creating provisional master...", productName)
+			// そのまま以下の仮マスター作成ロジック（MA2J採番）に進む
+		}
+		// productName も空の場合は、そのまま以下の仮マスター作成ロジックに進む
+	}
+	// ▲▲▲【修正ここまで】▲▲▲
+
 	var existingMaster model.ProductMaster
 	var err error
 
@@ -31,31 +67,48 @@ func FindOrCreateMaster(tx *sqlx.Tx, productCodeOrKey string, productName string
 
 	if isYJKey {
 		query := "SELECT * FROM product_master WHERE yj_code = ?"
+		// ▼▼▼【ログ追加】▼▼▼
+		log.Printf("[FindOrCreateMaster] DEBUG: Attempting search by YJ Code: [%s]", productCodeOrKey)
+		// ▲▲▲【ログ追加ここまで】▲▲▲
 		err = tx.Get(&existingMaster, query, productCodeOrKey)
-		log.Printf("Searching master by YJ Code: %s", productCodeOrKey)
 	} else if isJANKey || isMA2JKey {
 		query := "SELECT * FROM product_master WHERE product_code = ?"
+		// ▼▼▼【ログ追加】▼▼▼
+		log.Printf("[FindOrCreateMaster] DEBUG: Attempting search by JAN/MA2J Code (Product Code): [%s]", productCodeOrKey)
+		// ▲▲▲【ログ追加ここまで】▲▲▲
 		err = tx.Get(&existingMaster, query, productCodeOrKey)
-		log.Printf("Searching master by JAN/MA2J Code (Product Code): %s", productCodeOrKey)
 	} else if isGS1Key {
 		query := "SELECT * FROM product_master WHERE gs1_code = ?"
+		// ▼▼▼【ログ追加】▼▼▼
+		log.Printf("[FindOrCreateMaster] DEBUG: Attempting search by GS1 Code (gs1_code): [%s]", productCodeOrKey)
+		// ▲▲▲【ログ追加ここまで】▲▲▲
 		err = tx.Get(&existingMaster, query, productCodeOrKey)
-		log.Printf("Searching master by GS1 Code (gs1_code): %s", productCodeOrKey)
 	} else {
+		// ▼▼▼【修正】0埋めJAN/空JAN以外のキーの場合、product_codeで検索 ▼▼▼
 		query := "SELECT * FROM product_master WHERE product_code = ?"
+		// ▼▼▼【ログ追加】▼▼▼
+		log.Printf("[FindOrCreateMaster] DEBUG: Attempting search by Generic Key (Product Code): [%s]", productCodeOrKey)
+		// ▲▲▲【ログ追加ここまで】▲▲▲
 		err = tx.Get(&existingMaster, query, productCodeOrKey)
-		log.Printf("Searching master by Generic Key (Product Code): %s", productCodeOrKey)
+		// ▲▲▲【修正ここまで】▲▲▲
 	}
 
 	if err == nil {
-		log.Printf("Found existing master in DB (ProductCode: %s, YJ: %s)", existingMaster.ProductCode, existingMaster.YjCode)
+		// ▼▼▼【ログ修正】▼▼▼
+		log.Printf("[FindOrCreateMaster] DEBUG: Search by Key SUCCEEDED. (ProductCode: %s, YJ: %s)", existingMaster.ProductCode, existingMaster.YjCode)
+		// ▲▲▲【ログ修正ここまで】▲▲▲
 		return &existingMaster, nil
 	}
 	if err != sql.ErrNoRows {
+		// ▼▼▼【ログ追加】▼▼▼
+		log.Printf("[FindOrCreateMaster] DEBUG: Search by Key FAILED (DB Error): %v", err)
+		// ▲▲▲【ログ追加ここまで】▲▲▲
 		return nil, fmt.Errorf("failed to query product_master for key %s: %w", productCodeOrKey, err)
 	}
 
-	log.Printf("Product master not found in DB for key: %s. Attempting to create...", productCodeOrKey)
+	// ▼▼▼【ログ修正】▼▼▼
+	log.Printf("[FindOrCreateMaster] DEBUG: Search by Key FAILED (Not Found) for key: %s. Attempting to create...", productCodeOrKey)
+	// ▲▲▲【ログ修正ここまで】▲▲▲
 
 	if (isJANKey || isGS1Key) && !strings.HasPrefix(productCodeOrKey, "999") && productCodeOrKey != "0000000000000" && productCodeOrKey != "" {
 
