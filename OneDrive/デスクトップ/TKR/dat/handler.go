@@ -83,37 +83,29 @@ func UploadDatHandler(db *sqlx.DB) http.HandlerFunc {
 				continue
 			}
 
-			// ▼▼▼【ここから追加】発注残の自動消し込みロジック ▼▼▼
-			// (WASABI: dat/handler.go より移植・TKR用に修正)
 			if len(insertedTransactions) > 0 {
 				var deliveredItems []model.Backorder
 				for _, rec := range insertedTransactions {
-					// 納品(flag=1)の取引のみを消し込み対象とする
 					if rec.Flag == 1 {
 						deliveredItems = append(deliveredItems, model.Backorder{
 							YjCode:          rec.YjCode,
 							PackageForm:     rec.PackageForm,
 							JanPackInnerQty: rec.JanPackInnerQty,
 							YjUnitName:      rec.YjUnitName,
-							YjQuantity:      rec.YjQuantity, // 納品されたYJ数量
+							YjQuantity:      rec.YjQuantity,
 						})
 					}
 				}
 
 				if len(deliveredItems) > 0 {
-					// TKRで移植した ReconcileBackorders は *sqlx.Tx を引数に取る
 					if err := database.ReconcileBackorders(tx, deliveredItems); err != nil {
-						// 消し込みに失敗しても、納品登録自体は完了しているため、エラーログを出力するに留める
 						log.Printf("WARN: Failed to reconcile backorders after DAT import: %v", err)
-						// fileResultにエラーメッセージを追加
 						fileResult["error"] = fmt.Sprintf("納品登録成功、発注残消込失敗: %v", err)
-						// トランザクションはロールバックせず、コミットに進ませる
 					} else {
 						log.Printf("Successfully reconciled %d backorder items for %s.", len(deliveredItems), fileHeader.Filename)
 					}
 				}
 			}
-			// ▲▲▲【追加ここまで】▲▲▲
 
 			if commitErr := tx.Commit(); commitErr != nil {
 				log.Printf("Failed to commit transaction for %s: %v", fileHeader.Filename, commitErr)
@@ -138,13 +130,10 @@ func UploadDatHandler(db *sqlx.DB) http.HandlerFunc {
 	}
 }
 
-// ▼▼▼【ここを修正】キーから `LineNumber` を削除 ▼▼▼
 func removeDatDuplicates(records []model.DatRecord) []model.DatRecord {
 	seen := make(map[string]struct{})
 	var result []model.DatRecord
 	for _, r := range records {
-		// キーを「日付・卸コード・伝票番号・行番号」から
-		// 「日付・卸コード・伝票番号・JANコード・行番号」に変更 (より厳密な重複排除)
 		key := fmt.Sprintf("%s|%s|%s|%s|%s", r.Date, r.ClientCode, r.ReceiptNumber, r.JanCode, r.LineNumber)
 		if _, ok := seen[key]; ok {
 			continue
@@ -155,26 +144,21 @@ func removeDatDuplicates(records []model.DatRecord) []model.DatRecord {
 	return result
 }
 
-// ▲▲▲【修正ここまで】▲▲▲
-
 func ProcessDatRecords(tx *sqlx.Tx, parsedRecords []model.DatRecord) ([]model.TransactionRecord, error) {
 	var insertedTransactions []model.TransactionRecord
 	var insertedCount int = 0
 
 	recordsToProcess := removeDatDuplicates(parsedRecords)
 
-	// ▼▼▼【ここから追加】伝票単位での削除ロジック ▼▼▼
 	if len(recordsToProcess) == 0 {
 		return insertedTransactions, nil
 	}
 
-	// 処理対象の「伝票キー」を収集 (日付 + 卸コード + 伝票番号)
 	receiptKeysToDelete := make(map[string]struct {
 		Date       string
 		ClientCode string
 	})
 	for _, rec := range recordsToProcess {
-		// 納品(1)と返品(2)のみを洗い替え対象とする
 		if rec.Flag == 1 || rec.Flag == 2 {
 			receiptKeysToDelete[rec.ReceiptNumber] = struct {
 				Date       string
@@ -186,17 +170,14 @@ func ProcessDatRecords(tx *sqlx.Tx, parsedRecords []model.DatRecord) ([]model.Tr
 		}
 	}
 
-	// 収集したキーで既存データを削除
 	for receiptNumber, keyInfo := range receiptKeysToDelete {
 		log.Printf("Deleting existing DAT records for Receipt: %s, Date: %s, Client: %s", receiptNumber, keyInfo.Date, keyInfo.ClientCode)
-		// 伝票番号、日付、卸コード、フラグ(1,2)が一致するものを削除
 		const q = `DELETE FROM transaction_records WHERE receipt_number = ? AND transaction_date = ? AND client_code = ? AND flag IN (1, 2)`
 		_, err := tx.Exec(q, receiptNumber, keyInfo.Date, keyInfo.ClientCode)
 		if err != nil {
 			return nil, fmt.Errorf("failed to delete existing DAT records for receipt %s: %w", receiptNumber, err)
 		}
 	}
-	// ▲▲▲【追加ここまで】▲▲▲
 
 	for _, rec := range recordsToProcess {
 		key := rec.JanCode
@@ -211,13 +192,13 @@ func ProcessDatRecords(tx *sqlx.Tx, parsedRecords []model.DatRecord) ([]model.Tr
 				master.ProductCode, master.KanaNameShort, rec.ProductName)
 
 			input := mastermanager.MasterToInput(master)
-			input.KanaNameShort = rec.ProductName // DATの製品名で上書き
+			input.KanaNameShort = rec.ProductName
 
 			updatedMaster, upsertErr := mastermanager.UpsertProductMasterSqlx(tx, input)
 			if upsertErr != nil {
 				return nil, fmt.Errorf("failed to update kana_name_short for existing master %s: %w", master.ProductCode, upsertErr)
 			}
-			*master = *updatedMaster // ポインタが指す中身を更新
+			*master = *updatedMaster
 		}
 
 		transaction := model.TransactionRecord{
@@ -281,23 +262,23 @@ func SearchDatHandler(db *sqlx.DB) http.HandlerFunc {
 		}
 
 		productCode := master.ProductCode
-		var expiryYYMMDD, expiryYYMM, lotNumber string
+
+		// ▼▼▼【ここから修正】YYYYMM と Lot のみを使用する ▼▼▼
+		var expiryYYYYMM, lotNumber string
 		if len(barcodeStr) > 14 {
-			gs1Result,
-				parseErr := barcode.Parse(barcodeStr)
+			gs1Result, parseErr := barcode.Parse(barcodeStr)
 			if parseErr == nil && gs1Result != nil {
-				expiryYYMMDD = gs1Result.ExpiryDate
-				if len(expiryYYMMDD) == 6 {
-					expiryYYMM = expiryYYMMDD[:4]
-				}
+				expiryYYYYMM = gs1Result.ExpiryDate
 				lotNumber = gs1Result.LotNumber
 			}
 		}
 
-		log.Printf("Search criteria: ProductCode(JAN)='%s', Expiry(6)='%s', Expiry(4)='%s', Lot='%s'",
-			productCode, expiryYYMMDD, expiryYYMM, lotNumber)
+		log.Printf("Search criteria: ProductCode(JAN)='%s', Expiry(YYYYMM)='%s', Lot='%s'",
+			productCode, expiryYYYYMM, lotNumber)
 
-		transactions, err := database.SearchTransactions(db, productCode, expiryYYMMDD, expiryYYMM, lotNumber)
+		// Expiry(4) ('2028') を削除
+		transactions, err := database.SearchTransactions(db, productCode, expiryYYYYMM, lotNumber)
+		// ▲▲▲【修正ここまで】▲▲▲
 
 		if err != nil {
 			log.Printf("Error searching transactions: %v", err)

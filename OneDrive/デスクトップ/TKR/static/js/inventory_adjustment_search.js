@@ -1,14 +1,22 @@
+// C:\Users\wasab\OneDrive\デスクトップ\TKR\static\js\inventory_adjustment_search.js
 import { hiraganaToKatakana, parseBarcode, fetchProductMasterByBarcode } from './utils.js';
 import { showModal } from './search_modal.js';
 
-let barcodeInput, searchBtn;
+let searchBtn;
 let view, outputContainer;
 let currentYjCode = null;
 
 async function handleBarcodeScan(e, loadAndRenderDetailsCallback) {
     e.preventDefault();
     
-    const inputValue = barcodeInput.value.trim();
+    // ▼▼▼【ここから修正】グローバル変数(barcodeInput)ではなく、イベント(e)から入力要素を取得 ▼▼▼
+    const currentBarcodeForm = e.target;
+    const currentBarcodeInput = currentBarcodeForm.querySelector('.search-barcode-input'); // フォーム内の入力欄
+    if (!currentBarcodeInput) return;
+
+    const inputValue = currentBarcodeInput.value.trim();
+    // ▲▲▲【修正ここまで】▲▲▲
+    
     if (!inputValue) return;
 
     window.showLoading('製品情報を検索中...');
@@ -16,10 +24,13 @@ async function handleBarcodeScan(e, loadAndRenderDetailsCallback) {
         const productMaster = await fetchProductMasterByBarcode(inputValue);
         
         if (productMaster.yjCode !== currentYjCode) {
+            // YJコードが異なる場合、画面を再描画
             currentYjCode = productMaster.yjCode;
-            await loadAndRenderDetailsCallback(productMaster.yjCode);
+            await loadAndRenderDetailsCallback(productMaster.yjCode); 
             window.showNotification(`品目を切り替えました: ${productMaster.productName}`, 'success');
+        
         } else {
+            // YJコードが同じ場合、既存の画面に入力
             let parsedData = null;
             if (inputValue.length > 14) {
                 try {
@@ -74,11 +85,17 @@ async function handleBarcodeScan(e, loadAndRenderDetailsCallback) {
             }
         }
     } catch (err) {
-        window.showNotification(err.message, 'error');
+        window.showNotification(`エラー: ${err.message}`, 'error');
     } finally {
         window.hideLoading();
-        barcodeInput.value = '';
-        barcodeInput.focus();
+        
+        // ▼▼▼【ここから修正】再描画後も動作するように、IDで入力欄を再取得して操作する ▼▼▼
+        const inputToClear = document.getElementById('ia-barcode-input'); // IDで再取得
+        if (inputToClear) {
+            inputToClear.value = '';
+            inputToClear.focus();
+        }
+        // ▲▲▲【修正ここまで】▲▲▲
     }
 }
 
@@ -141,9 +158,8 @@ export function initSearchForm(loadAndRenderDetailsCallback) {
     view = document.getElementById('inventory-adjustment-view');
     outputContainer = document.getElementById('inventory-adjustment-output');
     searchBtn = document.getElementById('ia-search-btn');
-    barcodeInput = document.getElementById('ia-barcode-input');
+    // barcodeInput = document.getElementById('ia-barcode-input'); // グローバル変数へのキャッシュを削除
     const barcodeForm = document.getElementById('ia-barcode-form');
-
     if (barcodeForm) {
         barcodeForm.addEventListener('submit', (e) => handleBarcodeScan(e, loadAndRenderDetailsCallback));
     }

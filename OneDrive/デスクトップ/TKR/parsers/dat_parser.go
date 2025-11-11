@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"strconv"
+	"strings"   // strings パッケージを追加
 	"tkr/model" // model パッケージをインポート
 
 	"golang.org/x/text/encoding/japanese"
@@ -51,6 +52,29 @@ func parseInt(line []byte, start, end int) int {
 	return i
 }
 
+// ▼▼▼【ここから追加】有効期限を YYYYMM に正規化する関数 ▼▼▼
+func normalizeExpiryDate(rawDate string) string {
+	rawDate = strings.TrimSpace(rawDate)
+	l := len(rawDate)
+
+	switch {
+	case l == 8: // YYYYMMDD (例: 20281231)
+		return rawDate[0:6] // "202812"
+	case l == 6: // YYMMDD (例: 280131)
+		yy := rawDate[0:2]
+		mm := rawDate[2:4]
+		return "20" + yy + mm // "202801"
+	case l == 4: // YYMM (例: 2812)
+		yy := rawDate[0:2]
+		mm := rawDate[2:4]
+		return "20" + yy + mm // "202812"
+	default:
+		return rawDate // 不明な形式はそのまま返す
+	}
+}
+
+// ▲▲▲【追加ここまで】▲▲▲
+
 // ParseDat は、固定長のDATファイルからレコードを抽出し、DatRecord のスライスを返します。
 func ParseDat(r io.Reader) ([]model.DatRecord, error) {
 	// UTF-8へのデコーダーを削除
@@ -94,11 +118,16 @@ func ParseDat(r io.Reader) ([]model.DatRecord, error) {
 
 			datQuantity := parseFloat(lineBytes, 78, 83)
 			unitPrice := parseFloat(lineBytes, 83, 92)
-			subtotal := parseFloat(lineBytes, 92, 101)
+			subtotal := parseFloat(lineBytes, 92,
+				101)
 
 			// 期限とロット (バイト位置)
-			expiryDate := trimSpaceAndGetString(lineBytes, 109, 115)
+			rawExpiryDate := trimSpaceAndGetString(lineBytes, 109, 115)
 			lotNumber := trimSpaceAndGetString(lineBytes, 115, 121)
+
+			// ▼▼▼【ここを修正】正規化関数を呼び出す ▼▼▼
+			expiryDate := normalizeExpiryDate(rawExpiryDate)
+			// ▲▲▲【修正ここまで】▲▲▲
 
 			rec := model.DatRecord{
 				ClientCode:    currentWholesale,
@@ -111,7 +140,7 @@ func ParseDat(r io.Reader) ([]model.DatRecord, error) {
 				DatQuantity:   datQuantity,
 				UnitPrice:     unitPrice,
 				Subtotal:      subtotal,
-				ExpiryDate:    expiryDate,
+				ExpiryDate:    expiryDate, // 正規化後の YYYYMM 形式
 				LotNumber:     lotNumber,
 			}
 			records = append(records, rec)

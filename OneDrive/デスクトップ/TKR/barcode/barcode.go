@@ -84,7 +84,19 @@ func parseAIString(code string) (*Result, error) {
 			if i+8 > length { // AI(2) + Data(6)
 				return nil, fmt.Errorf("AI(17)のデータが不足しています")
 			}
-			result.ExpiryDate = code[i+2 : i+8] // YYMMDD
+
+			// ▼▼▼【ここから修正】YYMMDD を YYYYMM 形式に正規化 ▼▼▼
+			expiryYYMMDD := code[i+2 : i+8] // YYMMDD (例: "280100")
+			if len(expiryYYMMDD) == 6 {
+				yy := expiryYYMMDD[0:2] // "28"
+				mm := expiryYYMMDD[2:4] // "01"
+				// DB保存形式 (YYYYMM) に変換
+				result.ExpiryDate = "20" + yy + mm // "202801"
+			} else {
+				result.ExpiryDate = expiryYYMMDD // 予期せぬ形式の場合はそのまま
+			}
+			// ▲▲▲【修正ここまで】▲▲▲
+
 			i += 8
 			continue
 		}
