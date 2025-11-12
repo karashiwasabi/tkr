@@ -1,0 +1,104 @@
+/* C:\Users\wasab\OneDrive\デスクトップ\TKR\static\css\valuation.css */
+
+/*
+   注: このビューの .filter-container, .form-group, .btn, .data-table,
+   .agg-yj-header, .modal-overlay, .modal-content 等の基本スタイルは、
+   styles.css, table.css, modal.css, search_form_group.css
+   から提供されます。
+*/
+
+/* 印刷ボタンのコンテナ */
+#valuation-print-controls {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    padding: 0 5px 5px 5px;
+    border-bottom: 1px solid #eee;
+    margin-bottom: 10px;
+}
+
+/* 在庫評価出力エリア */
+#valuation-output-container .agg-yj-header {
+    margin-top: 5px; /* グループ間のマージンを縮小 */
+    font-size: 1em;
+    padding: 5px 8px;
+}
+
+/* 評価額表示用の行 */
+#valuation-output-container .item-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 6px 8px;
+    border: 1px solid #ccc;
+    border-top: none;
+    line-height: 1.5;
+    background-color: #fff;
+}
+/* 1行おきに背景色を付ける (TKRの table.css の tbody tr:nth-child(4n) とは異なる) */
+#valuation-output-container .item-row:nth-child(even) {
+    background-color: #f9f9f9;
+}
+
+
+#valuation-output-container .item-row-left {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    gap: 10px;
+}
+
+#valuation-output-container .item-row-left .product-name {
+    font-weight: bold;
+}
+#valuation-output-container .item-row-left .package-spec {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: #333;
+}
+
+/* JCSHMS未登録警告 */
+#valuation-output-container .warning-link {
+    color: red;
+    font-weight: bold;
+    cursor: pointer;
+    text-decoration: underline;
+    font-size: 10px;
+}
+
+#valuation-output-container .item-row-right {
+    white-space: nowrap;
+    text-align: right;
+    padding-left: 20px;
+    font-size: 10px; /* TKRの基本フォントサイズに合わせる */
+}
+
+#valuation-output-container .item-row-right .value-item {
+    display: inline-block;
+    min-width: 150px; /* WASABI より縮小 */
+    text-align: right;
+}
+#valuation-output-container .item-row-right .value-item .value {
+    font-weight: bold;
+    font-size: 1.1em; /* 少し大きく */
+    display: inline-block;
+    min-width: 80px;
+}
+
+
+/* 総合計エリア */
+#valuation-output-container .valuation-grand-total {
+    text-align: right;
+    margin-top: 20px;
+    padding: 10px;
+    border-top: 2px solid #333;
+    font-weight: bold;
+    font-size: 1.1em;
+}
+#valuation-output-container .valuation-grand-total span {
+    margin-left: 20px;
+}

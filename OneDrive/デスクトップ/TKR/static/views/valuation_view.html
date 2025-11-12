@@ -1,0 +1,43 @@
+<div id="valuation-view" class="view">
+    <h1>在庫評価</h1>
+    
+    <div class="filter-container">
+        <fieldset>
+            <legend>集計条件</legend>
+            <div class="search-form-container">
+                <div class="search-filter-row">
+                    <div class="form-group">
+                        <label for="valuation-date">評価基準日:</label>
+                        <input type="date" id="valuation-date" class="search-filter-input" style="width: 150px;">
+                    </div>
+                    <div class="form-group">
+                        <label for="val-kanaName">品名・カナ名 (部分一致):</label>
+                        <input type="text" id="val-kanaName" class="search-filter-input" autocomplete="off">
+                    </div>
+                    <div class="form-group">
+                        <label for="val-dosageForm">剤型:</label>
+                        <select id="val-dosageForm" class="search-filter-input">
+                            <option value="all">すべて</option>
+                            <option value="内">内</option>
+                            <option value="外">外</option>
+                            <option value="歯">歯</option>
+                            <option value="注">注</option>
+                            <option value="機">機</option>
+                            <option value="他">他</option>
+                        </select>
+                    </div>
+                    <button id="run-valuation-btn" class="btn search-submit-button">在庫評価を実行</button>
+                </div>
+            </div>
+        </fieldset>
+    </div>
+
+    <div id="valuation-print-controls" class="buttons-group" style="padding: 5px; justify-content: flex-end;">
+        <button id="export-valuation-csv-btn" class="btn">CSVエクスポート</button>
+    </div>
+
+    <div id="valuation-output-container" class="table-container">
+        <p>評価基準日を指定して「在庫評価を実行」ボタンを押してください。</p>
+    </div>
+
+    </div>

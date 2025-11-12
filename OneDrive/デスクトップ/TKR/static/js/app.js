@@ -10,10 +10,15 @@ import { initInOut, resetInOutView } from './inout.js';
 import { initDeadStockView } from './deadstock.js';
 import { initPrecomp, resetPrecompView } from './precomp.js';
 import { initReorderView, fetchAndRenderReorder } from './reorder.js';
-import { initBackorderView } from './backorder.js'; // backorder.js をインポート
+import { initBackorderView } from './backorder.js';
+// ▼▼▼【ここに追加】▼▼▼
+import { initValuationView } from './valuation.js';
+// ▲▲▲【追加ここまで】▲▲▲
 
 let loadingOverlay, loadingMessage, notificationBox;
-let views, datViewBtn, usageViewBtn, inventoryAdjustmentViewBtn, masterEditViewBtn, configViewBtn, inoutViewBtn, reprocessBtn, deadStockViewBtn, precompViewBtn, reorderViewBtn, backorderViewBtn;
+// ▼▼▼【ここに追加】valuationViewBtn を追加 ▼▼▼
+let views, datViewBtn, usageViewBtn, inventoryAdjustmentViewBtn, masterEditViewBtn, configViewBtn, inoutViewBtn, reprocessBtn, deadStockViewBtn, precompViewBtn, reorderViewBtn, backorderViewBtn, valuationViewBtn;
+// ▲▲▲【追加ここまで】▲▲▲
 const initializedViews = {
     dat: false,
     usage: false,
@@ -24,7 +29,10 @@ const initializedViews = {
     deadstock: false,
     precomp: false,
     reorder: false,
-    backorder: false, // backorder を追加
+    backorder: false,
+    // ▼▼▼【ここに追加】▼▼▼
+    valuation: false,
+    // ▲▲▲【追加ここまで】▲▲▲
 };
 window.showLoading = (message = '処理中...') => {
     if (!loadingOverlay) loadingOverlay = document.getElementById('loading-overlay');
@@ -49,16 +57,13 @@ window.showNotification = (message, type = 'success') => {
     }
 };
 
-// ▼▼▼【ここから修正】イベント発火の順序を変更 ▼▼▼
 function setActiveView(targetId) {
     if (!views) views = document.querySelectorAll('.view');
     
-    // 1. Deactivate all views first
     views.forEach(view => {
         view.classList.remove('active');
     });
 
-    // 2. Initialize the target view if it hasn't been
     switch (targetId) {
         case 'dat-upload-view':
             if (!initializedViews.dat) {
@@ -125,30 +130,35 @@ function setActiveView(targetId) {
         case 'reorder-view':
             if (!initializedViews.reorder) {
                 console.log("Initializing Reorder view...");
-                initReorderView(); // TKRの initReorderView (置き換え後)
+                initReorderView(); 
                 initializedViews.reorder = true;
             }
-            fetchAndRenderReorder(); // TKRの fetchAndRenderReorder (置き換え後)
+            fetchAndRenderReorder(); 
             break;
-        case 'backorder-view': // backorder を追加
+        case 'backorder-view': 
             if (!initializedViews.backorder) {
                 console.log("Initializing Backorder view...");
-                initBackorderView(); // 先に初期化
+                initBackorderView(); 
                 initializedViews.backorder = true;
             }
-            // 'show' event (dispatched below) will trigger data load
             break;
+        // ▼▼▼【ここに追加】▼▼▼
+        case 'valuation-view':
+            if (!initializedViews.valuation) {
+                console.log("Initializing Valuation view...");
+                initValuationView();
+                initializedViews.valuation = true;
+            }
+            break;
+        // ▲▲▲【追加ここまで】▲▲▲
     }
 
-    // 3. Activate the target view and dispatch the 'show' event
     const targetView = document.getElementById(targetId);
     if (targetView) {
         targetView.classList.add('active');
-        // 'show' イベントを発火 (初期化が終わった後に発火)
         targetView.dispatchEvent(new CustomEvent('show'));
     }
 }
-// ▲▲▲【修正ここまで】▲▲▲
 
 async function handleReprocessAll() {
     if (!confirm('全ての取引データを、最新のマスター情報に基づいて再計算します。\nこの処理はデータ量に応じて時間がかかります。\n実行しますか？')) {
@@ -191,7 +201,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     deadStockViewBtn = document.getElementById('deadStockViewBtn');
     precompViewBtn = document.getElementById('precompViewBtn');
     reorderViewBtn = document.getElementById('reorderViewBtn');
-    backorderViewBtn = document.getElementById('backorderViewBtn'); // backorder を追加
+    backorderViewBtn = document.getElementById('backorderViewBtn');
+    // ▼▼▼【ここに追加】▼▼▼
+    valuationViewBtn = document.getElementById('valuationViewBtn');
+    // ▲▲▲【追加ここまで】▲▲▲
  
     await loadMasterData();
 
@@ -229,9 +242,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (reorderViewBtn) {
         reorderViewBtn.addEventListener('click', () => setActiveView('reorder-view'));
     }
-    if (backorderViewBtn) { // backorder を追加
+    if (backorderViewBtn) { 
         backorderViewBtn.addEventListener('click', () => setActiveView('backorder-view'));
     }
+    // ▼▼▼【ここに追加】▼▼▼
+    if (valuationViewBtn) {
+        valuationViewBtn.addEventListener('click', () => setActiveView('valuation-view'));
+    }
+    // ▲▲▲【追加ここまで】▲▲▲
 
     setActiveView('dat-upload-view');
 });

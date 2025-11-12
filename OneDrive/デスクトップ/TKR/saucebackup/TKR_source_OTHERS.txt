@@ -15,12 +15,18 @@ import (
 
 func signedYjQty(flag int, yjQty float64) float64 {
 	switch flag {
+	// ▼▼▼【ここから修正】TKRの入出庫フラグ (11, 12) も考慮 ▼▼▼
 	case 1: // 納品
+		return yjQty
+	case 11: // 入庫
 		return yjQty
 	case 3: // 処方
 		return -yjQty
 	case 2: // 返品
 		return -yjQty
+	case 12: // 出庫
+		return -yjQty
+	// ▲▲▲【修正ここまで】▲▲▲
 	default: // 棚卸(0), その他
 		return 0
 	}
@@ -47,6 +53,13 @@ func GetStockLedger(conn *sqlx.DB, filters model.AggregationFilters) ([]model.St
 	if err != nil {
 		return nil, fmt.Errorf("failed to get pre-compounding totals for aggregation: %w", err)
 	}
+
+	// ▼▼▼【ここから追加】発注残マップの取得 (WASABI: db/aggregation.go より) ▼▼▼
+	backordersMap, err := database.GetAllBackordersMap(conn)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get backorders for aggregation: %w", err)
+	}
+	// ▲▲▲【追加ここまで】▲▲▲
 
 	packageStockMap, err := database.GetPackageStockByYjCode(conn, filters.YjCode) //
 	if err != nil {
@@ -144,9 +157,11 @@ func GetStockLedger(conn *sqlx.DB, filters model.AggregationFilters) ([]model.St
 				if t.Flag == 0 {
 					periodInventorySums[t.TransactionDate] += t.YjQuantity //
 				}
+				// ▼▼▼【ここを修正】TKRの処方フラグ(3)のみで最大使用量を計算 ▼▼▼
 				if t.Flag == 3 && t.YjQuantity > maxUsage {
 					maxUsage = t.YjQuantity
 				}
+				// ▲▲▲【修正ここまで】▲▲▲
 			}
 
 			lastProcessedDate := ""
@@ -158,6 +173,7 @@ func GetStockLedger(conn *sqlx.DB, filters model.AggregationFilters) ([]model.St
 				}
 
 				if t.Flag == 0 {
+					// 棚卸データ(flag=0)は runningBalance に影響を与えない (次のループの開始時に適用される)
 				} else {
 					runningBalance += signedYjQty(t.Flag, t.YjQuantity) //
 				}
@@ -170,8 +186,10 @@ func GetStockLedger(conn *sqlx.DB, filters model.AggregationFilters) ([]model.St
 				runningBalance = inventorySum //
 			}
 
-			backorderQty := 0.0
+			// ▼▼▼【ここから修正】発注残(backorderQty)を考慮 (WASABI: db/aggregation.go より) ▼▼▼
+			backorderQty := backordersMap[key] //
 			effectiveEndingBalance := runningBalance + backorderQty
+			// ▲▲▲【修正ここまで】▲▲▲
 
 			pkg := model.StockLedgerPackageGroup{
 				PackageKey:             key,
@@ -180,7 +198,7 @@ func GetStockLedger(conn *sqlx.DB, filters model.AggregationFilters) ([]model.St
 				Transactions:           transactionsInPeriod,
 				NetChange:              netChangeInPeriod, //
 				Masters:                mastersInPackageGroup,
-				EffectiveEndingBalance: effectiveEndingBalance,
+				EffectiveEndingBalance: effectiveEndingBalance, // 修正後の値
 				MaxUsage:               maxUsage,
 			}
 
@@ -194,13 +212,18 @@ func GetStockLedger(conn *sqlx.DB, filters model.AggregationFilters) ([]model.St
 			pkg.BaseReorderPoint = maxUsage * filters.Coefficient
 			pkg.PrecompoundedTotal = precompTotalForPackage
 			pkg.ReorderPoint = pkg.BaseReorderPoint + pkg.PrecompoundedTotal
+			// ▼▼▼【ここを修正】発注判定を effectiveEndingBalance (発注残込み) で行う ▼▼▼
 			pkg.IsReorderNeeded = effectiveEndingBalance < pkg.ReorderPoint && pkg.MaxUsage > 0
+			// ▲▲▲【修正ここまで】▲▲▲
 
 			allPackageLedgers = append(allPackageLedgers, pkg)
 		}
 		if len(allPackageLedgers) > 0 { //
 			var yjTotalEnding, yjTotalNetChange, yjTotalStarting float64
 			var yjTotalReorderPoint, yjTotalBaseReorderPoint, yjTotalPrecompounded float64
+			// ▼▼▼【ここに追加】YJグループ全体の発注残込み在庫 (表示用) ▼▼▼
+			var yjTotalEffectiveEnding float64
+			// ▲▲▲【追加ここまで】▲▲▲
 			isYjReorderNeeded := false
 
 			for _, pkg := range allPackageLedgers {
@@ -210,6 +233,9 @@ func GetStockLedger(conn *sqlx.DB, filters model.AggregationFilters) ([]model.St
 				if end, ok := pkg.EndingBalance.(float64); ok { //
 					yjTotalEnding += end
 				}
+				// ▼▼▼【ここに追加】YJグループ全体の発注残込み在庫 (表示用) ▼▼▼
+				yjTotalEffectiveEnding += pkg.EffectiveEndingBalance
+				// ▲▲▲【追加ここまで】▲▲▲
 				yjTotalNetChange += pkg.NetChange
 				yjTotalReorderPoint += pkg.ReorderPoint
 				yjTotalBaseReorderPoint += pkg.BaseReorderPoint
@@ -220,6 +246,11 @@ func GetStockLedger(conn *sqlx.DB, filters model.AggregationFilters) ([]model.St
 			}
 			yjGroup.StartingBalance = yjTotalStarting
 			yjGroup.EndingBalance = yjTotalEnding
+			// ▼▼▼【ここに追加】YJグループ全体の発注残込み在庫 (表示用) ▼▼▼
+			// (model.StockLedgerYJGroup に EffectiveEndingBalance フィールドはないが、
+			// TKRでは ReorderItemView にコピーされるため、計算だけはしておく)
+			// yjGroup.EffectiveEndingBalance = yjTotalEffectiveEnding
+			// ▲▲▲【追加ここまで】▲▲▲
 			yjGroup.NetChange = yjTotalNetChange
 			yjGroup.PackageLedgers = allPackageLedgers
 			yjGroup.TotalReorderPoint = yjTotalReorderPoint
@@ -230,16 +261,18 @@ func GetStockLedger(conn *sqlx.DB, filters model.AggregationFilters) ([]model.St
 		}
 	}
 	sort.Slice(result, func(i, j int) bool { //
-		prio := map[string]int{"内": 1, "外": 2, "注": 3, "他": 4}
+		// ▼▼▼【ここを修正】TKRの剤型順序に合わせる ▼▼▼
+		prio := map[string]int{"内": 1, "外": 2, "歯": 3, "注": 4, "機": 5, "他": 6}
+		// ▲▲▲【修正ここまで】▲▲▲
 		masterI := mastersByYjCode[result[i].YjCode][0]
 		masterJ := mastersByYjCode[result[j].YjCode][0]
 		prioI, okI := prio[strings.TrimSpace(masterI.UsageClassification)]
 		if !okI {
-			prioI = 5
+			prioI = 7 //
 		}
 		prioJ, okJ := prio[strings.TrimSpace(masterJ.UsageClassification)]
 		if !okJ {
-			prioJ = 5
+			prioJ = 7 //
 		}
 		if prioI != prioJ {
 			return prioI < prioJ
@@ -377,6 +410,154 @@ func getTransactionsByProductCodes(conn *sqlx.DB, productCodes []string) (map[st
 }
 
 
+----- C:\Users\wasab\OneDrive\デスクトップ\TKR\backorder\handler.go -----
+// C:\Users\wasab\OneDrive\デスクトップ\TKR\backorder\handler.go
+package backorder
+
+import (
+	"encoding/json"
+	"fmt" // TKRはlogの代わりにfmtを使うことが多い
+	"net/http"
+	"tkr/database" // TKRのdatabase
+	"tkr/mappers"  // TKRのmappers
+	"tkr/model"    // TKRのmodel
+
+	"github.com/jmoiron/sqlx"
+)
+
+// BackorderView は発注残データを画面表示用に整形します。
+// (WASABI: backorder/handler.go より)
+type BackorderView struct {
+	model.Backorder
+	FormattedPackageSpec string `json:"formattedPackageSpec"`
+}
+
+/**
+ * @brief 全ての発注残リストを取得し、画面表示用に整形して返すためのHTTPハンドラです。
+ * (WASABI: backorder/handler.go を TKR 用に修正)
+ */
+func GetBackordersHandler(conn *sqlx.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		// TKRのDB関数を呼ぶ
+		backorders, err := database.GetAllBackordersList(conn)
+		if err != nil {
+			http.Error(w, "Failed to get backorder list", http.StatusInternalServerError)
+			return
+		}
+
+		backorderViews := make([]BackorderView, 0, len(backorders))
+		for _, bo := range backorders {
+			// TKRの JcshmsInfo 構造体（units.FormatPackageSpec が要求する型）に合わせる
+			// TKRの mappers.ToProductMasterView が TKRの JcshmsInfo 形式のラッパーを使っている
+			// TKRの mappers/view.go を参考に、model.ProductMaster を一時的に作成
+			tempMaster := model.ProductMaster{
+				PackageForm:     bo.PackageForm,
+				YjUnitName:      bo.YjUnitName,
+				YjPackUnitQty:   bo.YjPackUnitQty,
+				JanPackInnerQty: bo.JanPackInnerQty,
+				JanPackUnitQty:  bo.JanPackUnitQty,
+				JanUnitCode:     bo.JanUnitCode,
+			}
+
+			// TKRの ToProductMasterView を使って包装仕様を取得
+			// (この関数は内部で TKRの units.FormatPackageSpec を呼んでいる)
+			view := mappers.ToProductMasterView(&tempMaster)
+
+			backorderViews = append(backorderViews, BackorderView{
+				Backorder:            bo,
+				FormattedPackageSpec: view.FormattedPackageSpec, // TKRのマッパーが生成した包装仕様
+			})
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(backorderViews)
+	}
+}
+
+/**
+ * @brief 単一の発注残レコードを削除するためのHTTPハンドラです。
+ * (WASABI: backorder/handler.go を TKR 用に修正)
+ */
+func DeleteBackorderHandler(conn *sqlx.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var payload struct {
+			ID int `json:"id"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			http.Error(w, "Invalid request body", http.StatusBadRequest)
+			return
+		}
+
+		tx, err := conn.Beginx()
+		if err != nil {
+			http.Error(w, "Failed to start transaction", http.StatusInternalServerError)
+			return
+		}
+		defer tx.Rollback()
+
+		// TKRのDB関数を呼ぶ
+		if err := database.DeleteBackorderInTx(tx, payload.ID); err != nil {
+			http.Error(w, "Failed to delete backorder: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		if err := tx.Commit(); err != nil {
+			http.Error(w, "Failed to commit transaction", http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"message": "発注残を削除しました。"})
+	}
+}
+
+/**
+ * @brief 複数の発注残レコードを一括で削除するためのHTTPハンドラです。
+ * (WASABI: backorder/handler.go を TKR 用に修正)
+ */
+func BulkDeleteBackordersHandler(conn *sqlx.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var payload []struct {
+			ID int `json:"id"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			http.Error(w, "Invalid request body", http.StatusBadRequest)
+			return
+		}
+
+		if len(payload) == 0 {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]string{"message": "削除する項目がありません。"})
+			return
+		}
+
+		tx, err := conn.Beginx()
+		if err != nil {
+			http.Error(w, "Failed to start transaction", http.StatusInternalServerError)
+			return
+		}
+		defer tx.Rollback()
+
+		for _, bo := range payload {
+			// TKRのDB関数を呼ぶ
+			if err := database.DeleteBackorderInTx(tx, bo.ID); err != nil {
+				// 1件でも失敗したらエラーを返し、トランザクション全体をロールバック
+				http.Error(w, fmt.Sprintf("Failed to delete backorder (ID: %d): %s", bo.ID, err.Error()), http.StatusInternalServerError)
+				return
+			}
+		}
+
+		if err := tx.Commit(); err != nil {
+			http.Error(w, "Failed to commit transaction", http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"message": "選択された発注残を削除しました。"})
+	}
+}
+
+
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\barcode\barcode.go -----
 // C:\Users\wasab\OneDrive\デスクトップ\TKR\barcode\barcode.go
 package barcode
@@ -464,7 +645,19 @@ func parseAIString(code string) (*Result, error) {
 			if i+8 > length { // AI(2) + Data(6)
 				return nil, fmt.Errorf("AI(17)のデータが不足しています")
 			}
-			result.ExpiryDate = code[i+2 : i+8] // YYMMDD
+
+			// ▼▼▼【ここから修正】YYMMDD を YYYYMM 形式に正規化 ▼▼▼
+			expiryYYMMDD := code[i+2 : i+8] // YYMMDD (例: "280100")
+			if len(expiryYYMMDD) == 6 {
+				yy := expiryYYMMDD[0:2] // "28"
+				mm := expiryYYMMDD[2:4] // "01"
+				// DB保存形式 (YYYYMM) に変換
+				result.ExpiryDate = "20" + yy + mm // "202801"
+			} else {
+				result.ExpiryDate = expiryYYMMDD // 予期せぬ形式の場合はそのまま
+			}
+			// ▲▲▲【修正ここまで】▲▲▲
+
 			i += 8
 			continue
 		}
@@ -608,6 +801,7 @@ func GetConfig() Config {
 
 
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\dat\handler.go -----
+// C:\Users\wasab\OneDrive\デスクトップ\TKR\dat\handler.go
 package dat
 
 import (
@@ -692,6 +886,30 @@ func UploadDatHandler(db *sqlx.DB) http.HandlerFunc {
 				continue
 			}
 
+			if len(insertedTransactions) > 0 {
+				var deliveredItems []model.Backorder
+				for _, rec := range insertedTransactions {
+					if rec.Flag == 1 {
+						deliveredItems = append(deliveredItems, model.Backorder{
+							YjCode:          rec.YjCode,
+							PackageForm:     rec.PackageForm,
+							JanPackInnerQty: rec.JanPackInnerQty,
+							YjUnitName:      rec.YjUnitName,
+							YjQuantity:      rec.YjQuantity,
+						})
+					}
+				}
+
+				if len(deliveredItems) > 0 {
+					if err := database.ReconcileBackorders(tx, deliveredItems); err != nil {
+						log.Printf("WARN: Failed to reconcile backorders after DAT import: %v", err)
+						fileResult["error"] = fmt.Sprintf("納品登録成功、発注残消込失敗: %v", err)
+					} else {
+						log.Printf("Successfully reconciled %d backorder items for %s.", len(deliveredItems), fileHeader.Filename)
+					}
+				}
+			}
+
 			if commitErr := tx.Commit(); commitErr != nil {
 				log.Printf("Failed to commit transaction for %s: %v", fileHeader.Filename, commitErr)
 				fileResult["error"] = fmt.Sprintf("Failed to commit transaction: %v", commitErr)
@@ -715,13 +933,10 @@ func UploadDatHandler(db *sqlx.DB) http.HandlerFunc {
 	}
 }
 
-// ▼▼▼【ここを修正】キーから `LineNumber` を削除 ▼▼▼
 func removeDatDuplicates(records []model.DatRecord) []model.DatRecord {
 	seen := make(map[string]struct{})
 	var result []model.DatRecord
 	for _, r := range records {
-		// キーを「日付・卸コード・伝票番号・行番号」から
-		// 「日付・卸コード・伝票番号・JANコード・行番号」に変更 (より厳密な重複排除)
 		key := fmt.Sprintf("%s|%s|%s|%s|%s", r.Date, r.ClientCode, r.ReceiptNumber, r.JanCode, r.LineNumber)
 		if _, ok := seen[key]; ok {
 			continue
@@ -732,26 +947,21 @@ func removeDatDuplicates(records []model.DatRecord) []model.DatRecord {
 	return result
 }
 
-// ▲▲▲【修正ここまで】▲▲▲
-
 func ProcessDatRecords(tx *sqlx.Tx, parsedRecords []model.DatRecord) ([]model.TransactionRecord, error) {
 	var insertedTransactions []model.TransactionRecord
 	var insertedCount int = 0
 
 	recordsToProcess := removeDatDuplicates(parsedRecords)
 
-	// ▼▼▼【ここから追加】伝票単位での削除ロジック ▼▼▼
 	if len(recordsToProcess) == 0 {
 		return insertedTransactions, nil
 	}
 
-	// 処理対象の「伝票キー」を収集 (日付 + 卸コード + 伝票番号)
 	receiptKeysToDelete := make(map[string]struct {
 		Date       string
 		ClientCode string
 	})
 	for _, rec := range recordsToProcess {
-		// 納品(1)と返品(2)のみを洗い替え対象とする
 		if rec.Flag == 1 || rec.Flag == 2 {
 			receiptKeysToDelete[rec.ReceiptNumber] = struct {
 				Date       string
@@ -763,17 +973,14 @@ func ProcessDatRecords(tx *sqlx.Tx, parsedRecords []model.DatRecord) ([]model.Tr
 		}
 	}
 
-	// 収集したキーで既存データを削除
 	for receiptNumber, keyInfo := range receiptKeysToDelete {
 		log.Printf("Deleting existing DAT records for Receipt: %s, Date: %s, Client: %s", receiptNumber, keyInfo.Date, keyInfo.ClientCode)
-		// 伝票番号、日付、卸コード、フラグ(1,2)が一致するものを削除
 		const q = `DELETE FROM transaction_records WHERE receipt_number = ? AND transaction_date = ? AND client_code = ? AND flag IN (1, 2)`
 		_, err := tx.Exec(q, receiptNumber, keyInfo.Date, keyInfo.ClientCode)
 		if err != nil {
 			return nil, fmt.Errorf("failed to delete existing DAT records for receipt %s: %w", receiptNumber, err)
 		}
 	}
-	// ▲▲▲【追加ここまで】▲▲▲
 
 	for _, rec := range recordsToProcess {
 		key := rec.JanCode
@@ -788,13 +995,13 @@ func ProcessDatRecords(tx *sqlx.Tx, parsedRecords []model.DatRecord) ([]model.Tr
 				master.ProductCode, master.KanaNameShort, rec.ProductName)
 
 			input := mastermanager.MasterToInput(master)
-			input.KanaNameShort = rec.ProductName // DATの製品名で上書き
+			input.KanaNameShort = rec.ProductName
 
 			updatedMaster, upsertErr := mastermanager.UpsertProductMasterSqlx(tx, input)
 			if upsertErr != nil {
 				return nil, fmt.Errorf("failed to update kana_name_short for existing master %s: %w", master.ProductCode, upsertErr)
 			}
-			*master = *updatedMaster // ポインタが指す中身を更新
+			*master = *updatedMaster
 		}
 
 		transaction := model.TransactionRecord{
@@ -858,23 +1065,23 @@ func SearchDatHandler(db *sqlx.DB) http.HandlerFunc {
 		}
 
 		productCode := master.ProductCode
-		var expiryYYMMDD, expiryYYMM, lotNumber string
+
+		// ▼▼▼【ここから修正】YYYYMM と Lot のみを使用する ▼▼▼
+		var expiryYYYYMM, lotNumber string
 		if len(barcodeStr) > 14 {
-			gs1Result,
-				parseErr := barcode.Parse(barcodeStr)
+			gs1Result, parseErr := barcode.Parse(barcodeStr)
 			if parseErr == nil && gs1Result != nil {
-				expiryYYMMDD = gs1Result.ExpiryDate
-				if len(expiryYYMMDD) == 6 {
-					expiryYYMM = expiryYYMMDD[:4]
-				}
+				expiryYYYYMM = gs1Result.ExpiryDate
 				lotNumber = gs1Result.LotNumber
 			}
 		}
 
-		log.Printf("Search criteria: ProductCode(JAN)='%s', Expiry(6)='%s', Expiry(4)='%s', Lot='%s'",
-			productCode, expiryYYMMDD, expiryYYMM, lotNumber)
+		log.Printf("Search criteria: ProductCode(JAN)='%s', Expiry(YYYYMM)='%s', Lot='%s'",
+			productCode, expiryYYYYMM, lotNumber)
 
-		transactions, err := database.SearchTransactions(db, productCode, expiryYYMMDD, expiryYYMM, lotNumber)
+		// Expiry(4) ('2028') を削除
+		transactions, err := database.SearchTransactions(db, productCode, expiryYYYYMM, lotNumber)
+		// ▲▲▲【修正ここまで】▲▲▲
 
 		if err != nil {
 			log.Printf("Error searching transactions: %v", err)
@@ -894,6 +1101,206 @@ func SearchDatHandler(db *sqlx.DB) http.HandlerFunc {
 
 func OpenFileHeader(fh *multipart.FileHeader) (multipart.File, error) {
 	return fh.Open()
+}
+
+
+----- C:\Users\wasab\OneDrive\デスクトップ\TKR\database\backorders.go -----
+// C:\Users\wasab\OneDrive\デスクトップ\TKR\database\backorders.go
+package database
+
+import (
+	"database/sql"
+	"fmt"
+	"tkr/model" // TKRのモデルを参照
+
+	"github.com/jmoiron/sqlx"
+)
+
+/**
+ * @brief 複数の発注残レコードをトランザクション内で登録します（INSERT）。
+ * [cite_start](WASABI: db/backorders.go [cite: 2446] より移植)
+ */
+func InsertBackordersInTx(tx *sqlx.Tx, backorders []model.Backorder) error {
+	const q = `
+		INSERT INTO backorders (
+			order_date, yj_code, product_name, package_form, jan_pack_inner_qty, 
+			yj_unit_name, order_quantity, remaining_quantity, wholesaler_code,
+			yj_pack_unit_qty, jan_pack_unit_qty, jan_unit_code
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+
+	stmt, err := tx.Prepare(q)
+	if err != nil {
+		return fmt.Errorf("failed to prepare backorder insert statement: %w", err)
+	}
+	defer stmt.Close()
+
+	for _, bo := range backorders {
+		_, err := stmt.Exec(
+			bo.OrderDate, bo.YjCode, bo.ProductName, bo.PackageForm, bo.JanPackInnerQty,
+			bo.YjUnitName, bo.OrderQuantity, bo.RemainingQuantity, bo.WholesalerCode,
+			bo.YjPackUnitQty, bo.JanPackUnitQty, bo.JanUnitCode,
+		)
+		if err != nil {
+			return fmt.Errorf("failed to execute backorder insert for yj %s: %w", bo.YjCode, err)
+		}
+	}
+	return nil
+}
+
+/**
+ * @brief 納品データに基づいて発注残を消し込みます（FIFO: 先入れ先出し）。
+ * [cite_start](WASABI: db/backorders.go [cite: 2447] より移植・TKR用に *sqlx.Tx を使用)
+ */
+func ReconcileBackorders(tx *sqlx.Tx, deliveredItems []model.Backorder) error {
+	for _, item := range deliveredItems {
+		deliveryQty := item.YjQuantity
+
+		rows, err := tx.Query(`
+			SELECT id, remaining_quantity FROM backorders 
+			WHERE yj_code = ? AND package_form = ? AND jan_pack_inner_qty = ? AND yj_unit_name = ?
+			ORDER BY order_date, id`,
+			item.YjCode, item.PackageForm, item.JanPackInnerQty, item.YjUnitName,
+		)
+		if err != nil {
+			return fmt.Errorf("failed to query backorders for reconciliation: %w", err)
+		}
+
+		// デッドロックを避けるため、更新/削除対象のIDを先に収集
+		type updateAction struct {
+			id           int
+			deleteRecord bool
+			newRemaining float64
+		}
+		var actions []updateAction
+
+		for rows.Next() {
+			if deliveryQty <= 0 {
+				break
+			}
+			var id int
+			var remainingQty float64
+			if err := rows.Scan(&id, &remainingQty); err != nil {
+				rows.Close()
+				return fmt.Errorf("failed to scan backorder row: %w", err)
+			}
+
+			if deliveryQty >= remainingQty {
+				// 納品数で発注残が完全にカバーされる場合
+				actions = append(actions, updateAction{id: id, deleteRecord: true})
+				deliveryQty -= remainingQty
+			} else {
+				// 納品数の一部で発注残を減らす場合
+				newRemaining := remainingQty - deliveryQty
+				actions = append(actions, updateAction{id: id, deleteRecord: false, newRemaining: newRemaining})
+				deliveryQty = 0
+			}
+		}
+		rows.Close() // スキャンループの直後にClose
+
+		// 収集したアクションを実行
+		for _, action := range actions {
+			if action.deleteRecord {
+				if _, err := tx.Exec(`DELETE FROM backorders WHERE id = ?`, action.id); err != nil {
+					return fmt.Errorf("failed to delete reconciled backorder id %d: %w", action.id, err)
+				}
+			} else {
+				if _, err := tx.Exec(`UPDATE backorders SET remaining_quantity = ? WHERE id = ?`, action.newRemaining, action.id); err != nil {
+					return fmt.Errorf("failed to update partially reconciled backorder id %d: %w", action.id, err)
+				}
+			}
+		}
+	}
+	return nil
+}
+
+/**
+ * @brief 全ての発注残を、集計で高速に参照できるマップ形式で取得します。
+ * [cite_start](WASABI: db/backorders.go [cite: 2452] より移植・TKR用に DBTX を使用)
+ */
+func GetAllBackordersMap(dbtx DBTX) (map[string]float64, error) {
+	const q = `
+		SELECT yj_code, package_form, jan_pack_inner_qty, yj_unit_name, SUM(remaining_quantity)
+		FROM backorders
+		GROUP BY yj_code, package_form, jan_pack_inner_qty, yj_unit_name`
+	rows, err := dbtx.Query(q)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query all backorders map: %w", err)
+	}
+	defer rows.Close()
+
+	backordersMap := make(map[string]float64)
+	for rows.Next() {
+		var yjCode, packageForm, yjUnitName string
+		var janPackInnerQty, totalRemaining float64
+		if err := rows.Scan(&yjCode, &packageForm, &janPackInnerQty, &yjUnitName, &totalRemaining); err != nil {
+			return nil, err
+		}
+		// TKRの package_key 形式 (YjUnitNameをResolveする)
+		key := fmt.Sprintf("%s|%s|%g|%s", yjCode, packageForm, janPackInnerQty, yjUnitName)
+		backordersMap[key] = totalRemaining
+	}
+	return backordersMap, nil
+}
+
+/**
+ * @brief 全ての発注残を画面表示用のリスト形式で取得します。
+ * [cite_start](WASABI: db/backorders.go [cite: 2453] より移植・TKR用に DBTX を使用)
+ */
+func GetAllBackordersList(dbtx DBTX) ([]model.Backorder, error) {
+	const q = `
+		SELECT
+			id, order_date, yj_code, product_name, package_form, jan_pack_inner_qty, 
+			yj_unit_name, order_quantity, remaining_quantity, wholesaler_code,
+			yj_pack_unit_qty, jan_pack_unit_qty, jan_unit_code
+		FROM backorders
+		ORDER BY order_date, product_name, id
+	`
+	rows, err := dbtx.Query(q)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query all backorders list: %w", err)
+	}
+	defer rows.Close()
+
+	var backorders []model.Backorder
+	for rows.Next() {
+		var bo model.Backorder
+		// wholesalerCode は sql.NullString 型
+		var wholesalerCode sql.NullString
+
+		if err := rows.Scan(
+			&bo.ID, &bo.OrderDate, &bo.YjCode, &bo.ProductName, &bo.PackageForm, &bo.JanPackInnerQty,
+			&bo.YjUnitName, &bo.OrderQuantity, &bo.RemainingQuantity, &wholesalerCode,
+			&bo.YjPackUnitQty, &bo.JanPackUnitQty, &bo.JanUnitCode,
+		); err != nil {
+			return nil, err
+		}
+		// TKRのモデルは sql.NullString を持っていないため、TKRモデルに合わせて変換
+		bo.WholesalerCode = wholesalerCode.String
+
+		backorders = append(backorders, bo)
+	}
+	return backorders, nil
+}
+
+/**
+ * @brief 指定されたIDの発注残レコードをトランザクション内で削除します。
+ * [cite_start](WASABI: db/backorders.go [cite: 2454] より移植・TKR用に *sqlx.Tx を使用)
+ */
+func DeleteBackorderInTx(tx *sqlx.Tx, id int) error {
+	const q = `DELETE FROM backorders WHERE id = ?`
+
+	res, err := tx.Exec(q, id)
+	if err != nil {
+		return fmt.Errorf("failed to delete backorder for id %d: %w", id, err)
+	}
+	rowsAffected, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get rows affected for backorder id %d: %w", id, err)
+	}
+	if rowsAffected == 0 {
+		return fmt.Errorf("no backorder found to delete for id %d", id)
+	}
+	return nil
 }
 
 
@@ -2477,6 +2884,7 @@ import (
 	"database/sql"
 	"fmt"
 
+	// TKRのmodelを使用
 	"github.com/jmoiron/sqlx"
 )
 
@@ -2486,22 +2894,28 @@ func signedYjQty(flag int, yjQty float64) float64 {
 	switch flag {
 	case 1: // 納品
 		return yjQty
+	case 11: // 入庫
+		return yjQty
 	case 3: // 処方
 		return -yjQty
-	default: // 棚卸(0), 返品(2), その他
+	case 2: // 返品
+		return -yjQty
+	case 12: // 出庫
+		return -yjQty
+	default: // 棚卸(0), その他
 		return 0
 	}
 }
 
-// ▼▼▼【修正】[source]タグを文字列の外に移動 ▼▼▼
 // CalculateStockOnDate は指定された製品の、特定の日付時点での理論在庫を計算します。
-// (WASABI: db/stock.go  より移植・TKR用に修正)
+// (WASABI: db/stock.go より移植・TKR用に修正)
 func CalculateStockOnDate(dbtx *sqlx.DB, productCode string, targetDate string) (float64, error) {
 	var latestInventoryDate sql.NullString
 	// 1. 基準日以前の最新の棚卸日を取得
 	err := dbtx.Get(&latestInventoryDate, `
 		SELECT MAX(transaction_date) FROM transaction_records
-		WHERE jan_code = ? AND flag = 0 AND transaction_date <= ?`,
+		WHERE jan_code = ?
+AND flag = 0 AND transaction_date <= ?`,
 		productCode, targetDate)
 	if err != nil && err != sql.ErrNoRows {
 		return 0, fmt.Errorf("failed to get latest inventory date for %s on or before %s: %w", productCode, targetDate, err)
@@ -2510,7 +2924,7 @@ func CalculateStockOnDate(dbtx *sqlx.DB, productCode string, targetDate string) 
 	if latestInventoryDate.Valid && latestInventoryDate.String != "" {
 		// --- 棚卸履歴がある場合の計算 ---
 		var baseStock float64
-		// 1a. 棚卸日の在庫合計を基点とする
+		// 1a.棚卸日の在庫合計を基点とする
 		err := dbtx.Get(&baseStock, `
 			SELECT SUM(yj_quantity) FROM transaction_records
 			WHERE jan_code = ? AND flag = 0 AND transaction_date = ?`,
@@ -2519,18 +2933,20 @@ func CalculateStockOnDate(dbtx *sqlx.DB, productCode string, targetDate string) 
 			return 0, fmt.Errorf("failed to sum inventory for %s on %s: %w", productCode, latestInventoryDate.String, err)
 		}
 
-		// 1b. もし基準日が棚卸日当日なら、棚卸数量のみを返す
+		// 1b.もし基準日が棚卸日当日なら、棚卸数量のみを返す
 		if latestInventoryDate.String == targetDate {
 			return baseStock, nil
 		}
 
-		// 1c. 棚卸日の翌日から基準日までの変動を計算 (flag 1 と 3 のみ考慮)
+		// 1c. 棚卸日の翌日から基準日までの変動を計算 (flag 1, 2, 3, 11, 12 を全て考慮)
 		var netChangeAfterInvDate sql.NullFloat64
+		// ▼▼▼【ここを修正】納品(1), 返品(2), 処方(3), 入庫(11), 出庫(12) を全て含める ▼▼▼
 		err = dbtx.Get(&netChangeAfterInvDate, `
-			SELECT SUM(CASE WHEN flag = 1 THEN yj_quantity WHEN flag = 3 THEN -yj_quantity ELSE 0 END)
+			SELECT SUM(CASE WHEN flag IN (1, 11) THEN yj_quantity WHEN flag IN (2, 3, 12) THEN -yj_quantity ELSE 0 END)
 			FROM transaction_records
-			WHERE jan_code = ? AND flag IN (1, 3) AND transaction_date > ? AND transaction_date <= ?`,
+			WHERE jan_code = ? AND flag IN (1, 2, 3, 11, 12) AND transaction_date > ? AND transaction_date <= ?`,
 			productCode, latestInventoryDate.String, targetDate)
+		// ▲▲▲【修正ここまで】▲▲▲
 		if err != nil && err != sql.ErrNoRows {
 			return 0, fmt.Errorf("failed to calculate net change after inventory date for %s: %w", productCode, err)
 		}
@@ -2540,11 +2956,13 @@ func CalculateStockOnDate(dbtx *sqlx.DB, productCode string, targetDate string) 
 	} else {
 		// --- 棚卸履歴がない場合の計算 ---
 		var totalNetChange sql.NullFloat64
+		// ▼▼▼【ここを修正】納品(1), 返品(2), 処方(3), 入庫(11), 出庫(12) を全て含める ▼▼▼
 		err = dbtx.Get(&totalNetChange, `
-			SELECT SUM(CASE WHEN flag = 1 THEN yj_quantity WHEN flag = 3 THEN -yj_quantity ELSE 0 END)
+			SELECT SUM(CASE WHEN flag IN (1, 11) THEN yj_quantity WHEN flag IN (2, 3, 12) THEN -yj_quantity ELSE 0 END)
 			FROM transaction_records
-			WHERE jan_code = ? AND flag IN (1, 3) AND transaction_date <= ?`,
+			WHERE jan_code = ? AND flag IN (1, 2, 3, 11, 12) AND transaction_date <= ?`,
 			productCode, targetDate)
+		// ▲▲▲【修正ここまで】▲▲▲
 		if err != nil && err != sql.ErrNoRows {
 			return 0, fmt.Errorf("failed to calculate total net change for %s: %w", productCode, err)
 		}
@@ -2552,11 +2970,7 @@ func CalculateStockOnDate(dbtx *sqlx.DB, productCode string, targetDate string) 
 	}
 }
 
-// ▲▲▲【修正ここまで】▲▲▲
-
-// ▼▼▼【修正】[source]タグを文字列の外に移動 ▼▼▼
-// GetAllCurrentStockMap は全製品の現在庫を効率的に計算し、マップで返します。
-// (WASABI: db/stock.go  より移植・TKR用に修正)
+// (GetAllCurrentStockMap は変更なし)
 func GetAllCurrentStockMap(conn *sqlx.DB) (map[string]float64, error) {
 	rows, err := conn.Query(`
 		SELECT jan_code, transaction_date, flag, yj_quantity 
@@ -2624,10 +3038,9 @@ func GetAllCurrentStockMap(conn *sqlx.DB) (map[string]float64, error) {
 	return stockMap, nil
 }
 
-// ▲▲▲【修正ここまで】▲▲▲
-
 
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\database\transaction_records_query.go -----
+// C:\Users\wasab\OneDrive\デスクトップ\TKR\database\transaction_records_query.go
 package database
 
 import (
@@ -2640,7 +3053,8 @@ import (
 )
 
 const TransactionColumns = `
-    id, transaction_date, client_code, receipt_number, line_number, flag,
+    id, transaction_date, client_code, 
+receipt_number, line_number, flag,
     jan_code, yj_code, product_name, kana_name, usage_classification, package_form, package_spec, maker_name,
     dat_quantity, jan_pack_inner_qty, jan_quantity, jan_pack_unit_qty, jan_unit_name, jan_unit_code,
     yj_quantity, yj_pack_unit_qty, yj_unit_name, unit_price, purchase_price, supplier_wholesale,
@@ -2683,7 +3097,8 @@ INSERT OR REPLACE INTO transaction_records (
 :package_spec, :maker_name,
     :dat_quantity, 
 :jan_pack_inner_qty, :jan_quantity, :jan_pack_unit_qty, :jan_unit_name, :jan_unit_code,
-    :yj_quantity, :yj_pack_unit_qty, :yj_unit_name, :unit_price, :purchase_price, :supplier_wholesale,
+   
+ :yj_quantity, :yj_pack_unit_qty, :yj_unit_name, :unit_price, :purchase_price, :supplier_wholesale,
     :subtotal, :tax_amount, :tax_rate, :expiry_date, :lot_number, :flag_poison,
     :flag_deleterious, :flag_narcotic, :flag_psychotropic, :flag_stimulant,
     :flag_stimulant_raw, :process_flag_ma
@@ -2708,7 +3123,8 @@ UPDATE transaction_records SET
    jan_code = 
 :jan_code,
     yj_code = :yj_code,
-    product_name = :product_name,
+   
+ product_name = :product_name,
     kana_name = :kana_name,
     usage_classification = :usage_classification,
     package_form = :package_form,
@@ -2727,7 +3143,8 @@ yj_pack_unit_qty = :yj_pack_unit_qty,
  yj_unit_name = :yj_unit_name,
    
      unit_price = :unit_price,
-    purchase_price = :purchase_price,
+ 
+   purchase_price = :purchase_price,
     supplier_wholesale = :supplier_wholesale,
     subtotal = :subtotal,
     tax_amount = :tax_amount,
@@ -2745,7 +3162,8 @@ WHERE id = :id`
 
 func UpdateFullTransactionInTx(tx *sqlx.Tx, rec *model.TransactionRecord) error {
 	_, err := tx.NamedExec(updateTransactionQuery, rec)
-	if err != nil {
+	if err !=
+		nil {
 		return fmt.Errorf("UpdateFullTransactionInTx failed for ID %d: %w", rec.ID, err)
 	}
 	return nil
@@ -2768,7 +3186,8 @@ func PersistTransactionRecordsInTx(tx *sqlx.Tx, records []model.TransactionRecor
 }
 
 func DeleteUsageTransactionsInDateRange(tx *sqlx.Tx, minDate, maxDate string) error {
-	const q = `DELETE FROM transaction_records WHERE flag = '2' AND transaction_date BETWEEN ? AND ?`
+	const q = `DELETE FROM transaction_records WHERE flag = '2' AND transaction_date BETWEEN ?
+AND ?`
 	_, err := tx.Exec(q, minDate, maxDate)
 	if err != nil {
 		return fmt.Errorf("failed to delete usage transactions in date range: %w", err)
@@ -2810,7 +3229,7 @@ func GetTransactionsByProductCodes(db *sqlx.DB, productCodes []string) (map[stri
 	return transactionsByProductCode, nil
 }
 
-func SearchTransactions(db *sqlx.DB, janCode string, expiryYYMMDD string, expiryYYMM string, lotNumber string) ([]model.TransactionRecord, error) {
+func SearchTransactions(db *sqlx.DB, janCode string, expiryYYYYMM string, lotNumber string) ([]model.TransactionRecord, error) {
 	var records []model.TransactionRecord
 
 	var queryBuilder strings.Builder
@@ -2825,14 +3244,12 @@ func SearchTransactions(db *sqlx.DB, janCode string, expiryYYMMDD string, expiry
 		queryBuilder.WriteString(" AND jan_code = ?")
 		args = append(args, janCode)
 	}
-	if expiryYYMMDD != "" {
-		queryBuilder.WriteString(" AND (expiry_date = ? OR expiry_date = ?)")
-		args = append(args, expiryYYMMDD, expiryYYMMDD[2:])
+
+	if expiryYYYYMM != "" {
+		queryBuilder.WriteString(" AND expiry_date = ?")
+		args = append(args, expiryYYYYMM)
 	}
-	if expiryYYMM != "" {
-		queryBuilder.WriteString(" AND SUBSTR(expiry_date, 1, 6) = ?")
-		args = append(args, expiryYYMM)
-	}
+
 	if lotNumber != "" {
 		queryBuilder.WriteString(" AND lot_number = ?")
 		args = append(args, lotNumber)
@@ -2872,7 +3289,8 @@ func GetReceiptNumbersByDate(db *sqlx.DB, date string, prefix string, clientCode
 
 func GetTransactionsByReceiptNumber(db *sqlx.DB, receiptNumber string) ([]model.TransactionRecord, error) {
 	var records []model.TransactionRecord
-	q := `SELECT ` + TransactionColumns + ` FROM transaction_records WHERE receipt_number = ? ORDER BY line_number`
+	q := `SELECT ` + TransactionColumns + ` FROM transaction_records WHERE receipt_number = ?
+ORDER BY line_number`
 
 	err := db.Select(&records, q, receiptNumber)
 	if err != nil {
@@ -2882,9 +3300,7 @@ func GetTransactionsByReceiptNumber(db *sqlx.DB, receiptNumber string) ([]model.
 }
 
 func DeleteTransactionsByReceiptNumberInTx(tx *sqlx.Tx, receiptNumber string) error {
-	// ▼▼▼【ここを修正】const q := ... を const q = ... に修正 ▼▼▼
 	const q = `DELETE FROM transaction_records WHERE receipt_number = ?`
-	// ▲▲▲【修正ここまで】▲▲▲
 	_, err := tx.Exec(q, receiptNumber)
 	if err != nil {
 		return fmt.Errorf("failed to delete transactions for receipt %s: %w", receiptNumber, err)
@@ -2904,9 +3320,8 @@ func GetLatestInventoryDetailsByYjCode(dbtx DBTX, yjCode string) ([]model.Transa
 		return nil, fmt.Errorf("failed to get latest inventory date from package_stock for %s: %w", yjCode, err)
 	}
 
-	// ▼▼▼【ここを修正】if文の改行を修正 ▼▼▼
-	if !latestInventoryDate.Valid || latestInventoryDate.String == "" {
-		// ▲▲▲【修正ここまで】▲▲▲
+	if !latestInventoryDate.Valid ||
+		latestInventoryDate.String == "" {
 		return []model.TransactionRecord{}, nil
 	}
 
@@ -2914,7 +3329,7 @@ func GetLatestInventoryDetailsByYjCode(dbtx DBTX, yjCode string) ([]model.Transa
 	q := `SELECT ` + TransactionColumns + ` 
 		  FROM transaction_records 
 		  WHERE yj_code = ?
- AND transaction_date = ? 
+AND transaction_date = ? 
 		  AND flag = 0 
 		  ORDER BY jan_code, expiry_date, lot_number`
 
@@ -2933,6 +3348,231 @@ package database
 // model パッケージをインポート
 
 // TODO: 必要に応じて DeleteTransactionByReceiptNumber などの関数もここに追加していきます。
+
+
+----- C:\Users\wasab\OneDrive\デスクトップ\TKR\database\valuation.go -----
+// C:\Users\wasab\OneDrive\デスクトップ\TKR\database\valuation.go
+package database
+
+import (
+	"database/sql"
+	"fmt"
+	"sort"
+	"strings"
+	"tkr/model"
+	"tkr/units"
+
+	"github.com/jmoiron/sqlx"
+)
+
+// ValuationGroup は剤型ごとの在庫評価額の集計結果を保持します。
+// (WASABI: db/valuation.go より移植)
+type ValuationGroup struct {
+	UsageClassification string                     `json:"usageClassification"`
+	DetailRows          []model.ValuationDetailRow `json:"detailRows"`
+	TotalNhiValue       float64                    `json:"totalNhiValue"`
+	TotalPurchaseValue  float64                    `json:"totalPurchaseValue"`
+}
+
+// GetInventoryValuation は、指定された基準日時点での在庫評価レポートを生成します。
+// (WASABI: db/valuation.go を TKR 用に修正)
+func GetInventoryValuation(conn *sqlx.DB, filters model.ValuationFilters) ([]ValuationGroup, error) {
+
+	// 1. フィルタ条件に合致する製品マスターを取得
+	masterQuery := `SELECT ` + SelectColumns + ` FROM product_master WHERE 1=1`
+	var masterArgs []interface{}
+	if filters.KanaName != "" {
+		masterQuery += " AND (kana_name LIKE ? OR product_name LIKE ?)"
+		masterArgs = append(masterArgs, "%"+filters.KanaName+"%", "%"+filters.KanaName+"%")
+	}
+	if filters.UsageClassification != "" && filters.UsageClassification != "all" {
+		masterQuery += " AND usage_classification = ?"
+		masterArgs = append(masterArgs, filters.UsageClassification)
+	}
+
+	allMasters, err := getAllProductMastersFiltered(conn, masterQuery, masterArgs...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get filtered product masters: %w", err)
+	}
+	if len(allMasters) == 0 {
+		return []ValuationGroup{}, nil
+	}
+
+	// 採用済みマスター（JCSHMS由来）を持つYJコードをマップに記録
+	yjHasJcshmsMaster := make(map[string]bool)
+	// JANコードをキーにしたマスターマップ
+	mastersByJanCode := make(map[string]*model.ProductMaster)
+	for _, master := range allMasters {
+		if master.Origin == "JCSHMS" {
+			yjHasJcshmsMaster[master.YjCode] = true
+		}
+		mastersByJanCode[master.ProductCode] = master
+	}
+
+	// TKRの package_key 形式でマスターをグループ化
+	mastersByPackageKey := make(map[string][]*model.ProductMaster)
+	for _, master := range allMasters {
+		key := fmt.Sprintf("%s|%s|%g|%s", master.YjCode, master.PackageForm, master.JanPackInnerQty, units.ResolveName(master.YjUnitName))
+		mastersByPackageKey[key] = append(mastersByPackageKey[key], master)
+	}
+
+	var detailRows []model.ValuationDetailRow
+
+	// 2. 包装キーごとにループ
+	// ▼▼▼【ここから修正】 PackageKey もループ変数で取得 ▼▼▼
+	for key, mastersInPackageGroup := range mastersByPackageKey {
+		// ▲▲▲【修正ここまで】▲▲▲
+		var totalStockForPackage float64
+
+		// 3. 包装グループ内の全JANの在庫を指定日で計算
+		for _, m := range mastersInPackageGroup {
+			// TKRの CalculateStockOnDate を使用
+			stock, err := CalculateStockOnDate(conn, m.ProductCode, filters.Date)
+			if err != nil {
+				return nil, fmt.Errorf("failed to calculate stock on date for product %s: %w", m.ProductCode, err)
+			}
+			totalStockForPackage += stock
+		}
+
+		if totalStockForPackage == 0 {
+			continue // 在庫ゼロの包装はスキップ
+		}
+
+		// 代表マスターを選定 (JCSHMS優先)
+		var repMaster *model.ProductMaster
+		if len(mastersInPackageGroup) > 0 {
+			repMaster = mastersInPackageGroup[0]
+			for _, m := range mastersInPackageGroup {
+				if m.Origin == "JCSHMS" {
+					repMaster = m
+					break
+				}
+			}
+		} else {
+			continue // マスターがいないキーはスキップ
+		}
+
+		// 仮マスター（PROVISIONAL）しか存在しないYJコードの場合、警告フラグ
+		showAlert := false
+		if repMaster.Origin != "JCSHMS" && !yjHasJcshmsMaster[repMaster.YjCode] {
+			showAlert = true
+		}
+
+		// 包装仕様 (TKRの units.FormatPackageSpec が要求する型に合わせる)
+		tempJcshmsInfo := model.JcshmsInfo{
+			PackageForm:     repMaster.PackageForm,
+			YjUnitName:      repMaster.YjUnitName,
+			YjPackUnitQty:   repMaster.YjPackUnitQty,
+			JanPackInnerQty: sql.NullFloat64{Float64: repMaster.JanPackInnerQty, Valid: true},
+			JanPackUnitQty:  sql.NullFloat64{Float64: repMaster.JanPackUnitQty, Valid: true},
+			JanUnitCode:     sql.NullString{String: fmt.Sprintf("%d", repMaster.JanUnitCode), Valid: true},
+		}
+		spec := units.FormatPackageSpec(&tempJcshmsInfo)
+
+		// 4. 評価額を計算
+		unitNhiPrice := repMaster.NhiPrice
+		totalNhiValue := totalStockForPackage * unitNhiPrice
+		packageNhiPrice := unitNhiPrice * repMaster.YjPackUnitQty
+
+		var totalPurchaseValue float64
+		// 仕入単価 (PurchasePrice) は包装単位あたりの価格
+		if repMaster.YjPackUnitQty > 0 {
+			// YJ単位あたりの仕入単価 = 包装単価 / YJ包装数
+			unitPurchasePrice := repMaster.PurchasePrice / repMaster.YjPackUnitQty
+			totalPurchaseValue = totalStockForPackage * unitPurchasePrice
+		}
+
+		detailRows = append(detailRows, model.ValuationDetailRow{
+			YjCode:               repMaster.YjCode,
+			ProductName:          repMaster.ProductName,
+			ProductCode:          repMaster.ProductCode, // 代表JAN
+			PackageSpec:          spec,
+			Stock:                totalStockForPackage, // YJ単位
+			YjUnitName:           units.ResolveName(repMaster.YjUnitName),
+			PackageNhiPrice:      packageNhiPrice,
+			PackagePurchasePrice: repMaster.PurchasePrice,
+			TotalNhiValue:        totalNhiValue,
+			TotalPurchaseValue:   totalPurchaseValue,
+			ShowAlert:            showAlert,
+			// ▼▼▼【ここから追加】CSV出力用の項目を設定 ▼▼▼
+			PackageKey:      key, // ループ変数から PackageKey を設定
+			JanPackInnerQty: repMaster.JanPackInnerQty,
+			// ▲▲▲【追加ここまで】▲▲▲
+		})
+	}
+
+	// 5. 剤型ごとにグループ化
+	resultGroups := make(map[string]*ValuationGroup)
+	for _, row := range detailRows {
+		// 代表JANのマスター情報をマップから取得
+		master, ok := mastersByJanCode[row.ProductCode]
+		if !ok {
+			continue
+		}
+		uc := master.UsageClassification
+		if uc == "" {
+			uc = "他"
+		}
+		group, ok := resultGroups[uc]
+		if !ok {
+			group = &ValuationGroup{UsageClassification: uc}
+			resultGroups[uc] = group
+		}
+		group.DetailRows = append(group.DetailRows, row)
+		group.TotalNhiValue += row.TotalNhiValue
+		group.TotalPurchaseValue += row.TotalPurchaseValue
+	}
+
+	// 6. 最終結果をソート
+	order := map[string]int{"内": 1, "外": 2, "歯": 3, "注": 4, "機": 5, "他": 6}
+	var finalResult []ValuationGroup
+	for _, group := range resultGroups {
+		sort.Slice(group.DetailRows, func(i, j int) bool {
+			// カナ名でソートするためにマスター情報を参照
+			masterI, okI := mastersByJanCode[group.DetailRows[i].ProductCode]
+			masterJ, okJ := mastersByJanCode[group.DetailRows[j].ProductCode]
+			if !okI || !okJ {
+				return group.DetailRows[i].ProductCode < group.DetailRows[j].ProductCode
+			}
+			return masterI.KanaName < masterJ.KanaName
+		})
+		finalResult = append(finalResult, *group)
+	}
+	sort.Slice(finalResult, func(i, j int) bool {
+		prioI, okI := order[strings.TrimSpace(finalResult[i].UsageClassification)]
+		if !okI {
+			prioI = 7
+		}
+		prioJ, okJ := order[strings.TrimSpace(finalResult[j].UsageClassification)]
+		if !okJ {
+			prioJ = 7
+		}
+		return prioI < prioJ
+	})
+
+	return finalResult, nil
+}
+
+// getAllProductMastersFiltered はフィルタ条件に基づいて製品マスターを取得するヘルパー関数です。
+// (WASABI: db/valuation.go より移植)
+func getAllProductMastersFiltered(conn *sqlx.DB, query string, args ...interface{}) ([]*model.ProductMaster, error) {
+	rows, err := conn.Query(query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("GetAllProductMastersFiltered query failed: %w", err)
+	}
+	defer rows.Close()
+
+	var masters []*model.ProductMaster
+	for rows.Next() {
+		// TKRの ScanProductMaster を使用
+		m, err := ScanProductMaster(rows)
+		if err != nil {
+			return nil, err
+		}
+		masters = append(masters, m)
+	}
+	return masters, nil
+}
 
 
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\database\wholesalers.go -----
@@ -4225,6 +4865,7 @@ func ConvertToView(yjGroups []model.StockLedgerYJGroup) []StockLedgerYJGroupView
 package masteredit
 
 import (
+	"database/sql" // sql をインポート
 	"encoding/json"
 	"fmt" // 変更
 	"log"
@@ -4297,6 +4938,7 @@ func renderMasterListHTML(masters []model.ProductMaster, statusMessage string) s
           
    
 
+
             <th class="col-product">製品名</th>
             <th class="col-kana">カナ名</th>
             <th class="col-maker">メーカー</th>
@@ -4314,7 +4956,8 @@ func renderMasterListHTML(masters []model.ProductMaster, statusMessage string) s
 		for _, master := range masters {
 			sb.WriteString(fmt.Sprintf(`<tr data-product-code="%s">`,
 				master.ProductCode))
-			sb.WriteString(fmt.Sprintf(`<td class="center col-action"><button class="edit-master-btn 
+			sb.WriteString(fmt.Sprintf(`<td 
+class="center col-action"><button class="edit-master-btn 
  btn" data-code="%s">編集</button></td>`, master.ProductCode))
 			sb.WriteString(fmt.Sprintf(`<td class="col-yj">%s</td>`, master.YjCode))
 			sb.WriteString(fmt.Sprintf(`<td class="col-gs1">%s</td>`,
@@ -4333,7 +4976,7 @@ func renderMasterListHTML(masters []model.ProductMaster, statusMessage string) s
 	return sb.String()
 }
 
-// ▼▼▼【ここから修正】UpdateMasterHandler の在庫チェックロジックを削除 ▼▼▼
+// ▼▼▼【ここを修正】UpdateMasterHandler の在庫チェックロジックを削除 ▼▼▼
 func UpdateMasterHandler(db *sqlx.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
@@ -4379,19 +5022,16 @@ func UpdateMasterHandler(db *sqlx.DB) http.HandlerFunc {
 
 		alertMessage := ""
 
-		// 3. PackageKey が変更されたかチェック
+		// ▼▼▼【ここから修正】コメントアウトと不正な改行を削除 ▼▼▼
 		if oldKey != newKey {
-			// 4. 【条件削除】在庫チェック (GetPackageStockByYjCode) を削除
-
-			// 5. 【条件変更】PackageKeyが変更された場合、無条件でアラートとメモを設定
 			alertMessage = "PackageKeyが変更されました。棚卸（在庫振替）を実施してください。"
 
-			// メモ欄の先頭に追記
 			input.UserNotes = fmt.Sprintf("(自動記録: 旧Key [%s] から在庫振替要) %s", oldKey, input.UserNotes)
 
 			log.Printf("UpdateMasterHandler: PackageKey changed for %s. OldKey [%s] NewKey [%s]. Alert set.",
 				input.ProductCode, oldKey, newKey)
 		}
+		// ▲▲▲【修正ここまで】▲▲▲
 
 		// 6. マスタをDBに保存 (input.UserNotes はアラート発生時に更新されている)
 		if _, err := mastermanager.UpsertProductMasterSqlx(tx, input); err != nil {
@@ -4422,6 +5062,72 @@ func UpdateMasterHandler(db *sqlx.DB) http.HandlerFunc {
 
 // ▲▲▲【修正ここまで】▲▲▲
 
+// ▼▼▼【ここから追加】(WASABI: masteredit/handler.go より移植) ▼▼▼
+
+type SetOrderStoppedRequest struct {
+	ProductCode string `json:"productCode"`
+	Status      int    `json:"status"` // 0: 発注可, 1: 発注不可
+}
+
+func SetOrderStoppedHandler(conn *sqlx.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var req SetOrderStoppedRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "Invalid request body", http.StatusBadRequest)
+			return
+		}
+		if req.ProductCode == "" {
+			http.Error(w, "productCode is required", http.StatusBadRequest)
+			return
+		}
+
+		tx, err := conn.Beginx() // TKR用に .Beginx() を使用
+		if err != nil {
+			http.Error(w, "Failed to start transaction", http.StatusInternalServerError)
+			return
+		}
+		defer tx.Rollback()
+
+		// TKRの GetProductMasterByCode を使用
+		master, err := database.GetProductMasterByCode(tx, req.ProductCode)
+		if err != nil {
+			// ▼▼▼【修正】エラーハンドリング (sql.ErrNoRows を考慮) ▼▼▼
+			if err == sql.ErrNoRows {
+				http.Error(w, "Product not found", http.StatusNotFound)
+			} else {
+				http.Error(w, "Failed to get product master: "+err.Error(), http.StatusInternalServerError)
+			}
+			// ▲▲▲【修正ここまで】▲▲▲
+			return
+		}
+		if master == nil {
+			http.Error(w, "Product not found", http.StatusNotFound)
+			return
+		}
+
+		// ステータスを更新
+		master.IsOrderStopped = req.Status
+
+		// TKRの mastermanager.MasterToInput を使用
+		input := mastermanager.MasterToInput(master)
+
+		// TKRの UpsertProductMasterSqlx を使用
+		if _, err := mastermanager.UpsertProductMasterSqlx(tx, input); err != nil {
+			http.Error(w, "Failed to update product master", http.StatusInternalServerError)
+			return
+		}
+
+		if err := tx.Commit(); err != nil {
+			http.Error(w, "Failed to commit transaction", http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"message": "更新しました。"})
+	}
+}
+
+// ▲▲▲【追加ここまで】▲▲▲
+
 
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\mastermanager\manager.go -----
 // C:\Users\wasab\OneDrive\デスクトップ\TKR\mastermanager\manager.go
@@ -4430,7 +5136,6 @@ package mastermanager
 import (
 	"database/sql"
 	"fmt"
-	"log"
 	"regexp"
 	"strconv"
 	"strings"
@@ -4447,41 +5152,19 @@ var ma2jCodeRegex = regexp.MustCompile(`^MA2J[0-9]{9}$`)
 
 func FindOrCreateMaster(tx *sqlx.Tx, productCodeOrKey string, productName string) (*model.ProductMaster, error) {
 
-	// ▼▼▼【ここから修正】0埋めJANまたは空JANの場合、kana_name_short で検索するロジック ▼▼▼
 	if productCodeOrKey == "0000000000000" || productCodeOrKey == "" {
 		if productName != "" {
-			// ▼▼▼【ログ追加】▼▼▼
-			log.Printf("[FindOrCreateMaster] DEBUG: Key is 000.../empty. Attempting search by KanaNameShort: [%s]", productName)
-			// ▲▲▲【ログ追加ここまで】▲▲▲
 			var existingMaster model.ProductMaster
-			// 1. productName (DATの半角カナ) で kana_name_short を検索
 			err := tx.Get(&existingMaster, "SELECT * FROM product_master WHERE kana_name_short = ?", productName)
 
 			if err == nil {
-				// 1a. 見つかった場合
-				// ▼▼▼【ログ修正】▼▼▼
-				log.Printf("[FindOrCreateMaster] DEBUG: Search by KanaNameShort SUCCEEDED. Found existing master (ProductCode: %s, YJ: %s)", existingMaster.ProductCode, existingMaster.YjCode)
-				// ▲▲▲【ログ修正ここまで】▲▲▲
 				return &existingMaster, nil
 			}
 			if err != sql.ErrNoRows {
-				// 1b. DBエラー
-				// ▼▼▼【ログ追加】▼▼▼
-				log.Printf("[FindOrCreateMaster] DEBUG: Search by KanaNameShort FAILED (DB Error): %v", err)
-				// ▲▲▲【ログ追加ここまで】▲▲▲
 				return nil, fmt.Errorf("failed to query product_master by kana_name_short for %s: %w", productName, err)
 			}
-
-			// 1c. 見つからなかった場合 (sql.ErrNoRows)
-			// ▼▼▼【ログ追加】▼▼▼
-			log.Printf("[FindOrCreateMaster] DEBUG: Search by KanaNameShort FAILED (Not Found). Proceeding to create new master.")
-			// ▲▲▲【ログ追加ここまで】▲▲▲
-			log.Printf("Product master not found in DB by KanaNameShort: %s. Creating provisional master...", productName)
-			// そのまま以下の仮マスター作成ロジック（MA2J採番）に進む
 		}
-		// productName も空の場合は、そのまま以下の仮マスター作成ロジックに進む
 	}
-	// ▲▲▲【修正ここまで】▲▲▲
 
 	var existingMaster model.ProductMaster
 	var err error
@@ -4493,48 +5176,24 @@ func FindOrCreateMaster(tx *sqlx.Tx, productCodeOrKey string, productName string
 
 	if isYJKey {
 		query := "SELECT * FROM product_master WHERE yj_code = ?"
-		// ▼▼▼【ログ追加】▼▼▼
-		log.Printf("[FindOrCreateMaster] DEBUG: Attempting search by YJ Code: [%s]", productCodeOrKey)
-		// ▲▲▲【ログ追加ここまで】▲▲▲
 		err = tx.Get(&existingMaster, query, productCodeOrKey)
 	} else if isJANKey || isMA2JKey {
 		query := "SELECT * FROM product_master WHERE product_code = ?"
-		// ▼▼▼【ログ追加】▼▼▼
-		log.Printf("[FindOrCreateMaster] DEBUG: Attempting search by JAN/MA2J Code (Product Code): [%s]", productCodeOrKey)
-		// ▲▲▲【ログ追加ここまで】▲▲▲
 		err = tx.Get(&existingMaster, query, productCodeOrKey)
 	} else if isGS1Key {
 		query := "SELECT * FROM product_master WHERE gs1_code = ?"
-		// ▼▼▼【ログ追加】▼▼▼
-		log.Printf("[FindOrCreateMaster] DEBUG: Attempting search by GS1 Code (gs1_code): [%s]", productCodeOrKey)
-		// ▲▲▲【ログ追加ここまで】▲▲▲
 		err = tx.Get(&existingMaster, query, productCodeOrKey)
 	} else {
-		// ▼▼▼【修正】0埋めJAN/空JAN以外のキーの場合、product_codeで検索 ▼▼▼
 		query := "SELECT * FROM product_master WHERE product_code = ?"
-		// ▼▼▼【ログ追加】▼▼▼
-		log.Printf("[FindOrCreateMaster] DEBUG: Attempting search by Generic Key (Product Code): [%s]", productCodeOrKey)
-		// ▲▲▲【ログ追加ここまで】▲▲▲
 		err = tx.Get(&existingMaster, query, productCodeOrKey)
-		// ▲▲▲【修正ここまで】▲▲▲
 	}
 
 	if err == nil {
-		// ▼▼▼【ログ修正】▼▼▼
-		log.Printf("[FindOrCreateMaster] DEBUG: Search by Key SUCCEEDED. (ProductCode: %s, YJ: %s)", existingMaster.ProductCode, existingMaster.YjCode)
-		// ▲▲▲【ログ修正ここまで】▲▲▲
 		return &existingMaster, nil
 	}
 	if err != sql.ErrNoRows {
-		// ▼▼▼【ログ追加】▼▼▼
-		log.Printf("[FindOrCreateMaster] DEBUG: Search by Key FAILED (DB Error): %v", err)
-		// ▲▲▲【ログ追加ここまで】▲▲▲
 		return nil, fmt.Errorf("failed to query product_master for key %s: %w", productCodeOrKey, err)
 	}
-
-	// ▼▼▼【ログ修正】▼▼▼
-	log.Printf("[FindOrCreateMaster] DEBUG: Search by Key FAILED (Not Found) for key: %s. Attempting to create...", productCodeOrKey)
-	// ▲▲▲【ログ修正ここまで】▲▲▲
 
 	if (isJANKey || isGS1Key) && !strings.HasPrefix(productCodeOrKey, "999") && productCodeOrKey != "0000000000000" && productCodeOrKey != "" {
 
@@ -4542,10 +5201,8 @@ func FindOrCreateMaster(tx *sqlx.Tx, productCodeOrKey string, productName string
 		var jcshmsErr error
 
 		if isJANKey {
-			log.Printf("Key %s is JAN format. Searching JCSHMS by JAN...", productCodeOrKey)
 			jcshmsInfo, jcshmsErr = database.GetJcshmsInfoByJan(tx, productCodeOrKey)
 		} else {
-			log.Printf("Key %s is GS1 format. Searching JCSHMS by GS1...", productCodeOrKey)
 			jcshmsInfo, jcshmsErr = database.GetJcshmsInfoByGs1Code(tx, productCodeOrKey)
 		}
 
@@ -4554,7 +5211,6 @@ func FindOrCreateMaster(tx *sqlx.Tx, productCodeOrKey string, productName string
 		}
 
 		if jcshmsInfo != nil {
-			log.Printf("Found info in JCSHMS for key: %s. Creating master...", productCodeOrKey)
 			input := JcshmsToProductMasterInput(jcshmsInfo)
 
 			if isGS1Key && input.Gs1Code == "" {
@@ -4567,19 +5223,15 @@ func FindOrCreateMaster(tx *sqlx.Tx, productCodeOrKey string, productName string
 					return nil, fmt.Errorf("failed to get next MA2Y sequence for JCSHMS master (Key: %s): %w", productCodeOrKey, seqErr)
 				}
 				input.YjCode = newYj
-				log.Printf("Generated new YJ code %s for Key %s from JCSHMS (original was empty)", newYj, productCodeOrKey)
 			}
 
 			newMaster, upsertErr := UpsertProductMasterSqlx(tx, input)
 			if upsertErr != nil {
 				return nil, fmt.Errorf("failed to upsert master from JCSHMS for Key %s: %w", productCodeOrKey, upsertErr)
 			}
-			log.Printf("Successfully created master from JCSHMS for Key: %s (YJ: %s)", productCodeOrKey, newMaster.YjCode)
 			return newMaster, nil
 		}
 	}
-
-	log.Printf("Info not found in JCSHMS for key: %s (or it was not a valid JAN/GS1). Creating provisional master...", productCodeOrKey)
 
 	provisionalYjCode := productCodeOrKey
 	if !isYJKey {
@@ -4597,13 +5249,17 @@ func FindOrCreateMaster(tx *sqlx.Tx, productCodeOrKey string, productName string
 			return nil, fmt.Errorf("failed to get next MA2J sequence for provisional master (Key: %s): %w", productCodeOrKey, seqErr)
 		}
 		provisionalProductCode = newPJCode
-		log.Printf("Original key was not JAN/GS1 or was 0x13 or empty, using synthetic Product Code: %s", provisionalProductCode)
+	}
+
+	dbProductName := productName
+	if !strings.HasPrefix(productName, "◆") {
+		dbProductName = "◆" + productName
 	}
 
 	provisionalInput := model.ProductMasterInput{
 		ProductCode:         provisionalProductCode,
 		YjCode:              provisionalYjCode,
-		ProductName:         productName,
+		ProductName:         dbProductName,
 		Origin:              "PROVISIONAL",
 		UsageClassification: "他",
 	}
@@ -4614,14 +5270,12 @@ func FindOrCreateMaster(tx *sqlx.Tx, productCodeOrKey string, productName string
 
 	if productCodeOrKey == "0000000000000" || productCodeOrKey == "" {
 		provisionalInput.KanaNameShort = productName
-		log.Printf("Setting KanaNameShort for DAT auto-provisional master (key: '%s'): %s", productCodeOrKey, productName)
 	}
 
 	newMaster, upsertErr := UpsertProductMasterSqlx(tx, provisionalInput)
 	if upsertErr != nil {
 		return nil, fmt.Errorf("failed to upsert provisional master (OrigKey: %s): %w", productCodeOrKey, upsertErr)
 	}
-	log.Printf("Successfully created provisional master (OrigKey: %s, ProductCode: %s, YJ: %s)", productCodeOrKey, newMaster.ProductCode, newMaster.YjCode)
 	return newMaster, nil
 }
 
@@ -4714,7 +5368,6 @@ func UpsertProductMasterSqlx(tx *sqlx.Tx, input model.ProductMasterInput) (*mode
 	err = tx.Get(&insertedMaster, "SELECT * FROM product_master WHERE product_code = ?", input.ProductCode)
 
 	if err != nil {
-		log.Printf("ERROR: Upsert successful but failed to re-fetch master for %s: %v", input.ProductCode, err)
 		return nil, fmt.Errorf("failed to re-fetch master after upsert for %s: %w", input.ProductCode, err)
 	}
 
@@ -4778,44 +5431,66 @@ type AggregationFilters struct {
 
 // StockLedgerYJGroup はYJコード単位の集計グループです。
 type StockLedgerYJGroup struct {
-	YjCode          string                    `json:"yjCode"`
-	ProductName     string                    `json:"productName"`
-	YjUnitName      string                    `json:"yjUnitName"`
-	PackageLedgers  []StockLedgerPackageGroup `json:"packageLedgers"`
-	StartingBalance interface{}               `json:"startingBalance"`
-	NetChange       float64                   `json:"netChange"`
-	EndingBalance   interface{}               `json:"endingBalance"`
-	// ▼▼▼【ここから追加】(WASABI: model/types.go  より) ▼▼▼
-	TotalReorderPoint     float64 `json:"totalReorderPoint"`
-	IsReorderNeeded       bool    `json:"isReorderNeeded"`
-	TotalBaseReorderPoint float64 `json:"totalBaseReorderPoint"`
-	TotalPrecompounded    float64 `json:"totalPrecompounded"`
-	// ▲▲▲【追加ここまで】▲▲▲
+	YjCode                string                    `json:"yjCode"`
+	ProductName           string                    `json:"productName"`
+	YjUnitName            string                    `json:"yjUnitName"`
+	PackageLedgers        []StockLedgerPackageGroup `json:"packageLedgers"`
+	StartingBalance       interface{}               `json:"startingBalance"`
+	NetChange             float64                   `json:"netChange"`
+	EndingBalance         interface{}               `json:"endingBalance"`
+	TotalReorderPoint     float64                   `json:"totalReorderPoint"`
+	IsReorderNeeded       bool                      `json:"isReorderNeeded"`
+	TotalBaseReorderPoint float64                   `json:"totalBaseReorderPoint"`
+	TotalPrecompounded    float64                   `json:"totalPrecompounded"`
 }
 
 // StockLedgerPackageGroup は包装キー単位の集計グループです。
 type StockLedgerPackageGroup struct {
-	PackageKey      string              `json:"packageKey"`
-	JanUnitName     string              `json:"janUnitName"`
-	StartingBalance interface{}         `json:"startingBalance"`
-	Transactions    []LedgerTransaction `json:"transactions"`
-	NetChange       float64             `json:"netChange"`
-	EndingBalance   interface{}         `json:"endingBalance"`
-	Masters         []*ProductMaster    `json:"masters"`
-	// ▼▼▼【ここから追加】(WASABI: model/types.go  より) ▼▼▼
-	EffectiveEndingBalance float64 `json:"effectiveEndingBalance"`
-	MaxUsage               float64 `json:"maxUsage"`
-	ReorderPoint           float64 `json:"reorderPoint"`
-	IsReorderNeeded        bool    `json:"isReorderNeeded"`
-	BaseReorderPoint       float64 `json:"baseReorderPoint"`
-	PrecompoundedTotal     float64 `json:"precompoundedTotal"`
-	// ▲▲▲【追加ここまで】▲▲▲
+	PackageKey             string              `json:"packageKey"`
+	JanUnitName            string              `json:"janUnitName"`
+	StartingBalance        interface{}         `json:"startingBalance"`
+	Transactions           []LedgerTransaction `json:"transactions"`
+	NetChange              float64             `json:"netChange"`
+	EndingBalance          interface{}         `json:"endingBalance"`
+	Masters                []*ProductMaster    `json:"masters"`
+	EffectiveEndingBalance float64             `json:"effectiveEndingBalance"`
+	MaxUsage               float64             `json:"maxUsage"`
+	ReorderPoint           float64             `json:"reorderPoint"`
+	IsReorderNeeded        bool                `json:"isReorderNeeded"`
+	BaseReorderPoint       float64             `json:"baseReorderPoint"`
+	PrecompoundedTotal     float64             `json:"precompoundedTotal"`
 }
 
 // LedgerTransaction は台帳表示用の取引記録です。
 type LedgerTransaction struct {
 	TransactionRecord
 	RunningBalance float64 `json:"runningBalance"`
+}
+
+// ValuationFilters は在庫評価の絞り込み条件です。
+type ValuationFilters struct {
+	Date                string
+	KanaName            string
+	UsageClassification string // (JSからは dosageForm として渡される)
+}
+
+// ValuationDetailRow は在庫評価の明細行データです。
+type ValuationDetailRow struct {
+	YjCode               string  `json:"yjCode"`
+	ProductName          string  `json:"productName"`
+	ProductCode          string  `json:"productCode"` // 代表JAN
+	PackageSpec          string  `json:"packageSpec"`
+	Stock                float64 `json:"stock"` // YJ単位
+	YjUnitName           string  `json:"yjUnitName"`
+	PackageNhiPrice      float64 `json:"packageNhiPrice"`
+	PackagePurchasePrice float64 `json:"packagePurchasePrice"`
+	TotalNhiValue        float64 `json:"totalNhiValue"`
+	TotalPurchaseValue   float64 `json:"totalPurchaseValue"`
+	ShowAlert            bool    `json:"showAlert"`
+	// ▼▼▼【ここから追加】CSV出力用に内包装数量を追加 ▼▼▼
+	PackageKey      string  `json:"packageKey"`
+	JanPackInnerQty float64 `json:"janPackInnerQty"`
+	// ▲▲▲【追加ここまで】▲▲▲
 }
 
 
@@ -5000,6 +5675,33 @@ type ProductMasterView struct {
 }
 
 
+----- C:\Users\wasab\OneDrive\デスクトップ\TKR\model\order_types.go -----
+// C:\Users\wasab\OneDrive\デスクトップ\TKR\model\order_types.go
+package model
+
+// Backorder は backorders テーブルのレコードを表します。
+// (WASABI: model/types.go を TKR 用に修正)
+type Backorder struct {
+	ID                int     `db:"id" json:"id"`
+	OrderDate         string  `db:"order_date" json:"orderDate"`
+	YjCode            string  `db:"yj_code" json:"yjCode"`
+	ProductName       string  `db:"product_name" json:"productName"`
+	PackageForm       string  `db:"package_form" json:"packageForm"`
+	JanPackInnerQty   float64 `db:"jan_pack_inner_qty" json:"janPackInnerQty"`
+	YjUnitName        string  `db:"yj_unit_name" json:"yjUnitName"`
+	OrderQuantity     float64 `db:"order_quantity" json:"orderQuantity"`
+	RemainingQuantity float64 `db:"remaining_quantity" json:"remainingQuantity"`
+	// TKRの database/backorders.go に合わせ、*sql.NullString ではなく string を使用
+	WholesalerCode string  `db:"wholesaler_code" json:"wholesalerCode,omitempty"`
+	YjPackUnitQty  float64 `db:"yj_pack_unit_qty" json:"yjPackUnitQty"`
+	JanPackUnitQty float64 `db:"jan_pack_unit_qty" json:"janPackUnitQty"`
+	JanUnitCode    int     `db:"jan_unit_code" json:"janUnitCode"`
+
+	// フロントエンドからの発注データ受け取り用フィールド (DBカラムなし)
+	YjQuantity float64 `json:"yjQuantity,omitempty"`
+}
+
+
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\model\transaction_types.go -----
 // C:\Users\wasab\OneDrive\デスクトップ\TKR\model\transaction_types.go
 package model
@@ -5089,6 +5791,7 @@ import (
 	"fmt"
 	"io"
 	"strconv"
+	"strings"   // strings パッケージを追加
 	"tkr/model" // model パッケージをインポート
 
 	"golang.org/x/text/encoding/japanese"
@@ -5133,6 +5836,29 @@ func parseInt(line []byte, start, end int) int {
 	return i
 }
 
+// ▼▼▼【ここから追加】有効期限を YYYYMM に正規化する関数 ▼▼▼
+func normalizeExpiryDate(rawDate string) string {
+	rawDate = strings.TrimSpace(rawDate)
+	l := len(rawDate)
+
+	switch {
+	case l == 8: // YYYYMMDD (例: 20281231)
+		return rawDate[0:6] // "202812"
+	case l == 6: // YYMMDD (例: 280131)
+		yy := rawDate[0:2]
+		mm := rawDate[2:4]
+		return "20" + yy + mm // "202801"
+	case l == 4: // YYMM (例: 2812)
+		yy := rawDate[0:2]
+		mm := rawDate[2:4]
+		return "20" + yy + mm // "202812"
+	default:
+		return rawDate // 不明な形式はそのまま返す
+	}
+}
+
+// ▲▲▲【追加ここまで】▲▲▲
+
 // ParseDat は、固定長のDATファイルからレコードを抽出し、DatRecord のスライスを返します。
 func ParseDat(r io.Reader) ([]model.DatRecord, error) {
 	// UTF-8へのデコーダーを削除
@@ -5176,11 +5902,16 @@ func ParseDat(r io.Reader) ([]model.DatRecord, error) {
 
 			datQuantity := parseFloat(lineBytes, 78, 83)
 			unitPrice := parseFloat(lineBytes, 83, 92)
-			subtotal := parseFloat(lineBytes, 92, 101)
+			subtotal := parseFloat(lineBytes, 92,
+				101)
 
 			// 期限とロット (バイト位置)
-			expiryDate := trimSpaceAndGetString(lineBytes, 109, 115)
+			rawExpiryDate := trimSpaceAndGetString(lineBytes, 109, 115)
 			lotNumber := trimSpaceAndGetString(lineBytes, 115, 121)
+
+			// ▼▼▼【ここを修正】正規化関数を呼び出す ▼▼▼
+			expiryDate := normalizeExpiryDate(rawExpiryDate)
+			// ▲▲▲【修正ここまで】▲▲▲
 
 			rec := model.DatRecord{
 				ClientCode:    currentWholesale,
@@ -5193,7 +5924,7 @@ func ParseDat(r io.Reader) ([]model.DatRecord, error) {
 				DatQuantity:   datQuantity,
 				UnitPrice:     unitPrice,
 				Subtotal:      subtotal,
-				ExpiryDate:    expiryDate,
+				ExpiryDate:    expiryDate, // 正規化後の YYYYMM 形式
 				LotNumber:     lotNumber,
 			}
 			records = append(records, rec)
@@ -6395,87 +7126,190 @@ func RenderTransactionTableHTML(transactions []model.TransactionRecord, wholesal
 
 
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\reorder\handler.go -----
+// C:\Users\wasab\OneDrive\デスクトップ\TKR\reorder\handler.go
 package reorder
 
 import (
 	"encoding/json"
-	"log"
+	"fmt" // TKRはlogを使う
 	"net/http"
+	"strconv"
 	"time"
-	"tkr/aggregation"
+	"tkr/aggregation" // TKRのaggregation
 	"tkr/config"
+	"tkr/database" // TKRのdatabase
+	"tkr/mappers"  // TKRのmappers
 	"tkr/model"
+	"tkr/units" // ★★★ units をインポート
 
 	"github.com/jmoiron/sqlx"
 )
 
-// ReorderItemView は発注点リストの表示用構造体です
-type ReorderItemView struct {
-	YjCode                 string  `json:"yjCode"`
-	ProductName            string  `json:"productName"`
-	PackageKey             string  `json:"packageKey"`
-	YjUnitName             string  `json:"yjUnitName"`
-	EffectiveEndingBalance float64 `json:"effectiveEndingBalance"` // TKRでは YJ単位
-	ReorderPoint           float64 `json:"reorderPoint"`           // TKRでは YJ単位
-	MaxUsage               float64 `json:"maxUsage"`               // TKRでは YJ単位
-	PrecompoundedTotal     float64 `json:"precompoundedTotal"`     // TKRでは YJ単位
+// OrderCandidatesResponse は発注候補画面のレスポンスです。
+// (WASABI: orders/handlee.go より)
+type OrderCandidatesResponse struct {
+	Candidates  []OrderCandidateYJGroup `json:"candidates"`
+	Wholesalers []model.Wholesaler      `json:"wholesalers"`
 }
 
-// GetReorderListHandler は発注が必要な品目リストを返します
-func GetReorderListHandler(conn *sqlx.DB) http.HandlerFunc {
+// OrderCandidateYJGroup は発注候補のYJグループです。
+// (WASABI: orders/handlee.go より)
+type OrderCandidateYJGroup struct {
+	model.StockLedgerYJGroup
+	PackageLedgers []OrderCandidatePackageGroup `json:"packageLedgers"`
+}
+
+// OrderCandidatePackageGroup は発注候補の包装グループです。
+// (WASABI: orders/handlee.go より)
+type OrderCandidatePackageGroup struct {
+	model.StockLedgerPackageGroup
+	Masters            []model.ProductMasterView `json:"masters"`
+	ExistingBackorders []model.Backorder         `json:"existingBackorders"`
+}
+
+// GenerateOrderCandidatesHandler は発注候補リストを生成します。
+// (WASABI: orders/handlee.go を TKR 用に修正)
+func GenerateOrderCandidatesHandler(conn *sqlx.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		q := r.URL.Query()
 		kanaName := q.Get("kanaName")
-		dosageForm := q.Get("dosageForm") // "all", "内", "外", ...
+		dosageForm := q.Get("dosageForm")
+		shelfNumber := q.Get("shelfNumber")
+		coefficientStr := q.Get("coefficient")
+		coefficient, err := strconv.ParseFloat(coefficientStr, 64)
+		if err != nil {
+			coefficient = 1.3 // TKRのデフォルト
+		}
 
-		// 1. 集計期間の設定
 		cfg, err := config.LoadConfig()
 		if err != nil {
-			http.Error(w, "設定ファイルの読み込みに失敗: "+err.Error(), http.StatusInternalServerError)
+			http.Error(w, "設定ファイルの読み込みに失敗しました: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
+
 		now := time.Now()
+		// TKRの集計ロジックはEndDateを「本日」とする
 		endDate := now
 		startDate := now.AddDate(0, 0, -cfg.CalculationPeriodDays)
 
-		// 2. 在庫台帳（発注点計算済み）を取得
 		filters := model.AggregationFilters{
 			StartDate:   startDate.Format("20060102"),
-			EndDate:     endDate.Format("20060102"),
+			EndDate:     endDate.Format("20060102"), // TKRは "99991231" ではなく本日
 			KanaName:    kanaName,
 			DosageForm:  dosageForm,
-			Coefficient: 1.5, // TKRでは安全係数を固定 (将来的にConfigから取得も可)
+			ShelfNumber: shelfNumber,
+			Coefficient: coefficient,
 		}
-		ledger, err := aggregation.GetStockLedger(conn, filters)
+
+		// TKRの集計関数を呼ぶ
+		// ★★★ 注意: TKRの aggregation.GetStockLedger は発注残を考慮するよう修正が必要
+		yjGroups, err := aggregation.GetStockLedger(conn, filters)
 		if err != nil {
-			log.Printf("ERROR: GetStockLedger failed: %v", err)
-			http.Error(w, "Failed to get stock ledger: "+err.Error(), http.StatusInternalServerError)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 
-		// 3. 発注が必要な品目 (PackageKey単位) のみを抽出
-		var reorderList []ReorderItemView
-		for _, yjGroup := range ledger {
-			for _, pkg := range yjGroup.PackageLedgers {
-				if pkg.IsReorderNeeded {
-					reorderList = append(reorderList, ReorderItemView{
-						YjCode:                 yjGroup.YjCode,
-						ProductName:            yjGroup.ProductName,
-						PackageKey:             pkg.PackageKey,
-						YjUnitName:             yjGroup.YjUnitName,
-						EffectiveEndingBalance: pkg.EffectiveEndingBalance,
-						ReorderPoint:           pkg.ReorderPoint,
-						MaxUsage:               pkg.MaxUsage,
-						PrecompoundedTotal:     pkg.PrecompoundedTotal,
-					})
+		// TKRのDB関数を呼ぶ
+		allBackorders, err := database.GetAllBackordersList(conn)
+		if err != nil {
+			http.Error(w, "Failed to get backorder list for candidates", http.StatusInternalServerError)
+			return
+		}
+
+		// TKRの aggregation.go のキー生成ロジック (units.ResolveName) に合わせる
+		backordersByPackageKey := make(map[string][]model.Backorder)
+		for _, bo := range allBackorders {
+			// units.ResolveName を使って単位名を解決する
+			resolvedKey := fmt.Sprintf("%s|%s|%g|%s", bo.YjCode, bo.PackageForm, bo.JanPackInnerQty, units.ResolveName(bo.YjUnitName))
+			backordersByPackageKey[resolvedKey] = append(backordersByPackageKey[resolvedKey], bo)
+		}
+
+		var candidates []OrderCandidateYJGroup
+		for _, group := range yjGroups {
+			if group.IsReorderNeeded {
+				newYjGroup := OrderCandidateYJGroup{
+					StockLedgerYJGroup: group,
+					PackageLedgers:     []OrderCandidatePackageGroup{},
 				}
+
+				for _, pkg := range group.PackageLedgers {
+					newPkgGroup := OrderCandidatePackageGroup{
+						StockLedgerPackageGroup: pkg,
+						Masters:                 []model.ProductMasterView{},
+						// TKRの aggregation.go は Resolved なキーを使っているので、
+						// ここでも Resolved なキー (pkg.PackageKey) でマップを引く
+						ExistingBackorders: backordersByPackageKey[pkg.PackageKey],
+					}
+
+					// TKRの mappers を使って View を生成
+					for _, master := range pkg.Masters {
+						masterView := mappers.ToProductMasterView(master)
+						newPkgGroup.Masters = append(newPkgGroup.Masters, masterView)
+					}
+					newYjGroup.PackageLedgers = append(newYjGroup.PackageLedgers, newPkgGroup)
+				}
+				candidates = append(candidates, newYjGroup)
 			}
 		}
 
-		log.Printf("Reorder list generated. Filters (Kana: %s, Dosage: %s), Found: %d items", kanaName, dosageForm, len(reorderList))
+		// TKRのDB関数を呼ぶ
+		wholesalers, err := database.GetAllWholesalers(conn)
+		if err != nil {
+			http.Error(w, "Failed to get wholesalers", http.StatusInternalServerError)
+			return
+		}
+
+		response := OrderCandidatesResponse{
+			Candidates:  candidates,
+			Wholesalers: wholesalers,
+		}
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(reorderList)
+		json.NewEncoder(w).Encode(response)
+	}
+}
+
+// PlaceOrderHandler は発注内容を発注残として登録します。
+// (WASABI: orders/handlee.go を TKR 用に修正)
+func PlaceOrderHandler(conn *sqlx.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var payload []model.Backorder
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			http.Error(w, "Invalid request body", http.StatusBadRequest)
+			return
+		}
+
+		tx, err := conn.Beginx()
+		if err != nil {
+			http.Error(w, "Failed to start transaction", http.StatusInternalServerError)
+			return
+		}
+		defer tx.Rollback()
+
+		today := time.Now().Format("20060102")
+		for i := range payload {
+			if payload[i].OrderDate == "" {
+				payload[i].OrderDate = today
+			}
+			// YjQuantity (フロントから来る発注単位数 * 包装単位量) を
+			// OrderQuantity (発注数量) と RemainingQuantity (残数量) にコピー
+			payload[i].OrderQuantity = payload[i].YjQuantity
+			payload[i].RemainingQuantity = payload[i].YjQuantity
+		}
+
+		// TKRのDB関数を呼ぶ
+		if err := database.InsertBackordersInTx(tx, payload); err != nil {
+			http.Error(w, "Failed to save backorders", http.StatusInternalServerError)
+			return
+		}
+
+		if err := tx.Commit(); err != nil {
+			http.Error(w, "Failed to commit transaction", http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"message": "発注内容を発注残として登録しました。"})
 	}
 }
 
@@ -7575,6 +8409,123 @@ func removeUsageDuplicates(records []model.UnifiedInputRecord) []model.UnifiedIn
 }
 
 
+----- C:\Users\wasab\OneDrive\デスクトップ\TKR\valuation\handler.go -----
+// C:\Users\wasab\OneDrive\デスクトップ\TKR\valuation\handler.go
+package valuation
+
+import (
+	"bytes" // ▼▼▼【追加】CSV出力のため ▼▼▼
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"net/url" // ▼▼▼【追加】CSV出力のため ▼▼▼
+	// ▼▼▼【追加】CSV出力のため ▼▼▼
+	"strings" // ▼▼▼【追加】CSV出力のため ▼▼▼
+	"tkr/database"
+	"tkr/model"
+
+	"github.com/jmoiron/sqlx"
+	// (gofpdf と excelize への参照は削除)
+)
+
+// (GetValuationHandler は変更なし)
+func GetValuationHandler(conn *sqlx.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		q := r.URL.Query()
+		filters := model.ValuationFilters{
+			Date:                q.Get("date"),
+			KanaName:            q.Get("kanaName"),
+			UsageClassification: q.Get("dosageForm"), // TKRでは dosageForm
+		}
+		if filters.Date == "" {
+			http.Error(w, "Date parameter is required", http.StatusBadRequest)
+			return
+		}
+		results, err := database.GetInventoryValuation(conn, filters)
+		if err != nil {
+			http.Error(w, "Failed to get inventory valuation: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(results)
+	}
+}
+
+// (ExportValuationHandler (Excel) は削除)
+// (ExportValuationPDFHandler (PDF) は削除)
+// (formatCurrency は削除)
+
+// ▼▼▼【ここから追加】TKR在庫CSV互換のCSVエクスポートハンドラ ▼▼▼
+func quoteAll(s string) string {
+	return `"` + strings.ReplaceAll(s, `"`, `""`) + `"`
+}
+
+// ExportValuationCSVHandler は、在庫評価の結果を「TKR独自CSV」形式でエクスポートします。
+func ExportValuationCSVHandler(conn *sqlx.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		q := r.URL.Query()
+		filters := model.ValuationFilters{
+			Date:                q.Get("date"),
+			KanaName:            q.Get("kanaName"),
+			UsageClassification: q.Get("dosageForm"),
+		}
+		if filters.Date == "" {
+			http.Error(w, "Date parameter is required", http.StatusBadRequest)
+			return
+		}
+
+		// 1. 在庫評価データをDBから取得
+		results, err := database.GetInventoryValuation(conn, filters)
+		if err != nil {
+			http.Error(w, "Failed to get inventory valuation for export: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		var buf bytes.Buffer
+		buf.Write([]byte{0xEF, 0xBB, 0xBF}) // UTF-8 BOM
+
+		// 2. TKR独自CSVインポート形式 (PackageKey, ProductName, JAN数量) に合わせる
+		header := []string{
+			"PackageKey",
+			"ProductName",
+			"JAN数量",
+		}
+		buf.WriteString(strings.Join(header, ",") + "\r\n")
+
+		// 3. データをCSV行に変換
+		for _, group := range results {
+			for _, row := range group.DetailRows {
+
+				// YJ単位の在庫 (row.Stock) を JAN単位 に変換
+				var janQty float64
+				if row.JanPackInnerQty > 0 {
+					janQty = row.Stock / row.JanPackInnerQty
+				} else {
+					janQty = 0 // 内包装数量がなければ0
+				}
+
+				record := []string{
+					quoteAll(row.PackageKey), // PackageKey (DBロジックで追加 )
+					quoteAll(row.ProductName),
+					quoteAll(fmt.Sprintf("%.2f", janQty)), // JAN数量
+				}
+				buf.WriteString(strings.Join(record, ",") + "\r\n")
+			}
+		}
+
+		// 4. ファイル名を「TKR在庫データ...」形式 に合わせる
+		filename := fmt.Sprintf("TKR在庫データ(評価日_%s).csv", filters.Date)
+
+		w.Header().Set("Content-Type", "text/csv; charset=utf-8")
+		w.Header().Set("Content-Disposition", "attachment; filename*=UTF-8''"+url.PathEscape(filename))
+
+		w.Write(buf.Bytes())
+	}
+}
+
+// ▲▲▲【追加ここまで】▲▲▲
+
+
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\config_handler.go -----
 // C:\Users\wasab\OneDrive\デスクトップ\TKR\config_handler.go
 package main
@@ -7653,6 +8604,7 @@ func validateFolderPath(path string) error {
 
 
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\main.go -----
+// C:\Users\wasab\OneDrive\デスクトップ\TKR\main.go
 package main
 
 import (
@@ -7670,6 +8622,7 @@ import (
 	"github.com/jmoiron/sqlx"
 	_ "github.com/mattn/go-sqlite3"
 
+	"tkr/backorder"
 	"tkr/config"
 	"tkr/dat"
 	"tkr/database"
@@ -7678,16 +8631,14 @@ import (
 	"tkr/inventoryadjustment"
 	"tkr/loader"
 	"tkr/masteredit"
+	"tkr/precomp"
 	"tkr/product"
+	"tkr/reorder"
 	"tkr/reprocess"
 	"tkr/stock"
 	"tkr/units"
 	"tkr/usage"
-
-	"tkr/precomp"
-	// ▼▼▼【ここに追加】▼▼▼
-	"tkr/reorder"
-	// ▲▲▲【追加ここまで】▲▲▲
+	"tkr/valuation" // valuation をインポート
 )
 
 var (
@@ -7758,7 +8709,6 @@ func main() {
 		}
 		appTemplate, err = appTemplate.ParseFS(viewsFS, "common_input_modal.html")
 		if err != nil {
-			// (common_input_modal.html のエラーハンドリングが抜けていたのを修正)
 			log.Fatalf("Failed to parse views/common_input_modal.html: %v", err)
 		}
 	}
@@ -7785,7 +8735,6 @@ func main() {
 				return
 			}
 			for _, file := range files {
-				// (common_input_modal.html を除外リストに追加)
 				if file != "search_form_group.html" && file != "common_search_modal.html" && file != "common_input_modal.html" {
 					viewFiles = append(viewFiles, file)
 				}
@@ -7886,6 +8835,8 @@ func main() {
 	mux.HandleFunc("/api/masters", masteredit.ListMastersHandler(dbConn))
 	mux.HandleFunc("/api/masters/update", masteredit.UpdateMasterHandler(dbConn))
 
+	mux.HandleFunc("/api/master/set_order_stopped", masteredit.SetOrderStoppedHandler(dbConn))
+
 	mux.HandleFunc("/api/inventory/adjust/data", inventoryadjustment.GetInventoryDataHandler(dbConn))
 	mux.HandleFunc("/api/inventory/adjust/save", inventoryadjustment.SaveInventoryDataHandler(dbConn))
 
@@ -7957,9 +8908,16 @@ func main() {
 	mux.HandleFunc("/api/masters/export/all", stock.ExportAllMastersHandler(dbConn))
 	mux.HandleFunc("/api/masters/import/all", stock.ImportAllMastersHandler(dbConn))
 
-	// ▼▼▼【ここに追加】▼▼▼
-	mux.HandleFunc("/api/reorder/list", reorder.GetReorderListHandler(dbConn))
-	// ▲▲▲【追加ここまで】▲▲▲
+	mux.HandleFunc("/api/reorder/candidates", reorder.GenerateOrderCandidatesHandler(dbConn))
+	mux.HandleFunc("/api/orders/place", reorder.PlaceOrderHandler(dbConn))
+	mux.HandleFunc("/api/backorders", backorder.GetBackordersHandler(dbConn))
+	mux.HandleFunc("/api/backorders/delete", backorder.DeleteBackorderHandler(dbConn))
+	mux.HandleFunc("/api/backorders/bulk_delete", backorder.BulkDeleteBackordersHandler(dbConn))
+
+	// ▼▼▼【ここから修正】在庫評価API (CSV対応) ▼▼▼
+	mux.HandleFunc("/api/valuation", valuation.GetValuationHandler(dbConn))
+	mux.HandleFunc("/api/valuation/export_csv", valuation.ExportValuationCSVHandler(dbConn))
+	// ▲▲▲【修正ここまで】▲▲▲
 
 	port := ":8080"
 	log.Printf("Starting server on http://localhost%s", port)
@@ -7988,7 +8946,8 @@ func openBrowser(url string) {
 
 
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\schema.sql -----
--- C:\Users\wasab\OneDrive\デスクトップ\TKR\schema.sql (全体)
+-- C:\Users\wasab\OneDrive\デスクトップ\TKR\schema.sql
+
 CREATE TABLE IF NOT EXISTS product_master (
     product_code TEXT PRIMARY KEY,
     yj_code TEXT,
@@ -7998,7 +8957,8 @@ CREATE TABLE IF NOT EXISTS product_master (
     kana_name_short TEXT, -- ★ WASABIからの追加
     generic_name TEXT,    -- ★ WASABIからの追加
     maker_name TEXT,
-    specification TEXT,
+    
+specification TEXT,
     usage_classification TEXT,
     package_form TEXT,
     yj_unit_name TEXT,
@@ -8018,11 +8978,11 @@ CREATE TABLE IF NOT EXISTS product_master (
     is_order_stopped INTEGER DEFAULT 0,
     supplier_wholesale TEXT,
     group_code TEXT,
-    shelf_number TEXT,
+  
+  shelf_number TEXT,
     category TEXT,
     user_notes TEXT
 );
-
 CREATE TABLE IF NOT EXISTS transaction_records (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   transaction_date TEXT,
@@ -8052,7 +9012,8 @@ CREATE TABLE IF NOT EXISTS transaction_records (
   supplier_wholesale TEXT,
   subtotal REAL,
   tax_amount REAL,
-  tax_rate REAL,
+  
+ tax_rate REAL, 
   expiry_date TEXT,
   lot_number TEXT,
   flag_poison INTEGER,
@@ -8063,49 +9024,45 @@ CREATE TABLE IF NOT EXISTS transaction_records (
   flag_stimulant_raw INTEGER,
   process_flag_ma TEXT
 );
-
 CREATE TABLE IF NOT EXISTS jcshms (
   JC000 TEXT, JC001 TEXT, JC002 TEXT, JC003 TEXT, JC004 TEXT, JC005 TEXT, JC006 TEXT, JC007 TEXT, JC008 TEXT, JC009 TEXT,
   JC010 TEXT, JC011 TEXT, JC012 TEXT, JC013 TEXT, JC014 TEXT, JC015 TEXT, JC016 TEXT, JC017 TEXT, JC018 TEXT, JC019 TEXT,
   JC020 TEXT, JC021 TEXT, JC022 TEXT, JC023 TEXT, JC024 TEXT, JC025 TEXT, JC026 TEXT, JC027 TEXT, JC028 TEXT, JC029 TEXT,
   JC030 TEXT, JC031 TEXT, JC032 TEXT, JC033 TEXT, JC034 TEXT, JC035 TEXT, JC036 TEXT, JC037 TEXT, JC038 TEXT, JC039 TEXT,
-  JC040 TEXT, JC041 TEXT, JC042 TEXT, JC043 TEXT, JC044 REAL, JC045 TEXT, JC046 TEXT, JC047 TEXT, JC048 TEXT, JC049 TEXT,
+  JC040 TEXT, JC041 TEXT, 
+JC042 TEXT, JC043 TEXT, JC044 REAL, JC045 TEXT, JC046 TEXT, JC047 TEXT, JC048 TEXT, JC049 TEXT, 
   JC050 REAL, JC051 TEXT, JC052 TEXT, JC053 TEXT, JC054 TEXT, JC055 TEXT, JC056 TEXT, JC057 TEXT, JC058 TEXT, JC059 TEXT,
   JC060 TEXT, JC061 INTEGER, JC062 INTEGER, JC063 INTEGER, JC064 INTEGER, JC065 INTEGER, JC066 INTEGER, JC067 TEXT, JC068 TEXT, JC069 TEXT,
   JC070 TEXT, JC071 TEXT, JC072 TEXT, JC073 TEXT, JC074 TEXT, JC075 TEXT, JC076 TEXT, JC077 TEXT, JC078 TEXT, JC079 TEXT,
-  JC080 TEXT, JC081 TEXT, JC082 TEXT, JC083 TEXT, JC084 TEXT, JC085 TEXT, JC086 TEXT, JC087 TEXT, JC088 TEXT, JC089 TEXT,
-  JC090 TEXT, JC091 TEXT, JC092 TEXT, JC093 TEXT, JC094 TEXT, JC095 TEXT, JC096 TEXT, JC097 TEXT, JC098 TEXT, JC099 TEXT,
+  JC080 TEXT, JC081 TEXT, JC082 TEXT, JC083 TEXT, JC084 TEXT, JC085 TEXT, JC086 TEXT, JC087 TEXT, JC088 TEXT, JC089 
+TEXT,
+  JC090 TEXT, JC091 TEXT, JC092 TEXT, JC093 TEXT, JC094 TEXT, JC095 TEXT, JC096 TEXT, JC097 TEXT, JC098 TEXT, JC099 TEXT, 
   JC100 TEXT, JC101 TEXT, JC102 TEXT, JC103 TEXT, JC104 TEXT, JC105 TEXT, JC106 TEXT, JC107 TEXT, JC108 TEXT, JC109 TEXT,
   JC110 TEXT, JC111 TEXT, JC112 TEXT, JC113 TEXT, JC114 TEXT, JC115 TEXT, JC116 TEXT, JC117 TEXT, JC118 TEXT, JC119 TEXT,
   JC120 TEXT, JC121 TEXT, JC122 TEXT, JC123 TEXT, JC124 REAL,
   PRIMARY KEY(JC000)
 );
-
 CREATE TABLE IF NOT EXISTS jancode (
   JA000 TEXT, JA001 TEXT, JA002 TEXT, JA003 TEXT, JA004 TEXT, JA005 TEXT, JA006 REAL, JA007 TEXT, JA008 REAL, JA009 TEXT,
   JA010 TEXT, JA011 TEXT, JA012 TEXT, JA013 TEXT, JA014 TEXT, JA015 TEXT, JA016 TEXT, JA017 TEXT, JA018 TEXT, JA019 TEXT,
   JA020 TEXT, JA021 TEXT, JA022 TEXT, JA023 TEXT, JA024 TEXT, JA025 TEXT, JA026 TEXT, JA027 TEXT, JA028 TEXT, JA029 TEXT,
   PRIMARY KEY(JA001)
 );
-
 CREATE INDEX IF NOT EXISTS idx_transactions_jan_code ON transaction_records (jan_code);
 CREATE INDEX IF NOT EXISTS idx_transactions_date ON transaction_records (transaction_date);
 CREATE INDEX IF NOT EXISTS idx_transactions_flag ON transaction_records (flag);
 CREATE INDEX IF NOT EXISTS idx_product_master_kana_name ON product_master (kana_name);
 CREATE INDEX IF NOT EXISTS idx_product_master_yj_code ON product_master (yj_code);
 CREATE INDEX IF NOT EXISTS idx_jcshms_yj_code ON jcshms (JC009);
-
 CREATE TABLE IF NOT EXISTS units (
     code TEXT PRIMARY KEY,
     name TEXT
 );
-
 CREATE TABLE IF NOT EXISTS medicine_data (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     yj_code TEXT UNIQUE,
     data TEXT
 );
-
 CREATE INDEX IF NOT EXISTS idx_medicine_data_yj_code ON medicine_data (yj_code);
 
 CREATE TABLE IF NOT EXISTS price_revisions (
@@ -8116,7 +9073,6 @@ CREATE TABLE IF NOT EXISTS price_revisions (
     new_price REAL,
     UNIQUE(revision_date, yj_code)
 );
-
 CREATE TABLE IF NOT EXISTS price_history (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     yj_code TEXT NOT NULL,
@@ -8125,7 +9081,6 @@ CREATE TABLE IF NOT EXISTS price_history (
     end_date TEXT,
     UNIQUE(yj_code, start_date)
 );
-
 CREATE INDEX IF NOT EXISTS idx_price_history_yj_code ON price_history (yj_code);
 CREATE INDEX IF NOT EXISTS idx_price_history_start_date ON price_history (start_date);
 CREATE INDEX IF NOT EXISTS idx_price_history_end_date ON price_history (end_date);
@@ -8134,7 +9089,7 @@ CREATE INDEX IF NOT EXISTS idx_product_master_gs1_code ON product_master (gs1_co
 CREATE INDEX IF NOT EXISTS idx_transactions_receipt_number ON transaction_records (receipt_number);
 
 CREATE INDEX IF NOT EXISTS idx_transactions_flag_date ON transaction_records (flag, transaction_date);
-
+-- ▼▼▼【ここから変更】backorders テーブルの定義を WASABI と同じものに置き換えます ▼▼▼
 CREATE TABLE IF NOT EXISTS backorders (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   order_date TEXT NOT NULL,
@@ -8150,8 +9105,7 @@ CREATE TABLE IF NOT EXISTS backorders (
   jan_pack_unit_qty REAL,
   jan_unit_code INTEGER
 );
-
-
+-- ▲▲▲【変更ここまで】▲▲▲
 CREATE TABLE IF NOT EXISTS precomp_records (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   transaction_date TEXT,
@@ -8180,7 +9134,6 @@ CREATE TABLE IF NOT EXISTS precomp_records (
   status TEXT NOT NULL DEFAULT 'active',
   UNIQUE(client_code, jan_code)
 );
-
 CREATE TABLE IF NOT EXISTS inventory_history (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     inventory_date TEXT NOT NULL,
@@ -8192,26 +9145,20 @@ CREATE TABLE IF NOT EXISTS inventory_history (
     package_spec TEXT,
     UNIQUE(inventory_date, product_code)
 );
-
 CREATE INDEX IF NOT EXISTS idx_inventory_history_date_code ON inventory_history (inventory_date, product_code);
 CREATE INDEX IF NOT EXISTS idx_inventory_history_code_date ON inventory_history (product_code, inventory_date);
-
-
 CREATE TABLE IF NOT EXISTS client_master (
   client_code TEXT PRIMARY KEY,
   client_name TEXT NOT NULL UNIQUE
 );
-
 CREATE TABLE IF NOT EXISTS wholesalers (
   wholesaler_code TEXT PRIMARY KEY,
   wholesaler_name TEXT NOT NULL
 );
-
 CREATE TABLE IF NOT EXISTS code_sequences (
   name TEXT PRIMARY KEY,
   last_no INTEGER NOT NULL
 );
-
 INSERT OR IGNORE INTO code_sequences(name, last_no) VALUES ('MA2Y', 0);
 INSERT OR IGNORE INTO code_sequences(name, last_no) VALUES ('CL', 0);
 -- ▼▼▼【ここに追加】仮ProductCode用シーケンス ▼▼▼
@@ -8225,7 +9172,6 @@ CREATE TABLE IF NOT EXISTS package_stock (
   stock_quantity_yj REAL NOT NULL,       -- その包装キーのYJ単位での在庫量
   last_inventory_date TEXT NOT NULL      -- この在庫量が確定した最新の棚卸日 (YYYYMMDD)
 );
-
 CREATE INDEX IF NOT EXISTS idx_package_stock_yj_code ON package_stock (yj_code);
 -- ▲▲▲【追加ここまで】▲▲▲
 

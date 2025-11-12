@@ -16,7 +16,7 @@ import (
 	"github.com/jmoiron/sqlx"
 	_ "github.com/mattn/go-sqlite3"
 
-	"tkr/backorder" // 発注残管理ハンドラ
+	"tkr/backorder"
 	"tkr/config"
 	"tkr/dat"
 	"tkr/database"
@@ -25,13 +25,14 @@ import (
 	"tkr/inventoryadjustment"
 	"tkr/loader"
 	"tkr/masteredit"
-	"tkr/precomp" // precomp をインポート
+	"tkr/precomp"
 	"tkr/product"
-	"tkr/reorder" // 発注候補ハンドラ
+	"tkr/reorder"
 	"tkr/reprocess"
 	"tkr/stock"
 	"tkr/units"
 	"tkr/usage"
+	"tkr/valuation" // valuation をインポート
 )
 
 var (
@@ -102,7 +103,6 @@ func main() {
 		}
 		appTemplate, err = appTemplate.ParseFS(viewsFS, "common_input_modal.html")
 		if err != nil {
-			// (common_input_modal.html のエラーハンドリングが抜けていたのを修正)
 			log.Fatalf("Failed to parse views/common_input_modal.html: %v", err)
 		}
 	}
@@ -129,7 +129,6 @@ func main() {
 				return
 			}
 			for _, file := range files {
-				// (common_input_modal.html を除外リストに追加)
 				if file != "search_form_group.html" && file != "common_search_modal.html" && file != "common_input_modal.html" {
 					viewFiles = append(viewFiles, file)
 				}
@@ -230,9 +229,7 @@ func main() {
 	mux.HandleFunc("/api/masters", masteredit.ListMastersHandler(dbConn))
 	mux.HandleFunc("/api/masters/update", masteredit.UpdateMasterHandler(dbConn))
 
-	// ▼▼▼【ここに追加】発注不可設定APIエンドポイント ▼▼▼
 	mux.HandleFunc("/api/master/set_order_stopped", masteredit.SetOrderStoppedHandler(dbConn))
-	// ▲▲▲【追加ここまで】▲▲▲
 
 	mux.HandleFunc("/api/inventory/adjust/data", inventoryadjustment.GetInventoryDataHandler(dbConn))
 	mux.HandleFunc("/api/inventory/adjust/save", inventoryadjustment.SaveInventoryDataHandler(dbConn))
@@ -305,13 +302,16 @@ func main() {
 	mux.HandleFunc("/api/masters/export/all", stock.ExportAllMastersHandler(dbConn))
 	mux.HandleFunc("/api/masters/import/all", stock.ImportAllMastersHandler(dbConn))
 
-	// ▼▼▼ 発注機能・発注残管理機能のAPIエンドポイント (修正済み) ▼▼▼
 	mux.HandleFunc("/api/reorder/candidates", reorder.GenerateOrderCandidatesHandler(dbConn))
 	mux.HandleFunc("/api/orders/place", reorder.PlaceOrderHandler(dbConn))
 	mux.HandleFunc("/api/backorders", backorder.GetBackordersHandler(dbConn))
 	mux.HandleFunc("/api/backorders/delete", backorder.DeleteBackorderHandler(dbConn))
 	mux.HandleFunc("/api/backorders/bulk_delete", backorder.BulkDeleteBackordersHandler(dbConn))
-	// ▲▲▲
+
+	// ▼▼▼【ここから修正】在庫評価API (CSV対応) ▼▼▼
+	mux.HandleFunc("/api/valuation", valuation.GetValuationHandler(dbConn))
+	mux.HandleFunc("/api/valuation/export_csv", valuation.ExportValuationCSVHandler(dbConn))
+	// ▲▲▲【修正ここまで】▲▲▲
 
 	port := ":8080"
 	log.Printf("Starting server on http://localhost%s", port)

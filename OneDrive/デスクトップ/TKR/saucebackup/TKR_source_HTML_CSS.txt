@@ -1,3 +1,67 @@
+----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\css\backorder.css -----
+/* C:\Users\wasab\OneDrive\デスクトップ\TKR\static\css\backorder.css */
+
+/* 発注残リストの操作エリア */
+.backorder-controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px 16px;
+    align-items: flex-end;
+    margin-bottom: 10px;
+}
+
+/* 一括削除ボタン */
+#bo-bulk-delete-btn {
+    background-color: #dc3545;
+    color: white;
+    margin-right: auto; /* 右側の要素を押し出す */
+}
+#bo-bulk-delete-btn:hover {
+    background-color: #c82333;
+}
+
+/* 発注残テーブル */
+#backorder-table {
+    margin-top: 10px;
+}
+
+/* 列幅 */
+#backorder-table th.col-bo-check   { width: 5%; }
+#backorder-table th.col-bo-date    { width: 10%; }
+#backorder-table th.col-bo-yj      { width: 10%; }
+#backorder-table th.col-bo-name    { width: 25%; }
+#backorder-table th.col-bo-spec    { width: 20%; }
+#backorder-table th.col-bo-order   { width: 8%; }
+#backorder-table th.col-bo-remain  { width: 8%; }
+#backorder-table th.col-bo-action  { width: 14%; } /* 削除/棚卸調整 */
+
+/* 個別削除ボタン */
+#backorder-table .delete-backorder-btn {
+    padding: 1px 4px;
+    font-size: 9px;
+    background-color: #fbeeee;
+    border-color: #dc3545;
+    color: #dc3545;
+    margin-right: 5px;
+}
+#backorder-table .delete-backorder-btn:hover {
+    background-color: #dc3545;
+    color: #fff;
+}
+
+/* 棚卸調整ボタン */
+#backorder-table .adjust-inventory-btn {
+    padding: 1px 4px;
+    font-size: 9px;
+    background-color: #e6f7ff;
+    border-color: #17a2b8;
+    color: #17a2b8;
+}
+#backorder-table .adjust-inventory-btn:hover {
+    background-color: #17a2b8;
+    color: #fff;
+}
+
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\css\config.css -----
 /* C:\Users\wasab\OneDrive\デスクトップ\TKR\static\css\config.css */
 
@@ -575,57 +639,110 @@
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\css\reorder.css -----
 /* C:\Users\wasab\OneDrive\デスクトップ\TKR\static\css\reorder.css */
 
-/* 発注点リストの検索コントロール */
-.reorder-controls {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 10px 16px;
-    align-items: flex-end;
+/*
+   注: このビューの .filter-container, .form-group, .btn, .data-table,
+   .agg-yj-header, .modal-overlay, .modal-content 等の基本スタイルは、
+   styles.css, table.css, modal.css, search_form_group.css, inout.css
+   から提供されます。
+*/
+
+/* 既存の発注残を表示するエリア */
+.existing-backorders-info {
+    background-color: #fffbdd; /* 薄い黄色 */
+    border: 1px solid #e6db55;
+    padding: 5px 10px;
+    margin: -1px 0 0 0; /* ヘッダーのborderと重なるように */
+    font-size: 10px;
+}
+.existing-backorders-info ul {
+    margin: 0;
+    padding-left: 15px;
+}
+.existing-backorders-info li {
+    color: #555;
 }
 
-.reorder-controls .form-group {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
+
+/* 発注候補テーブル */
+#order-candidates-output .data-table {
+    margin-bottom: 10px; /* YJグループ間のマージン */
 }
 
-.reorder-controls .form-group label {
+/* 発注候補テーブルの列幅 */
+#order-candidates-output .data-table th:nth-child(1) { width: 25%; } /* 製品名 */
+#order-candidates-output .data-table th:nth-child(2) { width: 15%; } /* メーカー */
+#order-candidates-output .data-table th:nth-child(3) { width: 15%; } /* 包装仕様 */
+#order-candidates-output .data-table th:nth-child(4) { width: 20%; } /* 卸業者 */
+#order-candidates-output .data-table th:nth-child(5) { width: 10%; } /* 発注単位 */
+#order-candidates-output .data-table th:nth-child(6) { width: 5%; }  /* 発注数 */
+#order-candidates-output .data-table th:nth-child(7) { width: 10%; } /* 操作 */
+
+
+/* 発注操作ボタンのセル */
+.order-actions-cell .order-action-buttons {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 3px;
+    justify-content: center; /* TKRの .center に合わせる */
+}
+
+.order-actions-cell .btn {
+    padding: 1px 4px;
+    font-size: 9px;
+    min-width: 30px; /* ボタン幅を確保 */
+    white-space: nowrap;
+}
+
+/* 発注不可ボタン */
+.set-unorderable-btn {
+    background-color: #fbeeee;
+    border-color: #dc3545;
+    color: #dc3545;
+}
+.set-unorderable-btn:hover {
+    background-color: #dc3545;
+    color: #fff;
+}
+
+/* 除外・変更ボタン */
+.remove-order-item-btn,
+.change-to-orderable-btn {
+    background-color: #fff3cd;
+    border-color: #e6b800;
+    color: #856404;
+}
+.remove-order-item-btn:hover,
+.change-to-orderable-btn:hover {
+    background-color: #e6b800;
+    color: #333;
+}
+
+/* 棚卸調整ボタン */
+.go-to-inv-adj-btn {
+    background-color: #e6f7ff;
+    border-color: #17a2b8;
+    color: #17a2b8;
+}
+.go-to-inv-adj-btn:hover {
+    background-color: #17a2b8;
+    color: #fff;
+}
+
+
+/* 連続スキャンモーダル関連 */
+#continuous-order-modal .form-group label {
     font-size: 10px;
     font-weight: bold;
 }
-
-.reorder-controls .form-group input[type="text"] {
+#continuous-order-modal input[type="text"] {
+    width: 100%;
     padding: 3px;
     border: 1px solid #ccc;
     font-size: inherit;
-    min-width: 150px;
+    box-sizing: border-box;
 }
 
-.reorder-controls .form-group .radio-group {
-    display: flex;
-    flex-wrap: nowrap;
-    gap: 10px;
-    align-items: center;
-    height: 100%;
-}
-
-.reorder-controls .form-group .radio-group label {
-    display: flex;
-    align-items: center;
-    gap: 2px;
-    white-space: nowrap;
-    font-weight: normal;
-}
-
-.reorder-controls .form-actions {
-    margin-left: auto;
-}
-
-/* 発注点テーブルの在庫列を赤字（エラー）表示にする */
-#reorder-table td.status-error {
-    color: #dc3545;
-    font-weight: bold;
-}
+/* (スキャン済みリストのスタイル .scanned-item などは styles.css で定義) */
 
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\css\search_form_group.css -----
 /* C:\Users\wasab\OneDrive\デスクトップ\TKR\static\css\search_form_group.css */
@@ -1117,6 +1234,140 @@ body {
   font-size: inherit;
   vertical-align: middle;
 }
+
+----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\css\valuation.css -----
+/* C:\Users\wasab\OneDrive\デスクトップ\TKR\static\css\valuation.css */
+
+/*
+   注: このビューの .filter-container, .form-group, .btn, .data-table,
+   .agg-yj-header, .modal-overlay, .modal-content 等の基本スタイルは、
+   styles.css, table.css, modal.css, search_form_group.css
+   から提供されます。
+*/
+
+/* 印刷ボタンのコンテナ */
+#valuation-print-controls {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    padding: 0 5px 5px 5px;
+    border-bottom: 1px solid #eee;
+    margin-bottom: 10px;
+}
+
+/* 在庫評価出力エリア */
+#valuation-output-container .agg-yj-header {
+    margin-top: 5px; /* グループ間のマージンを縮小 */
+    font-size: 1em;
+    padding: 5px 8px;
+}
+
+/* 評価額表示用の行 */
+#valuation-output-container .item-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 6px 8px;
+    border: 1px solid #ccc;
+    border-top: none;
+    line-height: 1.5;
+    background-color: #fff;
+}
+/* 1行おきに背景色を付ける (TKRの table.css の tbody tr:nth-child(4n) とは異なる) */
+#valuation-output-container .item-row:nth-child(even) {
+    background-color: #f9f9f9;
+}
+
+
+#valuation-output-container .item-row-left {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    gap: 10px;
+}
+
+#valuation-output-container .item-row-left .product-name {
+    font-weight: bold;
+}
+#valuation-output-container .item-row-left .package-spec {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: #333;
+}
+
+/* JCSHMS未登録警告 */
+#valuation-output-container .warning-link {
+    color: red;
+    font-weight: bold;
+    cursor: pointer;
+    text-decoration: underline;
+    font-size: 10px;
+}
+
+#valuation-output-container .item-row-right {
+    white-space: nowrap;
+    text-align: right;
+    padding-left: 20px;
+    font-size: 10px; /* TKRの基本フォントサイズに合わせる */
+}
+
+#valuation-output-container .item-row-right .value-item {
+    display: inline-block;
+    min-width: 150px; /* WASABI より縮小 */
+    text-align: right;
+}
+#valuation-output-container .item-row-right .value-item .value {
+    font-weight: bold;
+    font-size: 1.1em; /* 少し大きく */
+    display: inline-block;
+    min-width: 80px;
+}
+
+
+/* 総合計エリア */
+#valuation-output-container .valuation-grand-total {
+    text-align: right;
+    margin-top: 20px;
+    padding: 10px;
+    border-top: 2px solid #333;
+    font-weight: bold;
+    font-size: 1.1em;
+}
+#valuation-output-container .valuation-grand-total span {
+    margin-left: 20px;
+}
+
+----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\views\backorder_view.html -----
+<div id="backorder-view" class="view">
+    <h1>発注残管理</h1>
+    
+    <div class="filter-container">
+        <fieldset>
+            <legend>表示フィルタ</legend>
+            <div class="search-form-container">
+                <div class="search-filter-row">
+                    <div class="form-group">
+                        <label for="bo-search-kana">品名・カナ名 (部分一致):</label>
+                        <input type="text" id="bo-search-kana" class="search-filter-input" autocomplete="off">
+                    </div>
+                    <div class="form-group">
+                        <label for="bo-search-wholesaler">卸コード:</label>
+                        <input type="text" id="bo-search-wholesaler" class="search-filter-input" autocomplete="off" style="width: 150px;">
+                    </div>
+                    <button id="bo-search-btn" class="btn search-submit-button">この条件で絞込</button>
+                </div>
+            </div>
+        </fieldset>
+    </div>
+    
+    <div id="backorder-output-container" class="table-container">
+        <p>読み込み中...</p>
+    </div>
+</div>
 
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\views\common_input_modal.html -----
 {{ define "common_input_modal" }}
@@ -1818,32 +2069,89 @@ class="btn">マスタCSV エクスポート</button>
 
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\views\reorder_view.html -----
 <div id="reorder-view" class="view">
-    <h1>発注点リスト</h1>
+    <h1>発注</h1>
     
-    <div class="reorder-controls filter-container">
-        <div class="form-group">
-            <label>内外注区分:</label>
-            <div class="radio-group" id="reorder-usage-class">
-                <label><input type="radio" name="reorder_usage_class" value="all" checked> すべて</label>
-                <label><input type="radio" name="reorder_usage_class" value="内"> 内</label>
-                <label><input type="radio" name="reorder_usage_class" value="外"> 外</label>
-                <label><input type="radio" name="reorder_usage_class" value="歯"> 歯</label>
-                <label><input type="radio" name="reorder_usage_class" value="注"> 注</label>
-                <label><input type="radio" name="reorder_usage_class" value="機"> 機</label>
-                <label><input type="radio" name="reorder_usage_class" value="他"> 他</label>
+    <div class="filter-container">
+        <fieldset>
+            <legend>発注候補 検索条件</legend>
+            <div class="search-form-container">
+                <div class="search-filter-row">
+                    <div class="form-group">
+                        <label for="order-kanaName">品名・カナ名 (部分一致):</label>
+                        <input type="text" id="order-kanaName" class="search-filter-input" autocomplete="off">
+                    </div>
+                    <div class="form-group">
+                        <label for="order-dosageForm">剤型:</label>
+                        <select id="order-dosageForm" class="search-filter-input">
+                            <option value="">すべて</option>
+                            <option value="内">内</option>
+                            <option value="外">外</option>
+                            <option value="歯">歯</option>
+                            <option value="注">注</option>
+                            <option value="機">機</option>
+                            <option value="他">他</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="order-shelf-number">棚番 (部分一致):</label>
+                        <input type="text" id="order-shelf-number" class="search-filter-input" autocomplete="off" style="width: 150px;">
+                    </div>
+                    <div class="form-group">
+                        <label for="order-reorder-coefficient">安全係数:</label>
+                        <input type="number" id="order-reorder-coefficient" value="1.3" step="0.1" style="width: 80px; padding: 3px;">
+                    </div>
+                    <button id="generate-order-candidates-btn" class="btn search-submit-button">発注候補を作成</button>
+                </div>
             </div>
-        </div>
-        <div class="form-group">
-            <label for="reorder-kana-search">カナ名 (前方一致):</label>
-            <input type="text" id="reorder-kana-search" autocomplete="off">
-        </div>
-        <div class="form-actions">
-            <button id="reorder-search-btn" class="btn">この条件で検索</button>
+        </fieldset>
+    </div>
+
+    <div class="inout-header-controls" style="padding: 10px; background-color: #f0f4f8; border-color: #cce;">
+        <form id="order-barcode-form" style="flex-grow: 1; margin: 0;">
+            <div class="form-group" style="flex-basis: 300px;">
+                <label for="order-barcode-input">バーコードで単品追加:</label>
+                <input type="text" id="order-barcode-input" autocomplete="off" placeholder="GS1-128 または JANをスキャン..." style="padding: 3px; font-size: inherit;">
+            </div>
+        </form>
+        <div class="buttons-group">
+            <button id="add-order-item-from-master-btn" class="btn">品目検索から追加</button>
+            <button id="continuous-order-btn" class="btn" style="background-color: #17a2b8; color: white;">連続スキャンで追加</button>
+            <button id="createOrderCsvBtn" class="btn" style="background-color: #28a745; color: white;">CSV作成・発注残登録</button>
         </div>
     </div>
-    
-    <div id="reorder-result-container" class="table-container">
-        <p>「この条件で検索」ボタンを押してください。</p>
+
+    <div id="order-candidates-output" class="table-container">
+        <p>「発注候補を作成」ボタンを押してください。</p>
+    </div>
+</div>
+
+<div id="continuous-order-modal" class="modal-overlay hidden">
+    <div class="modal-content" style="width: 600px; max-width: 90%;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+            <h2 style="margin: 0;">連続スキャン発注</h2>
+            <button id="close-continuous-modal-btn" class="btn">閉じる</button>
+        </div>
+        <div style="display: flex; gap: 10px;">
+            <div style="flex: 1;">
+                <form id="continuous-barcode-form">
+                    <div class="form-group">
+                        <label for="continuous-barcode-input">バーコード:</label>
+                        <input type="text" id="continuous-barcode-input" autocomplete="off" style="width: 100%; padding: 5px; font-size: 1.1em; ime-mode: disabled;">
+                    </div>
+                    <p style="font-size: 10px; color: #555;">GS1またはJANをスキャンしてEnterキーを押してください。</p>
+                </form>
+                <div id="processing-indicator" class="hidden" style="color: #007bff; font-weight: bold;">
+                    処理中...
+                </div>
+            </div>
+            <div style="flex: 1; border: 1px solid #ccc; background: #f9f9f9; padding: 5px; min-height: 200px; max-height: 50vh; overflow-y: auto;">
+                <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #ccc; padding-bottom: 5px; margin-bottom: 5px;">
+                    <strong>スキャン済み ( <span id="scanned-items-count">0</span> 件)</strong>
+                </div>
+                <div id="scanned-items-list">
+                    </div>
+            </div>
+        </div>
     </div>
 </div>
 
@@ -1931,6 +2239,51 @@ class="btn">マスタCSV エクスポート</button>
     </div>
 </div>
 
+----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\views\valuation_view.html -----
+<div id="valuation-view" class="view">
+    <h1>在庫評価</h1>
+    
+    <div class="filter-container">
+        <fieldset>
+            <legend>集計条件</legend>
+            <div class="search-form-container">
+                <div class="search-filter-row">
+                    <div class="form-group">
+                        <label for="valuation-date">評価基準日:</label>
+                        <input type="date" id="valuation-date" class="search-filter-input" style="width: 150px;">
+                    </div>
+                    <div class="form-group">
+                        <label for="val-kanaName">品名・カナ名 (部分一致):</label>
+                        <input type="text" id="val-kanaName" class="search-filter-input" autocomplete="off">
+                    </div>
+                    <div class="form-group">
+                        <label for="val-dosageForm">剤型:</label>
+                        <select id="val-dosageForm" class="search-filter-input">
+                            <option value="all">すべて</option>
+                            <option value="内">内</option>
+                            <option value="外">外</option>
+                            <option value="歯">歯</option>
+                            <option value="注">注</option>
+                            <option value="機">機</option>
+                            <option value="他">他</option>
+                        </select>
+                    </div>
+                    <button id="run-valuation-btn" class="btn search-submit-button">在庫評価を実行</button>
+                </div>
+            </div>
+        </fieldset>
+    </div>
+
+    <div id="valuation-print-controls" class="buttons-group" style="padding: 5px; justify-content: flex-end;">
+        <button id="export-valuation-csv-btn" class="btn">CSVエクスポート</button>
+    </div>
+
+    <div id="valuation-output-container" class="table-container">
+        <p>評価基準日を指定して「在庫評価を実行」ボタンを押してください。</p>
+    </div>
+
+    </div>
+
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\index.html -----
 <!DOCTYPE html>
 <html lang="ja">
@@ -1939,6 +2292,7 @@ class="btn">マスタCSV エクスポート</button>
     <title>TKR アプリケーション</title>
     <link rel="stylesheet" href="/static/css/styles.css">
     <link rel="stylesheet" href="/static/css/table.css">
+  
     <link rel="stylesheet" href="/static/css/masteredit.css">
   
      <link rel="stylesheet" href="/static/css/config.css">
@@ -1949,6 +2303,8 @@ class="btn">マスタCSV エクスポート</button>
     <link rel="stylesheet" href="/static/css/inout.css">
     <link rel="stylesheet" href="/static/css/deadstock.css">
     <link rel="stylesheet" href="/static/css/reorder.css">
+    <link rel="stylesheet" href="/static/css/backorder.css">
+    <link rel="stylesheet" href="/static/css/valuation.css">
     </head>
 <body>
   
@@ -1956,10 +2312,13 @@ class="btn">マスタCSV エクスポート</button>
         <button id="datViewBtn" class="btn">DAT取込</button>
         <button id="usageViewBtn" class="btn">USAGE取込</button>
         <button id="inOutViewBtn" class="btn">入出庫</button>
-        <button id="inventoryAdjustmentViewBtn" class="btn">棚卸調整</button>
+       
+         <button id="inventoryAdjustmentViewBtn" class="btn">棚卸調整</button>
         <button id="deadStockViewBtn" class="btn">不動在庫</button>
-        <button id="reorderViewBtn" class="btn">発注点リスト</button>
-         <button id="masterEditViewBtn" class="btn">マスタ編集</button>
+        <button id="reorderViewBtn" class="btn">発注</button>
+        <button id="backorderViewBtn" class="btn">発注残管理</button>
+        <button id="valuationViewBtn" class="btn">在庫評価</button>
+        <button id="masterEditViewBtn" class="btn">マスタ編集</button>
      
        <button id="precompViewBtn" class="btn">予製管理</button>
         <button id="reprocessBtn" class="btn">全取引再計算</button>
@@ -1971,15 +2330,16 @@ class="btn">マスタCSV エクスポート</button>
       
   {{if .Views}}
     
-             {{range .Views}}
+           
+            {{range .Views}}
                  {{.}}
-            {{end}}
+       
+     {{end}}
         
    
-             <div id="reorder-view" class="view">発注点リストビュー</div>
-             
              {{else}}
             <div id="dat-upload-view" class="view active">DATビュー</div>
+ 
          
          
   <div id="usage-upload-view" class="view">USAGEビュー</div>
@@ -1991,8 +2351,11 @@ class="btn">マスタCSV エクスポート</button>
              <div id="config-view" class="view">設定ビュー</div>
      
              <div id="deadstock-view" class="view">不動在庫ビュー</div>
+ 
              
-             <div id="reorder-view" class="view">発注点リストビュー</div>
+             <div id="reorder-view" class="view">発注ビュー</div>
+             <div id="backorder-view" class="view">発注残管理ビュー</div>
+             <div id="valuation-view" class="view">在庫評価ビュー</div>
              {{end}}
      
    </main>
@@ -2003,8 +2366,10 @@ class="btn">マスタCSV エクスポート</button>
     </div>
     <div id="notification-box"></div>
 
- {{ template "common_search_modal" . }}
+ {{ template "common_search_modal" .
+}}
  {{ template "common_input_modal" . }}
+    <script src="/static/js/lib/encoding.min.js"></script>
     <script type="module" src="/static/js/app.js?v=2025110701"></script>
     </body>
 </html>

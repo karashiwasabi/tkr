@@ -17,6 +17,7 @@
     <link rel="stylesheet" href="/static/css/deadstock.css">
     <link rel="stylesheet" href="/static/css/reorder.css">
     <link rel="stylesheet" href="/static/css/backorder.css">
+    <link rel="stylesheet" href="/static/css/valuation.css">
     </head>
 <body>
   
@@ -29,6 +30,7 @@
         <button id="deadStockViewBtn" class="btn">不動在庫</button>
         <button id="reorderViewBtn" class="btn">発注</button>
         <button id="backorderViewBtn" class="btn">発注残管理</button>
+        <button id="valuationViewBtn" class="btn">在庫評価</button>
         <button id="masterEditViewBtn" class="btn">マスタ編集</button>
      
        <button id="precompViewBtn" class="btn">予製管理</button>
@@ -44,7 +46,8 @@
            
             {{range .Views}}
                  {{.}}
-            {{end}}
+       
+     {{end}}
         
    
              {{else}}
@@ -65,6 +68,7 @@
              
              <div id="reorder-view" class="view">発注ビュー</div>
              <div id="backorder-view" class="view">発注残管理ビュー</div>
+             <div id="valuation-view" class="view">在庫評価ビュー</div>
              {{end}}
      
    </main>
@@ -75,7 +79,8 @@
     </div>
     <div id="notification-box"></div>
 
- {{ template "common_search_modal" . }}
+ {{ template "common_search_modal" .
+}}
  {{ template "common_input_modal" . }}
     <script src="/static/js/lib/encoding.min.js"></script>
     <script type="module" src="/static/js/app.js?v=2025110701"></script>
