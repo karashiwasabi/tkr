@@ -17,6 +17,9 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 
 	"tkr/backorder"
+	// ▼▼▼【ここに追加】▼▼▼
+	"tkr/client"
+	// ▲▲▲【追加ここまで】▲▲▲
 	"tkr/config"
 	"tkr/dat"
 	"tkr/database"
@@ -266,6 +269,9 @@ func main() {
 	mux.HandleFunc("/api/wholesalers/list", ListWholesalersHandler(dbConn))
 	mux.HandleFunc("/api/wholesalers/create", CreateWholesalerHandler(dbConn))
 	mux.HandleFunc("/api/wholesalers/delete/", DeleteWholesalerHandler(dbConn))
+	// ▼▼▼【ここに追加】▼▼▼
+	mux.HandleFunc("/api/clients/import", client.ImportClientsHandler(dbConn))
+	// ▲▲▲【追加ここまで】▲▲▲
 
 	mux.HandleFunc("/api/clients", func(w http.ResponseWriter, r *http.Request) {
 		clients, err := database.GetAllClients(dbConn)
@@ -290,13 +296,16 @@ func main() {
 
 	mux.HandleFunc("/api/units/map", units.GetTaniMapHandler())
 
+	// ▼▼▼【ここに追加】JCSHMS更新ハンドラ ▼▼▼
+	mux.HandleFunc("/api/jcshms/reload", loader.ReloadJCSHMSHandler(dbConn))
+	// ▲▲▲【追加ここまで】▲▲▲
+
 	mux.HandleFunc("/api/reprocess/all", reprocess.ProcessTransactionsHandler(dbConn))
 
 	mux.HandleFunc("/api/deadstock/list", deadstock.ListDeadStockHandler(dbConn))
 	mux.HandleFunc("/api/deadstock/upload", deadstock.UploadDeadStockCSVHandler(dbConn))
 	mux.HandleFunc("/api/deadstock/export", deadstock.ExportDeadStockHandler(dbConn))
 
-	mux.HandleFunc("/api/stock/export/current", stock.ExportCurrentStockHandler(dbConn))
 	mux.HandleFunc("/api/stock/import/tkr", stock.ImportTKRStockCSVHandler(dbConn))
 
 	mux.HandleFunc("/api/masters/export/all", stock.ExportAllMastersHandler(dbConn))

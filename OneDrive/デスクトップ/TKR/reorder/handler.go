@@ -60,13 +60,13 @@ func GenerateOrderCandidatesHandler(conn *sqlx.DB) http.HandlerFunc {
 		}
 
 		now := time.Now()
-		// TKRの集計ロジックはEndDateを「本日」とする
-		endDate := now
+		// ▼▼▼【ここを修正】TKRの集計ロジックのEndDateを「本日」から「未来」に変更 ▼▼▼
+		endDate := "99991231" //
 		startDate := now.AddDate(0, 0, -cfg.CalculationPeriodDays)
 
 		filters := model.AggregationFilters{
 			StartDate:   startDate.Format("20060102"),
-			EndDate:     endDate.Format("20060102"), // TKRは "99991231" ではなく本日
+			EndDate:     endDate, //
 			KanaName:    kanaName,
 			DosageForm:  dosageForm,
 			ShelfNumber: shelfNumber,
@@ -92,7 +92,8 @@ func GenerateOrderCandidatesHandler(conn *sqlx.DB) http.HandlerFunc {
 		backordersByPackageKey := make(map[string][]model.Backorder)
 		for _, bo := range allBackorders {
 			// units.ResolveName を使って単位名を解決する
-			resolvedKey := fmt.Sprintf("%s|%s|%g|%s", bo.YjCode, bo.PackageForm, bo.JanPackInnerQty, units.ResolveName(bo.YjUnitName))
+			resolvedKey :=
+				fmt.Sprintf("%s|%s|%g|%s", bo.YjCode, bo.PackageForm, bo.JanPackInnerQty, units.ResolveName(bo.YjUnitName))
 			backordersByPackageKey[resolvedKey] = append(backordersByPackageKey[resolvedKey], bo)
 		}
 

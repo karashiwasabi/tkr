@@ -12,6 +12,7 @@ import (
 
 const TransactionColumns = `
     id, transaction_date, client_code, 
+
 receipt_number, line_number, flag,
     jan_code, yj_code, product_name, kana_name, usage_classification, package_form, package_spec, maker_name,
     dat_quantity, jan_pack_inner_qty, jan_quantity, jan_pack_unit_qty, jan_unit_name, jan_unit_code,
@@ -56,6 +57,7 @@ INSERT OR REPLACE INTO transaction_records (
     :dat_quantity, 
 :jan_pack_inner_qty, :jan_quantity, :jan_pack_unit_qty, :jan_unit_name, :jan_unit_code,
    
+
  :yj_quantity, :yj_pack_unit_qty, :yj_unit_name, :unit_price, :purchase_price, :supplier_wholesale,
     :subtotal, :tax_amount, :tax_rate, :expiry_date, :lot_number, :flag_poison,
     :flag_deleterious, :flag_narcotic, :flag_psychotropic, :flag_stimulant,
@@ -82,6 +84,7 @@ UPDATE transaction_records SET
 :jan_code,
     yj_code = :yj_code,
    
+
  product_name = :product_name,
     kana_name = :kana_name,
     usage_classification = :usage_classification,
@@ -102,6 +105,7 @@ yj_pack_unit_qty = :yj_pack_unit_qty,
    
      unit_price = :unit_price,
  
+
    purchase_price = :purchase_price,
     supplier_wholesale = :supplier_wholesale,
     subtotal = :subtotal,
@@ -144,8 +148,10 @@ func PersistTransactionRecordsInTx(tx *sqlx.Tx, records []model.TransactionRecor
 }
 
 func DeleteUsageTransactionsInDateRange(tx *sqlx.Tx, minDate, maxDate string) error {
-	const q = `DELETE FROM transaction_records WHERE flag = '2' AND transaction_date BETWEEN ?
+	// ▼▼▼【ここを修正】flag = '2' -> '3' (処方) に変更 ▼▼▼
+	const q = `DELETE FROM transaction_records WHERE flag = '3' AND transaction_date BETWEEN ?
 AND ?`
+	// ▲▲▲【修正ここまで】▲▲▲
 	_, err := tx.Exec(q, minDate, maxDate)
 	if err != nil {
 		return fmt.Errorf("failed to delete usage transactions in date range: %w", err)
@@ -235,7 +241,8 @@ func GetReceiptNumbersByDate(db *sqlx.DB, date string, prefix string, clientCode
 		args = append(args, clientCode)
 	}
 
-	query += " WHERE " + strings.Join(conditions, " AND ")
+	query +=
+		" WHERE " + strings.Join(conditions, " AND ")
 	query += " ORDER BY receipt_number"
 
 	err := db.Select(&numbers, query, args...)
@@ -258,7 +265,7 @@ ORDER BY line_number`
 }
 
 func DeleteTransactionsByReceiptNumberInTx(tx *sqlx.Tx, receiptNumber string) error {
-	const q = `DELETE FROM transaction_records WHERE receipt_number = ?`
+	q := `DELETE FROM transaction_records WHERE receipt_number = ?`
 	_, err := tx.Exec(q, receiptNumber)
 	if err != nil {
 		return fmt.Errorf("failed to delete transactions for receipt %s: %w", receiptNumber, err)

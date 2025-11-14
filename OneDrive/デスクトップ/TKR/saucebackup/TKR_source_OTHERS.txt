@@ -716,6 +716,116 @@ func parseAIString(code string) (*Result, error) {
 }
 
 
+----- C:\Users\wasab\OneDrive\デスクトップ\TKR\client\handler.go -----
+// C:\Users\wasab\OneDrive\デスクトップ\TKR\client\handler.go
+package client
+
+import (
+	"encoding/json"
+	"fmt"
+	"log"
+	"net/http"
+	"regexp"  // ▼▼▼【追加】正規表現パッケージをインポート ▼▼▼
+	"strings" // ▼▼▼【追加】strings パッケージをインポート ▼▼▼
+	"tkr/database"
+	"tkr/parsers"
+
+	"github.com/jmoiron/sqlx"
+)
+
+// ▼▼▼【ここに追加】コード形式を判定するための正規表現 ▼▼▼
+var (
+	// 「CL」で始まるコード（得意先コード）
+	clientCodeRegex = regexp.MustCompile(`^CL`)
+	// 9桁の数字（卸コード）
+	wholesalerCodeRegex = regexp.MustCompile(`^[0-9]{9}$`)
+)
+
+// ▲▲▲【追加ここまで】▲▲▲
+
+// ImportClientsHandler は得意先マスタCSVのインポートを処理します。
+func ImportClientsHandler(db *sqlx.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		file, _, err := r.FormFile("file")
+		if err != nil {
+			http.Error(w, "CSVファイルの読み取りに失敗: "+err.Error(), http.StatusBadRequest)
+			return
+		}
+		defer file.Close()
+
+		records, err := parsers.ParseClientCSV(file)
+		if err != nil {
+			http.Error(w, "CSVファイルの解析に失敗: "+err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		if len(records) == 0 {
+			http.Error(w, "CSVから読み込むデータがありません。", http.StatusBadRequest)
+			return
+		}
+
+		tx, err := db.Beginx()
+		if err != nil {
+			http.Error(w, "データベーストランザクションの開始に失敗: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		defer tx.Rollback()
+
+		var importedClients int
+		var importedWholesalers int
+		var errors []string
+
+		for _, rec := range records {
+			// ▼▼▼【ここから修正】振り分けロジック ▼▼▼
+			clientCode := strings.TrimSpace(rec.ClientCode)
+			clientName := strings.TrimSpace(rec.ClientName)
+
+			if clientCodeRegex.MatchString(clientCode) {
+				// 1. 得意先コードの条件 ("CL"で始まる) に一致
+				if err := database.UpsertClientInTx(tx, clientCode, clientName); err != nil {
+					log.Printf("ERROR: Failed to upsert client %s (Name: %s): %v", clientCode, clientName, err)
+					errors = append(errors, fmt.Sprintf("得意先 コード %s (名称: %s): %v", clientCode, clientName, err))
+				} else {
+					importedClients++
+				}
+			} else if wholesalerCodeRegex.MatchString(clientCode) {
+				// 2. 卸コードの条件 (9桁の数字) に一致
+				if err := database.UpsertWholesalerInTx(tx, clientCode, clientName); err != nil {
+					log.Printf("ERROR: Failed to upsert wholesaler %s (Name: %s): %v", clientCode, clientName, err)
+					errors = append(errors, fmt.Sprintf("卸 コード %s (名称: %s): %v", clientCode, clientName, err))
+				} else {
+					importedWholesalers++
+				}
+			} else {
+				// 3. どちらの条件にも一致しない (スキップ)
+				log.Printf("WARN: Skipped CSV row. Code '%s' is neither a client code (CL...) nor a wholesaler code (9 digits).", clientCode)
+				errors = append(errors, fmt.Sprintf("スキップ: コード %s (形式不正)", clientCode))
+			}
+			// ▲▲▲【修正ここまで】▲▲▲
+		}
+
+		if err := tx.Commit(); err != nil { //
+			http.Error(w, "データベースのコミットに失敗: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		// ▼▼▼【ここから修正】メッセージを変更 ▼▼▼
+		message := fmt.Sprintf("インポート完了。\n得意先: %d件\n卸: %d件", importedClients, importedWholesalers)
+		// ▲▲▲【修正ここまで】▲▲▲
+		if len(errors) > 0 {
+			message += fmt.Sprintf("\n%d件のエラーまたはスキップが発生しました。", len(errors))
+		}
+
+		// (JSの handleFileUpload は results 配列を期待するため、空でも追加)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"message": message,
+			"results": []interface{}{}, // 空の results を返す
+		})
+	}
+}
+
+
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\config\config.go -----
 // C:\Users\wasab\OneDrive\デスクトップ\TKR\config\config.go
 package config
@@ -858,7 +968,8 @@ func UploadDatHandler(db *sqlx.DB) http.HandlerFunc {
 						fileResult)
 				continue
 			}
-			parsedRecords, parseErr := parsers.ParseDat(file)
+			parsedRecords,
+				parseErr := parsers.ParseDat(file)
 			file.Close()
 			if parseErr != nil {
 				log.Printf("Failed to parse DAT file %s: %v", fileHeader.Filename, parseErr)
@@ -889,7 +1000,8 @@ func UploadDatHandler(db *sqlx.DB) http.HandlerFunc {
 			if len(insertedTransactions) > 0 {
 				var deliveredItems []model.Backorder
 				for _, rec := range insertedTransactions {
-					if rec.Flag == 1 {
+					if rec.Flag ==
+						1 {
 						deliveredItems = append(deliveredItems, model.Backorder{
 							YjCode:          rec.YjCode,
 							PackageForm:     rec.PackageForm,
@@ -962,7 +1074,8 @@ func ProcessDatRecords(tx *sqlx.Tx, parsedRecords []model.DatRecord) ([]model.Tr
 		ClientCode string
 	})
 	for _, rec := range recordsToProcess {
-		if rec.Flag == 1 || rec.Flag == 2 {
+		if rec.Flag == 1 ||
+			rec.Flag == 2 {
 			receiptKeysToDelete[rec.ReceiptNumber] = struct {
 				Date       string
 				ClientCode string
@@ -975,7 +1088,8 @@ func ProcessDatRecords(tx *sqlx.Tx, parsedRecords []model.DatRecord) ([]model.Tr
 
 	for receiptNumber, keyInfo := range receiptKeysToDelete {
 		log.Printf("Deleting existing DAT records for Receipt: %s, Date: %s, Client: %s", receiptNumber, keyInfo.Date, keyInfo.ClientCode)
-		const q = `DELETE FROM transaction_records WHERE receipt_number = ? AND transaction_date = ? AND client_code = ? AND flag IN (1, 2)`
+		const q = `DELETE FROM transaction_records WHERE receipt_number = ?
+AND transaction_date = ? AND client_code = ? AND flag IN (1, 2)`
 		_, err := tx.Exec(q, receiptNumber, keyInfo.Date, keyInfo.ClientCode)
 		if err != nil {
 			return nil, fmt.Errorf("failed to delete existing DAT records for receipt %s: %w", receiptNumber, err)
@@ -1017,8 +1131,18 @@ func ProcessDatRecords(tx *sqlx.Tx, parsedRecords []model.DatRecord) ([]model.Tr
 			LotNumber:       rec.LotNumber,
 		}
 
-		transaction.JanQuantity = rec.DatQuantity
-		transaction.YjQuantity = rec.DatQuantity * master.JanPackInnerQty
+		// ▼▼▼【ここから修正】YjQuantity と JanQuantity の計算ロジックを reprocess.go に統一 ▼▼▼
+
+		// 1. YJ数量を (reprocess.go と同様に) YjPackUnitQty で計算
+		transaction.YjQuantity = rec.DatQuantity * master.YjPackUnitQty
+
+		// 2. JAN数量を (reprocess.go と同様に) YJ数量から逆算
+		if master.JanPackInnerQty > 0 {
+			transaction.JanQuantity = transaction.YjQuantity / master.JanPackInnerQty
+		} else {
+			transaction.JanQuantity = 0 //
+		}
+		// ▲▲▲【修正ここまで】▲▲▲
 
 		if transaction.UnitPrice == 0 {
 			transaction.UnitPrice = master.NhiPrice
@@ -1315,6 +1439,41 @@ import (
 
 	"github.com/jmoiron/sqlx"
 )
+
+// ▼▼▼【ここから追加】GetClientMap ▼▼▼
+// GetClientMap は全ての得意先（卸として使用）をマップで取得します。
+func GetClientMap(db *sqlx.DB) (map[string]string, error) {
+	clients, err := GetAllClients(db)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get client list for map: %w", err)
+	}
+
+	clientMap := make(map[string]string)
+	for _, c := range clients {
+		clientMap[c.ClientCode] = c.ClientName
+	}
+	return clientMap, nil
+}
+
+// ▲▲▲【追加ここまで】▲▲▲
+
+// UpsertClientInTx は得意先マスタにデータを挿入または置換します。
+func UpsertClientInTx(tx *sqlx.Tx, code, name string) error {
+	// client_master の client_name は UNIQUE
+	// client_code が競合した場合は、client_name を更新します。
+	const q = `
+		INSERT INTO client_master (client_code, client_name) 
+		VALUES (?, ?)
+		ON CONFLICT(client_code) DO UPDATE SET
+			client_name = excluded.client_name
+	`
+	_, err := tx.Exec(q, code, name)
+	if err != nil {
+		// client_name の UNIQUE 制約違反も考慮
+		return fmt.Errorf("UpsertClientInTx (Code: %s, Name: %s) failed: %w", code, name, err)
+	}
+	return nil
+}
 
 func CreateClientInTx(tx *sqlx.Tx, code, name string) error {
 	const q = `INSERT INTO client_master (client_code, client_name) VALUES (?, ?)`
@@ -3054,6 +3213,7 @@ import (
 
 const TransactionColumns = `
     id, transaction_date, client_code, 
+
 receipt_number, line_number, flag,
     jan_code, yj_code, product_name, kana_name, usage_classification, package_form, package_spec, maker_name,
     dat_quantity, jan_pack_inner_qty, jan_quantity, jan_pack_unit_qty, jan_unit_name, jan_unit_code,
@@ -3098,6 +3258,7 @@ INSERT OR REPLACE INTO transaction_records (
     :dat_quantity, 
 :jan_pack_inner_qty, :jan_quantity, :jan_pack_unit_qty, :jan_unit_name, :jan_unit_code,
    
+
  :yj_quantity, :yj_pack_unit_qty, :yj_unit_name, :unit_price, :purchase_price, :supplier_wholesale,
     :subtotal, :tax_amount, :tax_rate, :expiry_date, :lot_number, :flag_poison,
     :flag_deleterious, :flag_narcotic, :flag_psychotropic, :flag_stimulant,
@@ -3124,6 +3285,7 @@ UPDATE transaction_records SET
 :jan_code,
     yj_code = :yj_code,
    
+
  product_name = :product_name,
     kana_name = :kana_name,
     usage_classification = :usage_classification,
@@ -3144,6 +3306,7 @@ yj_pack_unit_qty = :yj_pack_unit_qty,
    
      unit_price = :unit_price,
  
+
    purchase_price = :purchase_price,
     supplier_wholesale = :supplier_wholesale,
     subtotal = :subtotal,
@@ -3186,8 +3349,10 @@ func PersistTransactionRecordsInTx(tx *sqlx.Tx, records []model.TransactionRecor
 }
 
 func DeleteUsageTransactionsInDateRange(tx *sqlx.Tx, minDate, maxDate string) error {
-	const q = `DELETE FROM transaction_records WHERE flag = '2' AND transaction_date BETWEEN ?
+	// ▼▼▼【ここを修正】flag = '2' -> '3' (処方) に変更 ▼▼▼
+	const q = `DELETE FROM transaction_records WHERE flag = '3' AND transaction_date BETWEEN ?
 AND ?`
+	// ▲▲▲【修正ここまで】▲▲▲
 	_, err := tx.Exec(q, minDate, maxDate)
 	if err != nil {
 		return fmt.Errorf("failed to delete usage transactions in date range: %w", err)
@@ -3277,7 +3442,8 @@ func GetReceiptNumbersByDate(db *sqlx.DB, date string, prefix string, clientCode
 		args = append(args, clientCode)
 	}
 
-	query += " WHERE " + strings.Join(conditions, " AND ")
+	query +=
+		" WHERE " + strings.Join(conditions, " AND ")
 	query += " ORDER BY receipt_number"
 
 	err := db.Select(&numbers, query, args...)
@@ -3300,7 +3466,7 @@ ORDER BY line_number`
 }
 
 func DeleteTransactionsByReceiptNumberInTx(tx *sqlx.Tx, receiptNumber string) error {
-	const q = `DELETE FROM transaction_records WHERE receipt_number = ?`
+	q := `DELETE FROM transaction_records WHERE receipt_number = ?`
 	_, err := tx.Exec(q, receiptNumber)
 	if err != nil {
 		return fmt.Errorf("failed to delete transactions for receipt %s: %w", receiptNumber, err)
@@ -3588,7 +3754,7 @@ import (
 
 func GetAllWholesalers(db *sqlx.DB) ([]model.Wholesaler, error) {
 	var wholesalers []model.Wholesaler
-	err := db.Select(&wholesalers, "SELECT wholesaler_code, wholesaler_name FROM wholesalers ORDER BY wholesaler_code")
+	err := db.Select(&wholesalers, "SELECT wholesaler_code, wholesaler_name FROM wholesalers ORDER BY wholesaler_code") // [cite: 2540]
 	if err != nil {
 		return nil, fmt.Errorf("failed to get all wholesalers: %w", err)
 	}
@@ -3620,8 +3786,26 @@ func CreateWholesaler(db *sqlx.DB, code, name string) error {
 	return nil
 }
 
+// ▼▼▼【ここから追加】(client_master の UpsertClientInTx [cite: 2449] を参考に作成) ▼▼▼
+// UpsertWholesalerInTx は卸マスタにデータを挿入または更新します。
+func UpsertWholesalerInTx(tx *sqlx.Tx, code, name string) error {
+	const q = `
+		INSERT INTO wholesalers (wholesaler_code, wholesaler_name) 
+		VALUES (?, ?)
+		ON CONFLICT(wholesaler_code) DO UPDATE SET
+			wholesaler_name = excluded.wholesaler_name
+	`
+	_, err := tx.Exec(q, code, name)
+	if err != nil {
+		return fmt.Errorf("UpsertWholesalerInTx (Code: %s, Name: %s) failed: %w", code, name, err)
+	}
+	return nil
+}
+
+// ▲▲▲【追加ここまで】▲▲▲
+
 func DeleteWholesaler(db *sqlx.DB, code string) error {
-	const q = `DELETE FROM wholesalers WHERE wholesaler_code = ?`
+	const q = `DELETE FROM wholesalers WHERE wholesaler_code = ?` // [cite: 2541]
 	_, err := db.Exec(q, code)
 	if err != nil {
 		return fmt.Errorf("failed to delete wholesaler with code %s: %w", code, err)
@@ -4427,6 +4611,92 @@ func SaveInventoryDataHandler(conn *sqlx.DB) http.HandlerFunc {
 }
 
 
+----- C:\Users\wasab\OneDrive\デスクトップ\TKR\loader\handler.go -----
+// C:\Users\wasab\OneDrive\デスクトップ\TKR\loader\handler.go
+package loader
+
+import (
+	"encoding/json"
+	"fmt"
+	"log"
+	"net/http"
+	"os"
+	"tkr/database"
+
+	"github.com/jmoiron/sqlx"
+)
+
+// ReloadJCSHMSHandler は JCSHMS.CSV と JANCODE.CSV の再読み込みをトリガーします。
+func ReloadJCSHMSHandler(db *sqlx.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		log.Println("HTTP request received: Reloading JCSHMS and JANCODE...")
+
+		jcshmsPath := "SOU/JCSHMS.CSV"
+		jancodePath := "SOU/JANCODE.CSV"
+
+		// JCSHMS.CSV のロード
+		if _, err := os.Stat(jcshmsPath); os.IsNotExist(err) {
+			log.Printf("WARN: %s not found, skipping.", jcshmsPath)
+		} else {
+			log.Printf("Reloading %s...", jcshmsPath)
+			if err := LoadCSV(db, jcshmsPath, "jcshms", 125, false); err != nil {
+				msg := fmt.Sprintf("failed to reload %s: %v", jcshmsPath, err)
+				log.Println(msg)
+				http.Error(w, msg, http.StatusInternalServerError)
+				return
+			}
+			log.Printf("Reloaded %s successfully.", jcshmsPath)
+		}
+
+		// JANCODE.CSV のロード
+		if _, err := os.Stat(jancodePath); os.IsNotExist(err) {
+			log.Printf("WARN: %s not found, skipping.", jancodePath)
+		} else {
+			log.Printf("Reloading %s...", jancodePath)
+			if err := LoadCSV(db, jancodePath, "jancode", 30, true); err != nil {
+				msg := fmt.Sprintf("failed to reload %s: %v", jancodePath, err)
+				log.Println(msg)
+				http.Error(w, msg, http.StatusInternalServerError)
+				return
+			}
+			log.Printf("Reloaded %s successfully.", jancodePath)
+		}
+
+		// シーケンスの再初期化
+		tx, err := db.Beginx()
+		if err != nil {
+			msg := fmt.Sprintf("failed to begin transaction for sequence initialization: %v", err)
+			log.Println(msg)
+			http.Error(w, msg, http.StatusInternalServerError)
+			return
+		}
+		defer tx.Rollback() // エラー時
+
+		if err := database.InitializeSequenceFromMaxYjCode(tx); err != nil {
+			log.Printf("WARN: Failed to re-initialize MA2Y sequence: %v", err)
+			// エラーでも続行
+		}
+		if err := database.InitializeSequenceFromMaxProductCode(tx); err != nil {
+			log.Printf("WARN: Failed to re-initialize MA2J sequence: %v", err)
+			// エラーでも続行
+		}
+
+		if err := tx.Commit(); err != nil {
+			msg := fmt.Sprintf("failed to commit sequence initialization: %v", err)
+			log.Println(msg)
+			http.Error(w, msg, http.StatusInternalServerError)
+			return
+		}
+		log.Println("Code sequences re-initialized.")
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{
+			"message": "JCSHMS (SOU) マスターの更新が完了しました。",
+		})
+	}
+}
+
+
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\loader\loader.go -----
 package loader
 
@@ -5152,7 +5422,8 @@ var ma2jCodeRegex = regexp.MustCompile(`^MA2J[0-9]{9}$`)
 
 func FindOrCreateMaster(tx *sqlx.Tx, productCodeOrKey string, productName string) (*model.ProductMaster, error) {
 
-	if productCodeOrKey == "0000000000000" || productCodeOrKey == "" {
+	if productCodeOrKey == "0000000000000" ||
+		productCodeOrKey == "" {
 		if productName != "" {
 			var existingMaster model.ProductMaster
 			err := tx.Get(&existingMaster, "SELECT * FROM product_master WHERE kana_name_short = ?", productName)
@@ -5243,7 +5514,8 @@ func FindOrCreateMaster(tx *sqlx.Tx, productCodeOrKey string, productName string
 	}
 
 	provisionalProductCode := productCodeOrKey
-	if (!isJANKey && !isGS1Key) || productCodeOrKey == "0000000000000" || productCodeOrKey == "" {
+	if (!isJANKey && !isGS1Key) ||
+		productCodeOrKey == "0000000000000" || productCodeOrKey == "" {
 		newPJCode, seqErr := database.NextSequenceInTx(tx, "MA2J", "MA2J", 9)
 		if seqErr != nil {
 			return nil, fmt.Errorf("failed to get next MA2J sequence for provisional master (Key: %s): %w", productCodeOrKey, seqErr)
@@ -5290,6 +5562,13 @@ func JcshmsToProductMasterInput(jcshms *model.JcshmsInfo) model.ProductMasterInp
 	}
 	janUnitCodeInt, _ := strconv.Atoi(jcshms.JanUnitCode.String)
 
+	// ▼▼▼【ここから追加】剤型区分が空白なら「他」を設定 ▼▼▼
+	usageClass := strings.TrimSpace(jcshms.UsageClassification)
+	if usageClass == "" {
+		usageClass = "他"
+	}
+	// ▲▲▲【追加ここまで】▲▲▲
+
 	return model.ProductMasterInput{
 		ProductCode: jcshms.ProductCode,
 		YjCode:      jcshms.YjCode,
@@ -5302,7 +5581,7 @@ func JcshmsToProductMasterInput(jcshms *model.JcshmsInfo) model.ProductMasterInp
 
 		MakerName:           strings.TrimSpace(jcshms.MakerName),
 		Specification:       strings.TrimSpace(jcshms.Specification),
-		UsageClassification: strings.TrimSpace(jcshms.UsageClassification),
+		UsageClassification: usageClass, // ▼▼▼【修正】変更後の変数を設定
 		PackageForm:         strings.TrimSpace(jcshms.PackageForm),
 		YjUnitName:          strings.TrimSpace(jcshms.YjUnitName),
 		YjPackUnitQty:       jcshms.YjPackUnitQty,
@@ -5334,7 +5613,8 @@ func UpsertProductMasterSqlx(tx *sqlx.Tx, input model.ProductMasterInput) (*mode
 			maker_name, specification, usage_classification, package_form, yj_unit_name, yj_pack_unit_qty,
 			jan_pack_inner_qty, jan_unit_code, jan_pack_unit_qty, origin,
 			nhi_price, purchase_price,
-			flag_poison, flag_deleterious, flag_narcotic, flag_psychotropic, flag_stimulant, flag_stimulant_raw,
+			flag_poison, flag_deleterious, flag_narcotic, flag_psychotropic, flag_stimulant, 
+flag_stimulant_raw,
 			is_order_stopped, supplier_wholesale,
 			group_code, shelf_number, category, user_notes
 		) VALUES (
@@ -5371,7 +5651,8 @@ func UpsertProductMasterSqlx(tx *sqlx.Tx, input model.ProductMasterInput) (*mode
 		return nil, fmt.Errorf("failed to re-fetch master after upsert for %s: %w", input.ProductCode, err)
 	}
 
-	return &insertedMaster, nil
+	return &insertedMaster,
+		nil
 }
 
 func MasterToInput(m *model.ProductMaster) model.ProductMasterInput {
@@ -5779,6 +6060,84 @@ package model
 // このファイル内の型定義は、機能ごとに
 // master_types.go, transaction_types.go, aggregation_types.go,
 // inventory_types.go, domain_types.go に分割されました。
+
+
+----- C:\Users\wasab\OneDrive\デスクトップ\TKR\parsers\client_csv_parser.go -----
+// C:\Users\wasab\OneDrive\デスクトップ\TKR\parsers\client_csv_parser.go
+package parsers
+
+import (
+	"encoding/csv"
+	"fmt"
+	"io"
+	"log"
+	"strings"
+)
+
+// ParsedClientCSVRecord は得意先CSVの1行を表します。
+type ParsedClientCSVRecord struct {
+	ClientCode string
+	ClientName string
+}
+
+// ParseClientCSV は得意先マスタCSVを解析します。
+func ParseClientCSV(r io.Reader) ([]ParsedClientCSVRecord, error) {
+	// SkipBOM [cite: 4504-4505] を使用
+	reader := csv.NewReader(SkipBOM(r))
+	reader.LazyQuotes = true
+
+	header, err := reader.Read()
+	if err == io.EOF {
+		return nil, fmt.Errorf("CSVファイルが空です")
+	}
+	if err != nil {
+		return nil, fmt.Errorf("CSVヘッダーの読み取りに失敗: %w", err)
+	}
+
+	// getColIndex [cite: 4505-4506] を使用
+	requiredHeaders := []string{"client_code", "client_name"}
+	colIndex, err := getColIndex(header, requiredHeaders)
+	if err != nil {
+		return nil, err
+	}
+
+	var records []ParsedClientCSVRecord
+	line := 1
+
+	for {
+		line++
+		rec, err := reader.Read()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			log.Printf("WARN: 得意先CSV %d行目の読み取りエラー (スキップ): %v", line, err)
+			continue
+		}
+
+		get := func(key string) string {
+			if idx, ok := colIndex[key]; ok && idx < len(rec) {
+				return strings.TrimSpace(rec[idx])
+			}
+			return ""
+		}
+
+		clientCode := get("client_code")
+		clientName := get("client_name")
+
+		if clientCode == "" || clientName == "" {
+			log.Printf("WARN: 得意先CSV %d行目 (コードまたは名称が空) (スキップ)", line)
+			continue
+		}
+
+		records = append(records, ParsedClientCSVRecord{
+			ClientCode: clientCode,
+			ClientName: clientName,
+		})
+	}
+
+	return records, nil
+}
 
 
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\parsers\dat_parser.go -----
@@ -7412,12 +7771,7 @@ func ExecuteReprocess(conn *sqlx.DB) error {
 
 			// 3. 金額を再計算 (TKRのFlag定義に合わせてロジックを分岐)
 			switch rec.Flag {
-			case 1: // 納品
-				// TKRでは納品時の単価(UnitPrice)はYJ単位、PurchasePriceは未使用
-				// 最新マスターの薬価(NhiPrice)を単価とする
-				rec.UnitPrice = master.NhiPrice
-				rec.Subtotal = rec.YjQuantity * rec.UnitPrice
-
+			// ▼▼▼【ここから修正】 flag = 1 (納品) を default と同じ扱いに変更 ▼▼▼
 			case 0, 3: // 棚卸, 処方
 				rec.UnitPrice = master.NhiPrice // 薬価を単価とする
 				rec.Subtotal = rec.YjQuantity * rec.UnitPrice
@@ -7426,9 +7780,10 @@ func ExecuteReprocess(conn *sqlx.DB) error {
 				rec.UnitPrice = master.NhiPrice
 				rec.Subtotal = rec.YjQuantity * rec.UnitPrice
 
-			default: // その他 (入出庫 11, 12 など)
+			default: // 納品(1), その他 (入出庫 11, 12 など)
 				// 数量の変更を反映するため金額は再計算するが、単価は維持する
 				rec.Subtotal = rec.YjQuantity * rec.UnitPrice
+				// ▲▲▲【修正ここまで】▲▲▲
 			}
 
 			// 4. 処理ステータスを更新 (TKRの定義に合わせて修正)
@@ -7478,17 +7833,13 @@ func ProcessTransactionsHandler(conn *sqlx.DB) http.HandlerFunc {
 package stock
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
-	"net/url"
 
 	"database/sql" // ▼▼▼【追加】sql パッケージをインポート ▼▼▼
 	"strconv"      // ▼▼▼【追加】strconv パッケージをインポート ▼▼▼
-	"strings"
-	"time"
 	"tkr/database"
 	"tkr/mappers"
 
@@ -7501,66 +7852,13 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
+// ▼▼▼【ここから削除】未使用の quoteAll 関数 ▼▼▼
+/*
 func quoteAll(s string) string {
 	return `"` + strings.ReplaceAll(s, `"`, `""`) + `"`
 }
-
-// ▼▼▼【ここから修正】ExportCurrentStockHandler を product_master 基準に変更 ▼▼▼
-func ExportCurrentStockHandler(db *sqlx.DB) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-
-		// 1. 在庫起点テーブル (package_stock) ではなく、
-		//    product_master から全ての PackageKey 情報を取得
-		allMasterKeysMap, err := database.GetAllPackageKeysFromMasters(db)
-		if err != nil {
-			http.Error(w, "Failed to get all package keys from masters: "+err.Error(), http.StatusInternalServerError)
-			return
-		}
-
-		// (GetRepresentativeProductNameMap は不要)
-
-		var buf bytes.Buffer
-		buf.Write([]byte{0xEF, 0xBB, 0xBF}) // UTF-8 BOM
-
-		// 3. ヘッダーを PackageKey, ProductName, JAN数量 に変更
-		header := []string{
-			"PackageKey",
-			"ProductName",
-			"JAN数量",
-		}
-		buf.WriteString(strings.Join(header, ",") + "\r\n")
-
-		// 4. データをCSV行に変換 (allMasterKeysMap をループ)
-		for key, keyInfo := range allMasterKeysMap {
-			if keyInfo.Representative == nil {
-				log.Printf("WARN: Skipping invalid PackageKey in export (no representative): %s", key)
-				continue
-			}
-
-			// YJ数量 ではなく、JAN数量を 0.00 として出力
-			janQty := 0.0
-
-			// 代表品名を取得
-			productName := keyInfo.Representative.ProductName
-
-			record := []string{
-				quoteAll(key), // マスタから取得した最新の PackageKey
-				quoteAll(productName),
-				quoteAll(fmt.Sprintf("%.2f", janQty)), // JAN数量は 0.00 固定
-			}
-			buf.WriteString(strings.Join(record, ",") + "\r\n")
-		}
-		// ▲▲▲【修正ここまで】▲▲▲
-
-		today := time.Now().Format("20060102")
-		filename := fmt.Sprintf("TKR在庫データ_%s.csv", today) // ファイル名を変更
-
-		w.Header().Set("Content-Type", "text/csv; charset=utf-8")
-		w.Header().Set("Content-Disposition", "attachment; filename*=UTF-8''"+url.PathEscape(filename))
-
-		w.Write(buf.Bytes())
-	}
-}
+*/
+// ▲▲▲【削除ここまで】▲▲▲
 
 // ▼▼▼ ImportTKRStockCSVHandler は変更なし (ご要望の「洗い替え」ロジックを実装済み) ▼▼▼
 func ImportTKRStockCSVHandler(db *sqlx.DB) http.HandlerFunc {
@@ -7908,21 +8206,28 @@ func ImportAllMastersHandler(db *sqlx.DB) http.HandlerFunc {
 
 			// 2. ベースデータの決定
 			if jcshmsInfo != nil {
-				// 2A. JCSHMSに情報が見つかった場合
+				// 2A.JCSHMSに情報が見つかった場合
 				input = mastermanager.JcshmsToProductMasterInput(jcshmsInfo)
 				input.Origin = "JCSHMS" // JcshmsToProductMasterInput が設定するが、明示的に "JCSHMS" を維持
 
 			} else {
-				// 2B. JCSHMSに情報が見つからなかった場合
+				// 2B.JCSHMSに情報が見つからなかった場合
 				csvProductName := get("product_name")
 				dbProductName := csvProductName
 				if !strings.HasPrefix(csvProductName, "◆") {
 					dbProductName = "◆" + csvProductName
 				}
 
+				// ▼▼▼【ここに追加】CSVの剤型区分が空白なら「他」を設定 ▼▼▼
+				csvUsageClass := get("usage_classification")
+				if csvUsageClass == "" {
+					csvUsageClass = "他"
+				}
+				// ▲▲▲【追加ここまで】▲▲▲
+
 				input = model.ProductMasterInput{
 					ProductCode: productCode,
-					YjCode:      "", // 3B で自動採番するため、ここでは空
+					YjCode:      "", // 3B で設定するため、ここでは空
 					Gs1Code:     get("gs1_code"),
 					ProductName: dbProductName,
 					KanaName:    get("kana_name"),
@@ -7930,7 +8235,7 @@ func ImportAllMastersHandler(db *sqlx.DB) http.HandlerFunc {
 					GenericName:         get("generic_name"),
 					MakerName:           get("maker_name"),
 					Specification:       get("specification"),
-					UsageClassification: get("usage_classification"),
+					UsageClassification: csvUsageClass, // ▼▼▼【修正】変更後の変数を設定
 					PackageForm:         get("package_form"),
 					YjUnitName:          get("yj_unit_name"),
 					YjPackUnitQty:       getFloat("yj_pack_unit_qty"),
@@ -7950,7 +8255,7 @@ func ImportAllMastersHandler(db *sqlx.DB) http.HandlerFunc {
 
 			// 3. YJコードの処理 (CSVのYJは無視)
 			if jcshmsInfo != nil {
-				// 3A. JCSHMS由来の場合
+				// 3A.JCSHMS由来の場合
 				if jcshmsInfo.YjCode == "" {
 					// JCSHMS由来だがYJなし (JC009が空)
 					newYj, seqErr := database.NextSequenceInTx(tx, "MA2Y", "MA2Y", 8)
@@ -7966,27 +8271,36 @@ func ImportAllMastersHandler(db *sqlx.DB) http.HandlerFunc {
 				// else (jcshmsInfo.YjCode != ""):
 				// JcshmsToProductMasterInput で input.YjCode に設定済みなので何もしない
 			} else {
-				// 3B. JCSHMSになかった場合 (PROVISIONAL)
-				// CSVのyj_codeは無視し、強制的に自動採番
+				// 3B.JCSHMSになかった場合(PROVISIONAL)
+				// ▼▼▼【ここから修正】YJコードの採番ロジックを変更 ▼▼▼
 				csvYjCode := get("yj_code")
-				if csvYjCode != "" {
-					log.Printf("WARN: Master import ignored CSV YJ_CODE ('%s') for PROVISIONAL item %s.", csvYjCode, productCode)
-				}
 
-				newYj, seqErr := database.NextSequenceInTx(tx, "MA2Y", "MA2Y", 8)
-				if seqErr != nil {
-					log.Printf("ERROR: YJコード自動採番失敗 (PROVISIONAL/ProductCode: %s): %v. Rolling back...", productCode, seqErr)
-					http.Error(w, "YJコードの自動採番に失敗しました: "+seqErr.Error(), http.StatusInternalServerError)
-					return
+				if csvYjCode == "" ||
+					strings.HasPrefix(csvYjCode, "MA2Y") {
+					// CSVのYJコードが空欄、または MA2Y で始まる場合のみ、自動採番
+					newYj, seqErr := database.NextSequenceInTx(tx, "MA2Y", "MA2Y", 8)
+					if seqErr != nil {
+						log.Printf("ERROR: YJコード自動採番失敗 (PROVISIONAL/ProductCode: %s): %v. Rolling back...", productCode, seqErr)
+						http.Error(w, "YJコードの自動採番に失敗しました: "+seqErr.Error(), http.StatusInternalServerError)
+						return
+					}
+					input.YjCode = newYj
+					if csvYjCode != "" {
+						log.Printf("INFO: Master import (PROVISIONAL item %s) had MA2Y YJCode ('%s'). Re-assigned new YJ: %s.", productCode, csvYjCode, newYj)
+					}
+				} else {
+					// CSVに MA2Y 以外（例: 610...）が記載されている場合は、その値を採用する
+					input.YjCode = csvYjCode
+					log.Printf("INFO: Master import (PROVISIONAL item %s) adopted YJCode from CSV: %s.", productCode, csvYjCode)
 				}
-				input.YjCode = newYj
+				// ▲▲▲【修正ここまで】▲▲▲
 			}
 
 			// 4. カナ名短縮 (JC019) の処理
 			csvKanaNameShort := get("kana_name_short")
 
 			if jcshmsInfo != nil {
-				// 4A. JCSHMS由来の場合
+				// 4A.JCSHMS由来の場合
 				// (input.KanaNameShort には JcshmsToProductMasterInput によって JC019 が入っている)
 				if input.KanaNameShort == "" {
 					// JCSHMS(JC019)が空だった場合のみ、CSVの値をフォールバックとして使用
@@ -7994,7 +8308,7 @@ func ImportAllMastersHandler(db *sqlx.DB) http.HandlerFunc {
 					// (CSVも空なら input.KanaNameShort は "" のまま)
 				}
 			} else {
-				// 4B. JCSHMSになかった場合 (PROVISIONAL)
+				// 4B.JCSHMSになかった場合(PROVISIONAL)
 				if csvKanaNameShort != "" {
 					input.KanaNameShort = csvKanaNameShort
 				} else {
@@ -8021,6 +8335,7 @@ func ImportAllMastersHandler(db *sqlx.DB) http.HandlerFunc {
 		}
 
 		// ▼▼▼【ここを修正】カウンターのリセット処理を「最後」に戻す ▼▼▼
+		// ▼▼▼【修正】 seqErr -> err に変更 ▼▼▼
 		if err := database.InitializeSequenceFromMaxYjCode(tx); err != nil {
 			log.Printf("ERROR: Failed to re-initialize YJ (MA2Y) sequence: %v. Rolling back...", err)
 			http.Error(w, "自動採番カウンター(MA2Y)のリセットに失敗しました: "+err.Error(), http.StatusInternalServerError)
@@ -8031,6 +8346,7 @@ func ImportAllMastersHandler(db *sqlx.DB) http.HandlerFunc {
 			http.Error(w, "自動採番カウンター(MA2J)のリセットに失敗しました: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
+		// ▲▲▲【修正ここまで】▲▲▲
 		// ▲▲▲【修正ここまで】▲▲▲
 
 		if err := tx.Commit(); err != nil {
@@ -8419,16 +8735,28 @@ import (
 	"fmt"
 	"net/http"
 	"net/url" // ▼▼▼【追加】CSV出力のため ▼▼▼
-	// ▼▼▼【追加】CSV出力のため ▼▼▼
+
+	// ▼▼▼【ここから追加】▼▼▼
+	"database/sql"
+	"sort"
 	"strings" // ▼▼▼【追加】CSV出力のため ▼▼▼
+	"time"
+	"tkr/aggregation"
+	"tkr/config"
+
+	// ▲▲▲【追加ここまで】▲▲▲
 	"tkr/database"
 	"tkr/model"
+
+	// ▼▼▼【ここに追加】▼▼▼
+	"tkr/units"
+	// ▲▲▲【追加ここまで】▲▲▲
 
 	"github.com/jmoiron/sqlx"
 	// (gofpdf と excelize への参照は削除)
 )
 
-// (GetValuationHandler は変更なし)
+// ▼▼▼【ここから修正】GetValuationHandler を aggregation.GetStockLedger を使うように修正 ▼▼▼
 func GetValuationHandler(conn *sqlx.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		q := r.URL.Query()
@@ -8441,21 +8769,25 @@ func GetValuationHandler(conn *sqlx.DB) http.HandlerFunc {
 			http.Error(w, "Date parameter is required", http.StatusBadRequest)
 			return
 		}
-		results, err := database.GetInventoryValuation(conn, filters)
+
+		// 1. 在庫評価（棚卸調整）と同じ集計ロジックを呼び出す
+		results, err := runValuationAggregation(conn, filters) //
 		if err != nil {
 			http.Error(w, "Failed to get inventory valuation: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
+
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(results)
 	}
 }
 
-// (ExportValuationHandler (Excel) は削除)
+// ▲▲▲【修正ここまで】▲▲▲
+
 // (ExportValuationPDFHandler (PDF) は削除)
 // (formatCurrency は削除)
 
-// ▼▼▼【ここから追加】TKR在庫CSV互換のCSVエクスポートハンドラ ▼▼▼
+// ▼▼▼【ここから修正】TKR在庫CSV互換のCSVエクスポートハンドラ ▼▼▼
 func quoteAll(s string) string {
 	return `"` + strings.ReplaceAll(s, `"`, `""`) + `"`
 }
@@ -8474,8 +8806,8 @@ func ExportValuationCSVHandler(conn *sqlx.DB) http.HandlerFunc {
 			return
 		}
 
-		// 1. 在庫評価データをDBから取得
-		results, err := database.GetInventoryValuation(conn, filters)
+		// 1. 在庫評価データをDBから取得 (修正された runValuationAggregation を呼ぶ)
+		results, err := runValuationAggregation(conn, filters) //
 		if err != nil {
 			http.Error(w, "Failed to get inventory valuation for export: "+err.Error(), http.StatusInternalServerError)
 			return
@@ -8484,7 +8816,7 @@ func ExportValuationCSVHandler(conn *sqlx.DB) http.HandlerFunc {
 		var buf bytes.Buffer
 		buf.Write([]byte{0xEF, 0xBB, 0xBF}) // UTF-8 BOM
 
-		// 2. TKR独自CSVインポート形式 (PackageKey, ProductName, JAN数量) に合わせる
+		//2. TKR独自CSVインポート形式 (PackageKey, ProductName, JAN数量) に合わせる
 		header := []string{
 			"PackageKey",
 			"ProductName",
@@ -8521,6 +8853,186 @@ func ExportValuationCSVHandler(conn *sqlx.DB) http.HandlerFunc {
 
 		w.Write(buf.Bytes())
 	}
+}
+
+// ▲▲▲【修正ここまで】▲▲▲
+
+// ▼▼▼【ここから追加】共通の集計実行関数 ▼▼▼
+// runValuationAggregation は、
+// 1. aggregation.GetStockLedger を呼び出し
+// 2. 結果を database.ValuationGroup 形式に変換する
+// (GetValuationHandler と ExportValuationCSVHandler の両方から呼び出される)
+func runValuationAggregation(conn *sqlx.DB, filters model.ValuationFilters) ([]database.ValuationGroup, error) {
+
+	// 1. 在庫評価（棚卸調整）と同じ集計ロジックを呼び出す
+	cfg, err := config.LoadConfig() //
+	if err != nil {
+		return nil, fmt.Errorf("設定ファイルの読み込みに失敗: %w", err)
+	}
+	startDate := time.Now().AddDate(0, 0, -cfg.CalculationPeriodDays).Format("20060102")
+
+	aggFilters := model.AggregationFilters{
+		StartDate:   startDate,    //
+		EndDate:     filters.Date, // 評価基準日
+		KanaName:    filters.KanaName,
+		DosageForm:  filters.UsageClassification,
+		Coefficient: 1.0, // 在庫評価では発注点計算は不要
+	}
+
+	// aggregation.GetStockLedger は package_stock を起点とした理論在庫 (EndingBalance) を計算する
+	yjGroups, err := aggregation.GetStockLedger(conn, aggFilters) //
+	if err != nil {
+		return nil, fmt.Errorf("failed to get stock ledger for valuation: %w", err)
+	}
+
+	if len(yjGroups) == 0 {
+		return []database.ValuationGroup{}, nil
+	}
+
+	// 採用済みマスター（JCSHMS由来）を持つYJコードをマップに記録
+	yjHasJcshmsMaster := make(map[string]bool)
+	// JANコードをキーにしたマスターマップ (剤型グループ分け用)
+	mastersByJanCode := make(map[string]*model.ProductMaster)
+
+	for _, yjGroup := range yjGroups {
+		for _, pkg := range yjGroup.PackageLedgers {
+			for _, master := range pkg.Masters {
+				if master.Origin == "JCSHMS" {
+					yjHasJcshmsMaster[master.YjCode] = true
+				}
+				mastersByJanCode[master.ProductCode] = master //
+			}
+		}
+	}
+
+	var detailRows []model.ValuationDetailRow
+
+	// 2. 包装キーごとにループ
+	for _, yjGroup := range yjGroups {
+		for _, pkg := range yjGroup.PackageLedgers {
+
+			// 3. GetStockLedger が計算した理論在庫を取得
+			totalStockForPackage, ok := pkg.EndingBalance.(float64) //
+			if !ok {
+				totalStockForPackage = 0
+			}
+
+			if totalStockForPackage == 0 {
+				continue // 在庫ゼロの包装はスキップ
+			}
+
+			// 代表マスターを選定 (JCSHMS優先)
+			var repMaster *model.ProductMaster
+			if len(pkg.Masters) > 0 {
+				repMaster = pkg.Masters[0]
+				for _, m := range pkg.Masters {
+					if m.Origin == "JCSHMS" {
+						repMaster = m
+						break
+					}
+				}
+			} else {
+				continue // マスターがいないキーはスキップ
+			}
+
+			// 仮マスター（PROVISIONAL）しか存在しないYJコードの場合、警告フラグ
+			showAlert := false
+			if repMaster.Origin != "JCSHMS" && !yjHasJcshmsMaster[repMaster.YjCode] {
+				showAlert = true
+			}
+
+			// 包装仕様 (TKRの units.FormatPackageSpec が要求する型に合わせる)
+			tempJcshmsInfo := model.JcshmsInfo{ //
+				PackageForm:     repMaster.PackageForm,
+				YjUnitName:      repMaster.YjUnitName,
+				YjPackUnitQty:   repMaster.YjPackUnitQty,
+				JanPackInnerQty: sql.NullFloat64{Float64: repMaster.JanPackInnerQty, Valid: true},
+				JanPackUnitQty:  sql.NullFloat64{Float64: repMaster.JanPackUnitQty, Valid: true},
+				JanUnitCode:     sql.NullString{String: fmt.Sprintf("%d", repMaster.JanUnitCode), Valid: true},
+			}
+			spec := units.FormatPackageSpec(&tempJcshmsInfo) //
+
+			// 4. 評価額を計算
+			unitNhiPrice := repMaster.NhiPrice
+			totalNhiValue := totalStockForPackage * unitNhiPrice
+			packageNhiPrice := unitNhiPrice * repMaster.YjPackUnitQty
+
+			var totalPurchaseValue float64
+			// 仕入単価 (PurchasePrice) は包装単位あたりの価格
+			if repMaster.YjPackUnitQty > 0 {
+				// YJ単位あたりの仕入単価 = 包装単価 / YJ包装数
+				unitPurchasePrice := repMaster.PurchasePrice / repMaster.YjPackUnitQty
+				totalPurchaseValue = totalStockForPackage * unitPurchasePrice
+			}
+
+			detailRows = append(detailRows, model.ValuationDetailRow{ //
+				YjCode:               repMaster.YjCode,
+				ProductName:          repMaster.ProductName,
+				ProductCode:          repMaster.ProductCode, // 代表JAN
+				PackageSpec:          spec,
+				Stock:                totalStockForPackage,                    // YJ単位
+				YjUnitName:           units.ResolveName(repMaster.YjUnitName), //
+				PackageNhiPrice:      packageNhiPrice,
+				PackagePurchasePrice: repMaster.PurchasePrice,
+				TotalNhiValue:        totalNhiValue,
+				TotalPurchaseValue:   totalPurchaseValue,
+				ShowAlert:            showAlert,
+				PackageKey:           pkg.PackageKey,            //
+				JanPackInnerQty:      repMaster.JanPackInnerQty, //
+			})
+		}
+	}
+
+	// 5. 剤型ごとにグループ化
+	resultGroups := make(map[string]*database.ValuationGroup) //
+	for _, row := range detailRows {
+		// 代表JANのマスター情報をマップから取得
+		master, ok := mastersByJanCode[row.ProductCode]
+		if !ok {
+			continue
+		}
+		uc := master.UsageClassification
+		if uc == "" {
+			uc = "他"
+		}
+		group, ok := resultGroups[uc]
+		if !ok {
+			group = &database.ValuationGroup{UsageClassification: uc} //
+			resultGroups[uc] = group
+		}
+		group.DetailRows = append(group.DetailRows, row)
+		group.TotalNhiValue += row.TotalNhiValue
+		group.TotalPurchaseValue += row.TotalPurchaseValue
+	}
+
+	// 6. 最終結果をソート
+	order := map[string]int{"内": 1, "外": 2, "歯": 3, "注": 4, "機": 5, "他": 6}
+	var finalResult []database.ValuationGroup
+	for _, group := range resultGroups {
+		sort.Slice(group.DetailRows, func(i, j int) bool {
+			// カナ名でソートするためにマスター情報を参照
+			masterI, okI := mastersByJanCode[group.DetailRows[i].ProductCode]
+			masterJ, okJ := mastersByJanCode[group.DetailRows[j].ProductCode]
+			if !okI || !okJ {
+				return group.DetailRows[i].ProductCode < group.DetailRows[j].ProductCode
+			}
+			return masterI.KanaName < masterJ.KanaName
+		})
+		finalResult = append(finalResult, *group)
+	}
+	sort.Slice(finalResult, func(i, j int) bool {
+		prioI, okI := order[strings.TrimSpace(finalResult[i].UsageClassification)]
+		if !okI {
+			prioI = 7
+		}
+		prioJ, okJ := order[strings.TrimSpace(finalResult[j].UsageClassification)]
+		if !okJ {
+			prioJ = 7
+		}
+		return prioI < prioJ
+	})
+
+	return finalResult, nil
 }
 
 // ▲▲▲【追加ここまで】▲▲▲
@@ -8623,6 +9135,9 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 
 	"tkr/backorder"
+	// ▼▼▼【ここに追加】▼▼▼
+	"tkr/client"
+	// ▲▲▲【追加ここまで】▲▲▲
 	"tkr/config"
 	"tkr/dat"
 	"tkr/database"
@@ -8872,6 +9387,9 @@ func main() {
 	mux.HandleFunc("/api/wholesalers/list", ListWholesalersHandler(dbConn))
 	mux.HandleFunc("/api/wholesalers/create", CreateWholesalerHandler(dbConn))
 	mux.HandleFunc("/api/wholesalers/delete/", DeleteWholesalerHandler(dbConn))
+	// ▼▼▼【ここに追加】▼▼▼
+	mux.HandleFunc("/api/clients/import", client.ImportClientsHandler(dbConn))
+	// ▲▲▲【追加ここまで】▲▲▲
 
 	mux.HandleFunc("/api/clients", func(w http.ResponseWriter, r *http.Request) {
 		clients, err := database.GetAllClients(dbConn)
@@ -8896,13 +9414,16 @@ func main() {
 
 	mux.HandleFunc("/api/units/map", units.GetTaniMapHandler())
 
+	// ▼▼▼【ここに追加】JCSHMS更新ハンドラ ▼▼▼
+	mux.HandleFunc("/api/jcshms/reload", loader.ReloadJCSHMSHandler(dbConn))
+	// ▲▲▲【追加ここまで】▲▲▲
+
 	mux.HandleFunc("/api/reprocess/all", reprocess.ProcessTransactionsHandler(dbConn))
 
 	mux.HandleFunc("/api/deadstock/list", deadstock.ListDeadStockHandler(dbConn))
 	mux.HandleFunc("/api/deadstock/upload", deadstock.UploadDeadStockCSVHandler(dbConn))
 	mux.HandleFunc("/api/deadstock/export", deadstock.ExportDeadStockHandler(dbConn))
 
-	mux.HandleFunc("/api/stock/export/current", stock.ExportCurrentStockHandler(dbConn))
 	mux.HandleFunc("/api/stock/import/tkr", stock.ImportTKRStockCSVHandler(dbConn))
 
 	mux.HandleFunc("/api/masters/export/all", stock.ExportAllMastersHandler(dbConn))

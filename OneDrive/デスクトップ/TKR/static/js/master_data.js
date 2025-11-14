@@ -6,33 +6,41 @@ export let clientMap = new Map();
 /**
  * 卸マスタのリストを取得します。
  */
+// ▼▼▼【ここから修正】元の /api/wholesalers/list を参照する状態に戻す ▼▼▼
 async function fetchWholesalers() {
     try {
         const response = await fetch('/api/wholesalers/list');
         if (!response.ok) {
             throw new Error(`卸一覧の読み込みに失敗しました: ${response.statusText}`);
         }
-        return await response.json();
+          return await response.json();
     } catch (error) {
         console.error("Error loading wholesalers:", error);
         window.showNotification(error.message, 'error');
         return [];
     }
 }
+// ▲▲▲【修正ここまで】▲▲▲
 
 /**
  * 卸マスタのマップを取得します。
  */
+// ▼▼▼【ここから修正】wholesaler API のレスポンス (wholesalerCode, wholesalerName) をパースする元の状態に戻す ▼▼▼
 async function fetchWholesalerMap() {
     const wholesalers = await fetchWholesalers();
     const map = new Map();
     if (wholesalers) {
         wholesalers.forEach(w => {
-            map.set(w.wholesalerCode, w.wholesalerName);
+            // ▼▼▼【修正】キー登録時に trim() を追加 ▼▼▼
+            if (w.wholesalerCode) {
+                map.set(w.wholesalerCode.trim(), w.wholesalerName);
+            }
+            // ▲▲▲【修正ここまで】▲▲▲
         });
     }
     return map;
 }
+// ▲▲▲【修正ここまで】▲▲▲
 
 /**
  * 内部の wholesalerMap をAPIから取得した最新のデータで更新します。
@@ -42,7 +50,7 @@ async function fetchAndPopulateWholesalers() {
 }
 
 /**
- * ▼▼▼【ここから修正】得意先マスタを読み込む (WASABI: master_data.js [cite: 2112] より) ▼▼▼
+ * ▼▼▼【ここから修正】得意先マスタを読み込む (WASABI: master_data.js より) ▼▼▼
  */
 async function fetchAndPopulateClients() {
 	try {
@@ -53,7 +61,13 @@ async function fetchAndPopulateClients() {
 		const clients = await res.json();
 		clientMap.clear();
 		if (clients) {
-			clients.forEach(c => clientMap.set(c.clientCode, c.clientName));
+            // ▼▼▼【修正】キー登録時に trim() を追加 ▼▼▼
+			clients.forEach(c => {
+                if (c.clientCode) {
+                    clientMap.set(c.clientCode.trim(), c.clientName);
+                }
+            });
+            // ▲▲▲【修正ここまで】▲▲▲
 		}
 	} catch (error) {
 		console.error("Error loading clients:", error);
@@ -66,10 +80,10 @@ async function fetchAndPopulateClients() {
  */
 export async function refreshClientMap() {
     try {
-        await fetchAndPopulateClients();
+         await fetchAndPopulateClients();
         console.log('得意先マップを更新しました。');
     } catch (error) {
-        console.error("得意先マップの更新に失敗しました:", error);
+         console.error("得意先マップの更新に失敗しました:", error);
         window.showNotification('得意先リストの更新に失敗しました。', 'error');
     }
 }
@@ -80,7 +94,7 @@ export async function refreshClientMap() {
  */
 export async function refreshWholesalerMap() {
     try {
-        await fetchAndPopulateWholesalers();
+         await fetchAndPopulateWholesalers();
         console.log('卸業者マップを更新しました。');
     } catch (error) {
         console.error("卸業者マップの更新に失敗しました:", error);
@@ -94,12 +108,12 @@ export async function refreshWholesalerMap() {
 export async function loadMasterData() {
     try {
         await Promise.all([
-            fetchAndPopulateClients(),
-            fetchAndPopulateWholesalers()
-        ]);
+             fetchAndPopulateClients(),
+             fetchAndPopulateWholesalers()
+         ]);
         console.log('マスターデータを読み込みました。');
     } catch (error) {
-        console.error("マスターデータの読み込み中にエラーが発生しました:", error);
+         console.error("マスターデータの読み込み中にエラーが発生しました:", error);
         window.showNotification('マスターデータの読み込みに失敗しました。', 'error');
     }
 }

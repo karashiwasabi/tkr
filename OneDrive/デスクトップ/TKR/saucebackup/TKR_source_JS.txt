@@ -558,11 +558,15 @@ init();
 
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\js\common_table.js -----
 // C:\Users\wasab\OneDrive\デスクトップ\TKR\static\js\common_table.js
-import { wholesalerMap } from './master_data.js';
+// ▼▼▼【修正】clientMap もインポートする ▼▼▼
+import { wholesalerMap, clientMap } from './master_data.js';
+// ▲▲▲【修正ここまで】▲▲▲
+
 // (WASABI: inventory_adjustment_ui.js より)
 const transactionTypeMap = {
 	0: "棚卸", 1: "納品", 2: "返品", 3: "処方",
-    11: "入庫", 12: "出庫"
+   
+ 11: "入庫", 12: "出庫"
 };
 /**
  * 空のテーブルHTMLを生成します。
@@ -570,44 +574,55 @@ const transactionTypeMap = {
  */
 export function renderEmptyTableHTML(columnCount = 13) {
     return `
-    <thead>
-        <tr>
-            <th rowspan="2" class="col-action">－</th>
-            <th class="col-date">日付</th>
-            <th class="col-yj">YJ</th>
-            <th colspan="2" class="col-product">製品名</th>
-            <th class="col-count">個数</th>
-     
-           <th class="col-yjqty">YJ数量</th>
-            <th class="col-yjpackqty">YJ包装数</th>
-            <th class="col-yjunit">YJ単位</th>
-            <th class="col-unitprice">単価</th>
-            <th class="col-expiry">期限</th>
-            <th class="col-wholesaler">卸</th>
-            <th class="col-line">行</th>
-        </tr>
-      
-     <tr>
-            <th class="col-flag">種別</th>
-            <th class="col-jan">JAN</th>
-            <th class="col-package">包装</th>
-            <th class="col-maker">メーカー</th>
-            <th class="col-form">剤型</th>
-            
- <th class="col-janqty">JAN数量</th>
-            <th class="col-janpackqty">JAN包装数</th>
-       
-           <th class="col-janunit">JAN単位</th>
-            <th class="col-amount">金額</th>
-    
    
-      <th class="col-lot">ロット</th>
-            <th class="col-receipt">伝票番号</th>
-            <th class="col-ma">MA</th>
+ <thead>
+         <tr>
+            <th rowspan="2" 
+class="col-action">－</th>
+             <th class="col-date">日付</th>
+          
+  <th class="col-yj">YJ</th>
+             <th colspan="2" class="col-product">製品名</th>
+      
+       <th class="col-count">個数</th>
+             <th class="col-yjqty">YJ数量</th>
+  
+           <th class="col-yjpackqty">YJ包装数</th>
+            
+<th class="col-yjunit">YJ単位</th>
+             <th class="col-unitprice">単価</th>
+         
+    <th class="col-expiry">期限</th>
+            <th class="col-wholesaler">卸</th>
+      
+       <th class="col-line">行</th>
         </tr>
+        
+  <tr>
+            <th class="col-flag">種別</th>
+         
+    <th class="col-jan">JAN</th>
+            <th class="col-package">包装</th>
+      
+       <th class="col-maker">メーカー</th>
+            <th class="col-form">剤型</th>
+   
+          <th class="col-janqty">JAN数量</th>
+             
+<th class="col-janpackqty">JAN包装数</th>
+             <th class="col-janunit">JAN単位</th>
+         
+    <th class="col-amount">金額</th>
+             <th class="col-lot">ロット</th>
+     
+       <th class="col-receipt">伝票番号</th>
+             <th class="col-ma">MA</th>
+  
+      </tr>
     </thead>
     <tbody>
-        <tr><td colspan="13">登録されたデータはありません。</td></tr>
+         <tr><td 
+colspan="13">登録されたデータはありません。</td></tr>
     </tbody>
     `;
 }
@@ -621,101 +636,91 @@ export function renderEmptyTableHTML(columnCount = 13) {
  * @returns {string} - テーブル全体のHTML文字列
  */
 export function renderTransactionTableHTML(records, customBody = null) {
-    const header = `<thead>
+    const header = 
+`<thead>
         <tr><th rowspan="2" class="col-action">－</th><th class="col-date">日付</th><th class="col-yj">YJ</th><th colspan="2" class="col-product">製品名</th><th class="col-count">個数</th><th class="col-yjqty">YJ数量</th><th class="col-yjpackqty">YJ包装数</th><th class="col-yjunit">YJ単位</th><th class="col-unitprice">単価</th><th class="col-expiry">期限</th><th class="col-wholesaler">卸</th><th class="col-line">行</th></tr>
-        <tr><th class="col-flag">種別</th><th class="col-jan">JAN</th><th class="col-package">包装</th><th class="col-maker">メーカー</th><th class="col-form">剤型</th><th class="col-janqty">JAN数量</th><th class="col-janpackqty">JAN包装数</th><th class="col-janunit">JAN単位</th><th class="col-amount">金額</th><th class="col-lot">ロット</th><th class="col-receipt">伝票番号</th><th class="col-ma">MA</th></tr></thead>`;
+  
+      <tr><th class="col-flag">種別</th><th class="col-jan">JAN</th><th class="col-package">包装</th><th class="col-maker">メーカー</th><th class="col-form">剤型</th><th class="col-janqty">JAN数量</th><th class="col-janpackqty">JAN包装数</th><th class="col-janunit">JAN単位</th><th class="col-amount">金額</th><th class="col-lot">ロット</th><th class="col-receipt">伝票番号</th><th class="col-ma">MA</th></tr></thead>`;
     let bodyHtml;
     if (customBody) {
-        bodyHtml = customBody;
+ 
+       bodyHtml = customBody;
     } else {
-        // ▼▼▼【ここを修正】colspan="14" -> "13" ▼▼▼
+         // ▼▼▼【ここを修正】colspan="14" -> "13" ▼▼▼
         bodyHtml = `<tbody>${(!records || records.length === 0) ?
  '<tr><td colspan="13">対象データがありません。</td></tr>' : records.map(rec => {
-            
-            let clientDisplayHtml = '';
-            if (rec.flag === 1 || rec.flag === 2) { // 納品・返品
-                clientDisplayHtml = wholesalerMap.get(rec.clientCode) || rec.clientCode || '';
-            } else {
+  
           
-                 clientDisplayHtml = rec.clientCode || ''; // 処方など
-            }
+             let 
+clientDisplayHtml = '';
+             // ▼▼▼【修正】rec.clientCode が存在する場合のみ trim() を実行 ▼▼▼
+    
+         const clientCode = rec.clientCode ? rec.clientCode.trim() : '';
+        
+     // ▲▲▲【修正ここまで】▲▲▲
 
-            // ▼▼▼【修正】ハードコードされた "left", "right" クラスを削除 ▼▼▼
-            const top = `<tr><td rowspan="2" class="col-action"></td>
-                <td class="col-date">${rec.transactionDate || ''}</td><td class="yj-jan-code col-yj">${rec.yjCode || ''}</td><td class="col-product" colspan="2">${rec.productName || ''}</td>
-               
-                 <td class="col-count">${rec.datQuantity?.toFixed(2) || ''}</td><td class="col-yjqty">${rec.yjQuantity?.toFixed(2) || ''}</td><td class="col-yjpackqty">${rec.yjPackUnitQty || ''}</td><td class="col-yjunit">${rec.yjUnitName || ''}</td>
-                <td class="col-unitprice">${rec.unitPrice?.toFixed(4) ||
- ''}</td><td class="col-expiry">${rec.expiryDate || ''}</td><td class="col-wholesaler">${clientDisplayHtml}</td><td class="col-line">${rec.lineNumber || ''}</td></tr>`;
+             // ▼▼▼【ここから修正】flag 11, 12 の場合に clientMap を参照するロジックを追加 ▼▼▼
+             if (rec.flag === 1 || 
+rec.flag === 2) { // 納品・返品
+                 clientDisplayHtml = wholesalerMap.get(clientCode) || 
+clientCode || '';
+             } else if (rec.flag === 11 || rec.flag === 12) { // 入庫・出庫
+                 clientDisplayHtml = clientMap.get(clientCode) || clientCode || '';
+    
+         } else {
+             
+    clientDisplayHtml = clientCode || ''; // 処方(3), 棚卸(0) など
+             }
+             // ▲▲▲【修正ここまで】▲▲▲
+
+ 
+           // ▼▼▼【修正】ハードコードされた "left", "right" クラスを削除 ▼▼▼
+        
+     const top = `<tr><td rowspan="2" class="col-action"></td>
+              
+   <td class="col-date">${rec.transactionDate || ''}</td><td class="yj-jan-code col-yj">${rec.yjCode || ''}</td><td class="col-product" colspan="2">${rec.productName || ''}</td>
+          
+       <td class="col-count">${rec.datQuantity?.toFixed(2) || ''}</td><td class="col-yjqty">${rec.yjQuantity?.toFixed(2) || ''}</td><td class="col-yjpackqty">${rec.yjPackUnitQty || ''}</td><td class="col-yjunit">${rec.yjUnitName || ''}</td>
+     
+            <td class="col-unitprice">${rec.unitPrice?.toFixed(4) || ''}</td><td class="col-expiry">${rec.expiryDate || ''}</td><td class="col-wholesaler">${clientDisplayHtml}</td><td class="col-line">${rec.lineNumber || ''}</td></tr>`;
             
-            const bottom = `<tr><td class="col-flag">${transactionTypeMap[rec.flag] || rec.flag}</td><td class="yj-jan-code col-jan">${rec.janCode ||
- ''}</td><td class="col-package">${rec.packageSpec || ''}</td><td class="col-maker">${rec.makerName || ''}</td>
-                <td class="col-form">${rec.usageClassification ||
- ''}</td><td class="col-janqty">${rec.janQuantity?.toFixed(2) || ''}</td><td class="col-janpackqty">${rec.janPackUnitQty || ''}</td><td class="col-janunit">${rec.janUnitName || ''}</td>
-                <td class="col-amount">${rec.subtotal?.toFixed(2) ||
- ''}</td><td class="col-lot">${rec.lotNumber || ''}</td><td class="col-receipt">${rec.receiptNumber || ''}</td><td class="col-ma">${rec.processFlagMA || ''}</td></tr>`;
+            const 
+bottom = `<tr><td class="col-flag">${transactionTypeMap[rec.flag] || rec.flag}</td><td class="yj-jan-code col-jan">${rec.janCode || ''}</td><td class="col-package">${rec.packageSpec || ''}</td><td class="col-maker">${rec.makerName || ''}</td>
+         
+        <td class="col-form">${rec.usageClassification || ''}</td><td class="col-janqty">${rec.janQuantity?.toFixed(2) || ''}</td><td class="col-janpackqty">${rec.janPackUnitQty || ''}</td><td class="col-janunit">${rec.janUnitName || ''}</td>
+    
+             <td class="col-amount">${rec.subtotal?.toFixed(2) || ''}</td><td class="col-lot">${rec.lotNumber || ''}</td><td class="col-receipt">${rec.receiptNumber || ''}</td><td class="col-ma">${rec.processFlagMA 
+|| ''}</td></tr>`;
 // ▲▲▲【修正ここまで】▲▲▲
             return top + bottom;
         }).join('')}</tbody>`;
     }
-    return `<table class="data-table">${header}${bodyHtml}</table>`;
+    
+return `<table class="data-table">${header}${bodyHtml}</table>`;
 }
 
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\js\config_migration.js -----
+// C:\Users\wasab\OneDrive\デスクトップ\TKR\static\js\config_migration.js
 import { handleFileUpload } from './utils.js';
+// ▼▼▼【ここに追加】 master_data.js からリフレッシュ関数をインポート ▼▼▼
+import { refreshClientMap, refreshWholesalerMap } from './master_data.js';
+// ▲▲▲【追加ここまで】▲▲▲
 
-let exportTkrStockBtn, importTkrStockBtn, importTkrStockInput;
+let importTkrStockBtn, importTkrStockInput;
 let exportAllMastersBtn, importAllMastersBtn, importAllMastersInput;
 // ▼▼▼【ここに追加】予製（一括）のボタン参照 ▼▼▼
 let precompExportAllBtn, precompImportAllBtn, precompImportAllInput;
 // ▲▲▲【追加ここまで】▲▲▲
+// ▼▼▼【ここに追加】得意先インポートのボタン参照 ▼▼▼
+let importClientsBtn, importClientsInput;
+// ▲▲▲【追加ここまで】▲▲▲
+// ▼▼▼【ここに追加】JCSHMS更新ボタンの参照 ▼▼▼
+let importJcshmsBtn;
+// ▲▲▲【追加ここまで】▲▲▲
 
 let migrationUploadResultContainer;
 
-async function handleExportTkrStock() {
-    window.showLoading('TKR在庫CSVをエクスポート中...');
-    try {
-        const response = await fetch('/api/stock/export/current');
-        if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(errorText || `サーバーエラー (HTTP ${response.status})`);
-        }
-
-        const contentDisposition = response.headers.get('content-disposition');
-        let filename = 'TKR在庫データ.csv';
-        if (contentDisposition) {
-            const filenameMatch = contentDisposition.match(/filename\*=UTF-8''(.+)/);
-            if (filenameMatch && filenameMatch[1]) {
-                filename = decodeURIComponent(filenameMatch[1]);
-            } else {
-                const filenameMatchFallback = contentDisposition.match(/filename="(.+?)"/);
-                if (filenameMatchFallback && filenameMatchFallback[1]) {
-                    filename = filenameMatchFallback[1];
-                }
-            }
-        }
-        
-        const blob = await response.blob();
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = filename;
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        window.URL.revokeObjectURL(url);
-        
-        window.showNotification('TKR在庫CSVをエクスポートしました。', 'success');
-    } catch (error) {
-        console.error('Failed to export TKR stock CSV:', error);
-        window.showNotification(`CSVエクスポートエラー: ${error.message}`, 'error');
-    } finally {
-        window.hideLoading();
-    }
-}
-
 export function initDataMigration() {
-    exportTkrStockBtn = document.getElementById('exportTkrStockBtn');
     importTkrStockBtn = document.getElementById('importTkrStockBtn');
     importTkrStockInput = document.getElementById('importTkrStockInput');
     
@@ -729,129 +734,284 @@ export function initDataMigration() {
     precompImportAllInput = document.getElementById('precomp-import-all-input');
     // ▲▲▲【追加ここまで】▲▲▲
 
-    migrationUploadResultContainer = document.getElementById('datUploadResultContainer');
+    // ▼▼▼【ここに追加】得意先インポートのボタンIDを取得 ▼▼▼
+    importClientsBtn = document.getElementById('importClientsBtn');
+    importClientsInput = document.getElementById('importClientsInput');
+    // ▲▲▲【追加ここまで】▲▲▲
 
-    if (exportTkrStockBtn) {
-        exportTkrStockBtn.addEventListener('click', handleExportTkrStock);
-    }
+    // ▼▼▼【ここに追加】JCSHMS更新ボタンのIDを取得 ▼▼▼
+    importJcshmsBtn = document.getElementById('importJcshmsBtn');
+    // ▲▲▲【追加ここまで】▲▲▲
+
+    migrationUploadResultContainer = document.getElementById('datUploadResultContainer');
 
     if (importTkrStockBtn && importTkrStockInput) {
         importTkrStockBtn.addEventListener('click', () => importTkrStockInput.click());
         importTkrStockInput.addEventListener('change', async (event) => {
             
             const dateInput = document.getElementById('importTkrStockDate');
+            
             const files = event.target.files;
 
-            if (!files || files.length === 0) {
-                return;
-            }
+             if (!files || files.length === 0) {
+                 return;
+             }
             if (!dateInput || !dateInput.value) {
-                window.showNotification('棚卸日(CSV適用日)を選択してください。', 'warning');
-                event.target.value = ''; 
-                return;
-            }
+                 window.showNotification('棚卸日(CSV適用日)を選択してください。', 'warning');
+                 
+                 event.target.value = ''; 
+                 
+                 return;
+             }
+    
             if (!confirm('【警告】TKR独自CSVを読み込み、現在の在庫をすべて洗い替えます。\nこの操作は取り消せません。\nよろしいですか？')) {
-                event.target.value = ''; 
-                return;
+                 
+                 
+                 event.target.value = ''; 
+                 return;
+ 
             }
 
+             
             const formData = new FormData();
-            formData.append('file', files[0]);
-            formData.append('date', dateInput.value.replace(/-/g, '')); 
+             formData.append('file', files[0]);
+             
+             formData.append('date', dateInput.value.replace(/-/g, '')); 
 
             const apiEndpoint = '/api/stock/import/tkr';
-            const loadingMessage = 'TKR独自CSV（洗い替え）を処理中...';
+             const loadingMessage = 'TKR独自CSV（洗い替え）を処理中...';
 
+       
             if (migrationUploadResultContainer) migrationUploadResultContainer.innerHTML = '<p>ファイルをアップロード中...</p>';
             window.showLoading(loadingMessage);
 
             try {
-                const response = await fetch(apiEndpoint, {
-                    method: 'POST',
-                    body: formData,
-                });
+                 
+                 const response = await fetch(apiEndpoint, {
+                 
+                     method: 'POST',
+                     
+                     body: formData,
+                 });
                 const responseText = await response.text();
                 let result;
                 try {
+                    
                     result = JSON.parse(responseText);
                 } catch (jsonError) {
-                    if (!response.ok) {
-                        throw new Error(responseText || `サーバーエラー (HTTP ${response.status})`);
+            
+                     if (!response.ok) {
+                         
+                         throw new Error(responseText || `サーバーエラー (HTTP ${response.status})`);
                     }
-                    result = { message: responseText };
+                     
+                     result = { message: responseText };
                 }
 
-                if (!response.ok) {
-                    throw new Error(result.message || `サーバーエラー (HTTP ${response.status})`);
+                 
+                 if (!response.ok) {
+                     
+                     throw new Error(result.message || `サーバーエラー (HTTP ${response.status})`);
                 }
-                
-                if (migrationUploadResultContainer) {
-                    migrationUploadResultContainer.innerHTML = `<h3>${result.message || '処理が完了しました。'}</h3>`;
+                 
+                 
+                 if (migrationUploadResultContainer) {
+                 
+                     migrationUploadResultContainer.innerHTML = `<h3>${result.message || '処理が完了しました。'}</h3>`;
                 }
 
-                window.showNotification(result.message || 'ファイルの処理が完了しました。', 'success');
+                 
+            
+                 window.showNotification(result.message || 'ファイルの処理が完了しました。', 'success');
             } catch (error) {
+            
+                 
                 console.error('Upload failed:', error);
                 window.showNotification(`エラー: ${error.message}`, 'error');
                 if (migrationUploadResultContainer) migrationUploadResultContainer.innerHTML = `<p style="color: red;">エラーが発生しました: ${error.message}</p>`;
             } finally {
-                window.hideLoading();
+                 
+                 window.hideLoading();
                 if (importTkrStockInput) importTkrStockInput.value = '';
                 if (dateInput) dateInput.value = '';
             }
-        });
+         });
     }
     
     if (exportAllMastersBtn) {
+    
+         
         exportAllMastersBtn.addEventListener('click', () => {
             window.location.href = '/api/masters/export/all';
+  
+ 
         });
     }
 
     if (importAllMastersBtn && importAllMastersInput) {
+         
         importAllMastersBtn.addEventListener('click', () => importAllMastersInput.click());
-        importAllMastersInput.addEventListener('change', (event) => {
-            
+        // ▼▼▼【修正】 async を追加 ▼▼▼
+        importAllMastersInput.addEventListener('change', async (event) => {
+             
+    
             if (!confirm('【警告】製品マスタCSVをインポートします。\n・product_codeが一致する既存マスタは上書きされます。\n・JCSHMSに存在する品目は、品名や薬価がJCSHMS優先でマージされます。\nよろしいですか？')) {
-                event.target.value = ''; 
-                return;
+                 
+                 
+                 event.target.value = ''; 
+                 return;
+ 
             }
 
-            handleFileUpload(
-                '/api/masters/import/all',
-                event.target.files,
-                importAllMastersInput,
-                migrationUploadResultContainer, 
-                null, 
-                '製品マスタをインポート中...'
+             // ▼▼▼【修正】 await を追加 ▼▼▼
+            await handleFileUpload(
+                 '/api/masters/import/all',
+                 
+                 event.target.files,
+                 
+                 importAllMastersInput,
+                 migrationUploadResultContainer, 
+                 
+                 null, 
+                 
+                 '製品マスタをインポート中...'
             );
+            // ▲▲▲【修正ここまで】▲▲▲
+         });
+    }
+
+    // ▼▼▼【ここから修正】得意先インポートのイベントリスナー ▼▼▼
+    
+    if (importClientsBtn && importClientsInput) {
+        importClientsBtn.addEventListener('click', () => importClientsInput.click());
+        // ▼▼▼【修正】 async を追加 ▼▼▼
+        importClientsInput.addEventListener('change', async (event) => {
+    
+             
+            if (!confirm('【警告】得意先CSVをインポートします。\n・client_codeが一致する既存データは上書きされます。\nよろしいですか？')) {
+ 
+                event.target.value = ''; 
+                 return;
+            
+            }
+
+            // ▼▼▼【修正】 await を追加 ▼▼▼
+            await handleFileUpload(
+                 '/api/clients/import',
+                 event.target.files,
+                 importClientsInput,
+                 migrationUploadResultContainer, 
+                 null, // 得意先インポートはテーブル描画なし
+                 '得意先マスタをインポート中...'
+            );
+            // ▲▲▲【修正ここまで】▲▲▲
+
+            // ▼▼▼【ここに追加】インポート完了後、JSのキャッシュを更新する ▼▼▼
+            try {
+                await refreshClientMap();
+                await refreshWholesalerMap();
+                window.showNotification('得意先・卸マスタのキャッシュを更新しました。', 'info');
+            } catch (error) {
+                console.error('Failed to refresh maps after import:', error);
+                window.showNotification('CSVインポート後のキャッシュ更新に失敗しました。', 'error');
+            }
+            // ▲▲▲【追加ここまで】▲▲▲
         });
     }
+    // ▲▲▲【修正ここまで】▲▲▲
+
+    // ▼▼▼【ここから追加】JCSHMS更新のイベントリスナー ▼▼▼
+    if (importJcshmsBtn) {
+         
+        importJcshmsBtn.addEventListener('click', async () => {
+            if (!confirm('【警告】SOU/JCSHMS.CSV と SOU/JANCODE.CSV を再読み込みします。\nこの処理は時間がかかります。\n実行しますか？')) {
+                return;
+             }
+
+            if (migrationUploadResultContainer) migrationUploadResultContainer.innerHTML = '<p>JCSHMSマスターを更新中...</p>';
+             window.showLoading('JCSHMSマスターを更新中... (時間がかかります)');
+
+            
+            try {
+                const response = await fetch('/api/jcshms/reload', {
+ 
+                    method: 'POST',
+                 });
+                 
+                
+                const responseText = await response.text();
+                let result;
+                 try {
+                     result = JSON.parse(responseText);
+                 } catch (jsonError) {
+                     if (!response.ok) {
+                         throw new Error(responseText || `サーバーエラー (HTTP ${response.status})`);
+                    }
+                     result = { message: responseText };
+                }
+
+ 
+                if (!response.ok) {
+                    throw new Error(result.message || `サーバーエラー (HTTP ${response.status})`);
+                }
+                 
+                 
+                 if (migrationUploadResultContainer) {
+                     migrationUploadResultContainer.innerHTML = `<h3>${result.message || '処理が完了しました。'}</h3>`;
+                }
+                 window.showNotification(result.message || 'JCSHMSの更新が完了しました。', 'success');
+
+            } catch (error) {
+                 console.error('JCSHMS reload failed:', error);
+                window.showNotification(`エラー: ${error.message}`, 'error');
+                if (migrationUploadResultContainer) migrationUploadResultContainer.innerHTML = `<p style="color: red;">エラーが発生しました: ${error.message}</p>`;
+            } finally {
+                 window.hideLoading();
+            }
+         });
+    }
+    // ▲▲▲【追加ここまで】▲▲▲
 
     // ▼▼▼【ここから追加】予製（一括）のイベントリスナー ▼▼▼
     if (precompExportAllBtn) {
+        
         precompExportAllBtn.addEventListener('click', () => {
-            window.location.href = '/api/precomp/export/all';
-        });
+             window.location.href = '/api/precomp/export/all';
+         });
     }
 
+    
     if (precompImportAllBtn && precompImportAllInput) {
         precompImportAllBtn.addEventListener('click', () => precompImportAllInput.click());
-        precompImportAllInput.addEventListener('change', (event) => {
+        // ▼▼▼【修正】 async を追加 ▼▼▼
+        precompImportAllInput.addEventListener('change', async (event) => {
+    
+             
+       
+        
+             if (!confirm('【警告】予製CSVをインポートします。\n既存の予製データは、CSVに含まれる患者番号についてのみ洗い替え（上書き）されます。\nよろしいですか？')) {
+                
+ 
+                 event.target.value = ''; 
+                 return;
             
-            if (!confirm('【警告】予製CSVをインポートします。\n既存の予製データは、CSVに含まれる患者番号についてのみ洗い替え（上書き）されます。\nよろしいですか？')) {
-                event.target.value = ''; 
-                return;
-            }
+             }
 
-            handleFileUpload(
-                '/api/precomp/import/all',
-                event.target.files,
-                precompImportAllInput,
-                migrationUploadResultContainer, 
-                null, 
-                '予製（一括）をインポート中...'
+            // ▼▼▼【修正】 await を追加 ▼▼▼
+            await handleFileUpload(
+                 '/api/precomp/import/all',
+                 
+                 event.target.files,
+                 precompImportAllInput,
+ 
+                 migrationUploadResultContainer, 
+                 
+                 null, 
+                 
+                 '予製（一括）をインポート中...'
             );
+            // ▲▲▲【修正ここまで】▲▲▲
+             
         });
     }
     // ▲▲▲【追加ここまで】▲▲▲
@@ -2025,7 +2185,8 @@ export function resetInOutView() {
 
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\js\inventory_adjustment_details.js -----
 // C:\Users\wasab\OneDrive\デスクトップ\TKR\static\js\inventory_adjustment_details.js
-import { getLocalDateString, parseBarcode, fetchProductMasterByBarcode } from './utils.js';
+import { getLocalDateString, parseBarcode, fetchProductMasterByBarcode } from 
+'./utils.js';
 import { generateFullHtml, createFinalInputRow } from './inventory_adjustment_ui.js';
 
 let outputContainer;
@@ -2043,16 +2204,19 @@ async function handleAdjustmentBarcodeScan(e) {
     if (!inputValue) return;
 
     let parsedData;
-    try {
+    try 
+{
         parsedData = parseBarcode(inputValue); // TKRの utils.js を使用
     } catch (err) {
-        window.showNotification(`バーコード解析エラー: ${err.message}`, 'error');
+   
+     window.showNotification(`バーコード解析エラー: ${err.message}`, 'error');
         barcodeInput.value = '';
         return;
     }
 
     if (!parsedData.gtin14) {
-        window.showNotification('GS1-128形式のバーコードではありません。', 'error');
+      
+  window.showNotification('GS1-128形式のバーコードではありません。', 'error');
         barcodeInput.value = '';
         return;
     }
@@ -2063,61 +2227,78 @@ async function handleAdjustmentBarcodeScan(e) {
         const productMaster = await fetchProductMasterByBarcode(inputValue); 
 
         // スキャンした品目が、現在表示中のYJコードと一致するか確認
-        if (productMaster.yjCode !== currentYjCode) {
+        if 
+(productMaster.yjCode !== currentYjCode) {
             throw new Error(`スキャンされた品目(${productMaster.productName})は、現在表示中のYJコード(${currentYjCode})と異なります。`);
         }
 
-        const productTbody = outputContainer.querySelector(`.final-input-tbody[data-product-code="${productMaster.productCode}"]`);
+      
+  const productTbody = outputContainer.querySelector(`.final-input-tbody[data-product-code="${productMaster.productCode}"]`);
         if (!productTbody) {
             throw new Error(`画面内に製品「${productMaster.productName}」の入力欄が見つかりません。`);
         }
 
-        let targetRow = null;
+ 
+       let targetRow = null;
         const rows = productTbody.querySelectorAll('tr.inventory-row');
         // 空の行を探す
-        for (let i = 0; i < rows.length; i += 2) {
-            const expiryInput = rows[i].querySelector('.expiry-input');
+        
+for (let i = 0; i < rows.length; i += 2) {
+            const 
+expiryInput = rows[i].querySelector('.expiry-input');
             const lotInput = rows[i+1].querySelector('.lot-input');
             if (expiryInput.value.trim() === '' && lotInput.value.trim() === '') {
-                targetRow = rows[i];
+         
+       targetRow = rows[i];
                 break;
             }
         }
 
-        // 空の行がなければ新しい行を追加
+     
+   // 空の行がなければ新しい行を追加
         if (!targetRow) {
-            const addBtn = productTbody.querySelector('.add-deadstock-row-btn');
+          
+  const addBtn = productTbody.querySelector('.add-deadstock-row-btn');
             if (addBtn) {
-                addBtn.click();
+                
+addBtn.click();
                 const newRows = productTbody.querySelectorAll('tr.inventory-row');
                 targetRow = newRows[newRows.length - 2]; // 
 追加された行
             }
-        }
+ 
+       }
 
         if (targetRow) {
-            const expiryInput = targetRow.querySelector('.expiry-input');
+       
+     const expiryInput = targetRow.querySelector('.expiry-input');
             const lotInput = targetRow.nextElementSibling.querySelector('.lot-input');
             
             if (parsedData.expiryDate) { // YYYYMM 形式
-                expiryInput.value = parsedData.expiryDate;
+      
+          expiryInput.value = parsedData.expiryDate;
             }
-            if (parsedData.lotNumber) {
+           
+ if (parsedData.lotNumber) {
                 lotInput.value = parsedData.lotNumber;
             }
-            window.showNotification('ロット・期限を自動入力しました。', 'success');
+  
+          window.showNotification('ロット・期限を自動入力しました。', 'success');
             
             const qtyInput = targetRow.nextElementSibling.querySelector('.lot-quantity-input');
             if(qtyInput) {
-                qtyInput.focus();
+       
+         qtyInput.focus();
                 qtyInput.select();
             }
         } else {
-            throw new Error('ロット・期限の入力欄の追加に失敗しました。');
+   
+         throw new Error('ロット・期限の入力欄の追加に失敗しました。');
         }
 
     } catch (err) {
-        window.showNotification(err.message, 'error');
+     
+   window.showNotification(err.message, 'error');
     } finally {
         window.hideLoading();
         barcodeInput.value = '';
@@ -2128,10 +2309,12 @@ async function handleAdjustmentBarcodeScan(e) {
 
 
 function updatePrecompTotalDisplay() {
-    let total = 0;
+ 
+   let total = 0;
     document.querySelectorAll('.precomp-active-check:checked').forEach(cb => {
         total += parseFloat(cb.dataset.quantity) || 0;
-    });
+   
+ });
     const totalEl = document.getElementById('precomp-active-total');
     if (totalEl) {
         totalEl.textContent = `有効合計: ${total.toFixed(2)}`;
@@ -2139,16 +2322,20 @@ function updatePrecompTotalDisplay() {
 }
 
 function findMaster(productCode) {
-    if (!lastLoadedDataCache || !lastLoadedDataCache.transactionLedger || lastLoadedDataCache.transactionLedger.length === 0) {
+  
+  if (!lastLoadedDataCache || !lastLoadedDataCache.transactionLedger || lastLoadedDataCache.transactionLedger.length === 0) {
         return null;
     }
-    for (const pkgLedger of lastLoadedDataCache.transactionLedger[0].packageLedgers) {
+    
+for (const pkgLedger of lastLoadedDataCache.transactionLedger[0].packageLedgers) {
         const masterView = (pkgLedger.masters || []).find(m => m.productCode === productCode);
-        if (masterView) {
+        if 
+(masterView) {
             return masterView;
         }
     }
-    return null;
+    return 
+null;
 }
 
 function reverseCalculateStock() {
@@ -2156,79 +2343,118 @@ function reverseCalculateStock() {
     const precompTotalsByProduct = {};
     const calculationErrorByProduct = {};
     document.querySelectorAll('.precomp-active-check:checked').forEach(cb => {
-        const productCode = cb.dataset.productCode;
+  
+      const productCode = cb.dataset.productCode;
         const master = findMaster(productCode);
-        if (!master) return;
+    
+    if (!master) return;
         const yjQuantity = parseFloat(cb.dataset.quantity) || 0;
 
-        if (master.janPackInnerQty > 0) {
-            const janQuantity = yjQuantity / master.janPackInnerQty;
+     
+   if (master.janPackInnerQty > 0) {
+            const janQuantity = yjQuantity / 
+master.janPackInnerQty;
             precompTotalsByProduct[productCode] = (precompTotalsByProduct[productCode] || 0) + janQuantity;
       
 
+
         } else if (yjQuantity > 0) {
-            calculationErrorByProduct[productCode] = '包装数量(内)未設定';
+          
+  calculationErrorByProduct[productCode] = '包装数量(内)未設定';
         }
     });
     updatePrecompTotalDisplay();
 
     const todayNetChangeByProduct = {};
-    if (lastLoadedDataCache && lastLoadedDataCache.transactionLedger) {
+    if (lastLoadedDataCache 
+&& lastLoadedDataCache.transactionLedger) {
         lastLoadedDataCache.transactionLedger.forEach(yjGroup => {
-            if (yjGroup.packageLedgers) {
+            
+if (yjGroup.packageLedgers) {
                 yjGroup.packageLedgers.forEach(pkg => {
-                    if (pkg.transactions) {
-                        pkg.transactions.forEach(tx => {
+    
+                if (pkg.transactions) {
+      
+                  pkg.transactions.forEach(tx => {
  
-     
-                            if (tx.transactionDate === todayStr && tx.flag !== 0) {
-                                let janQty = tx.janQuantity || 0;
-                      
    
-                                 if (janQty === 0 && tx.yjQuantity) {
-                                    if (tx.janPackInnerQty > 0) {
-                  
-                   janQty = tx.yjQuantity / tx.janPackInnerQty;
+  
+                      
+      if (tx.transactionDate === todayStr && tx.flag !== 0) {
+          
+                      let janQty 
+= tx.janQuantity || 0;
+                     
+ 
+   
+                    
+             if (janQty === 0 && tx.yjQuantity) {
      
-                                    } else if (tx.yjQuantity !== 0) {
-                              
+                        
+       if (tx.janPackInnerQty > 0) {
+             
+     
+                   
+janQty = tx.yjQuantity / tx.janPackInnerQty;
+     
+               
+                     } else if 
+(tx.yjQuantity !== 0) {
+                     
+         
        calculationErrorByProduct[tx.janCode] = '包装数量(内)未設定';
     }
-                                }
+  
+                        
+      }
           
-                                 const signedJanQty = janQty * (tx.flag === 1 ?
+        
+                        
+ const signedJanQty = janQty * (tx.flag === 1 ?
 1 : (tx.flag === 3 ? -1 : 0));
-                                todayNetChangeByProduct[tx.janCode] = (todayNetChangeByProduct[tx.janCode] || 0) + signedJanQty;
+                                todayNetChangeByProduct[tx.janCode] = (todayNetChangeByProduct[tx.janCode] || 0) 
++ signedJanQty;
 }
-                        });
+                      
+  });
 }
                 });
 }
-        });
+    
+    });
     }
     document.querySelectorAll('.physical-stock-input').forEach(input => {
         const productCode = input.dataset.productCode;
-        const displaySpan = document.querySelector(`.calculated-previous-day-stock[data-product-code="${productCode}"]`);
+  
+      const displaySpan = document.querySelector(`.calculated-previous-day-stock[data-product-code="${productCode}"]`);
         const finalInput = document.querySelector(`.final-inventory-input[data-product-code="${productCode}"]`); 
-        if (calculationErrorByProduct[productCode]) {
-            if (displaySpan) displaySpan.innerHTML = `<span class="status-error">${calculationErrorByProduct[productCode]}</span>`;
+   
+     if (calculationErrorByProduct[productCode]) {
+            if (displaySpan) displaySpan.innerHTML = `<span 
+class="status-error">${calculationErrorByProduct[productCode]}</span>`;
          
             if (finalInput) 
  
+
            finalInput.value = '';
         
-            updateFinalInventoryTotal(productCode);
+   
+         updateFinalInventoryTotal(productCode);
             return;
-        }
+   
+     }
         const physicalStockToday = parseFloat(input.value) || 0;
 
-        const precompStock = precompTotalsByProduct[productCode] || 0;
+      
+  const precompStock = precompTotalsByProduct[productCode] || 0;
         const totalStockToday = physicalStockToday + precompStock;
-     
+    
+ 
    
      const netChangeToday = todayNetChangeByProduct[productCode] || 0;
         const calculatedPreviousDayStock = totalStockToday - netChangeToday;
-if (displaySpan) displaySpan.textContent = calculatedPreviousDayStock.toFixed(2);
+if (displaySpan) displaySpan.textContent 
+= calculatedPreviousDayStock.toFixed(2);
     });
 }
 
@@ -2237,91 +2463,116 @@ function updateFinalInventoryTotal(productCode) {
     if (!tbody) return;
 let totalQuantity = 0;
     tbody.querySelectorAll('.final-inventory-input, .lot-quantity-input').forEach(input => { 
+
         totalQuantity += parseFloat(input.value) || 0;
     });
 const physicalStockInput = document.querySelector(`.physical-stock-input[data-product-code="${productCode}"]`);
     if (physicalStockInput) {
-        physicalStockInput.value = totalQuantity.toFixed(2);
+ 
+       physicalStockInput.value = totalQuantity.toFixed(2);
 }
 
     reverseCalculateStock();
 }
 
 async function saveInventoryData() {
-    const dateInput = document.getElementById('inventory-date');
+    const dateInput 
+= document.getElementById('inventory-date');
 if (!dateInput || !dateInput.value) {
         window.showNotification('棚卸日を指定してください。', 'error');
         return;
 }
     if (!confirm(`${dateInput.value}の棚卸データとして保存します。よろしいですか？`)) return;
-    const inventoryData = {};
+const inventoryData = {};
     const deadStockData = [];
 if (!lastLoadedDataCache || !lastLoadedDataCache.transactionLedger || lastLoadedDataCache.transactionLedger.length === 0) {
-        window.showNotification('保存対象の品目データが見つかりません。', 'error');
+        
+window.showNotification('保存対象の品目データが見つかりません。', 'error');
         return;
 }
     const allMasters = (lastLoadedDataCache.transactionLedger[0].packageLedgers || []).flatMap(pkg => pkg.masters || []);
 allMasters.forEach(master => {
-        const productCode = master.productCode;
+     
+   const productCode = master.productCode;
         const tbody = document.querySelector(`.final-input-tbody[data-product-code="${productCode}"]`);
-        if (!tbody) {
+       
+ if (!tbody) {
             inventoryData[productCode] = 0;
-            return;
+       
+     return;
         };
-        let totalInputQuantity = 0;
+        let totalInputQuantity = 
+0;
         const inventoryRows = tbody.querySelectorAll('.inventory-row');
         for (let 
 
  
-i = 0; i < inventoryRows.length; i += 2) {
+i = 
+0; i < inventoryRows.length; i += 2) {
             const topRow = inventoryRows[i];
-            const bottomRow = inventoryRows[i+1];
-            const quantityInput = bottomRow.querySelector('.final-inventory-input, .lot-quantity-input');
+  
+          const bottomRow = inventoryRows[i+1];
+           
+ const quantityInput = bottomRow.querySelector('.final-inventory-input, .lot-quantity-input');
             const expiryInput = topRow.querySelector('.expiry-input');
-            const lotInput = bottomRow.querySelector('.lot-input');
-            if (!quantityInput 
+    
+        const lotInput = bottomRow.querySelector('.lot-input');
+            if 
+(!quantityInput 
 
  || 
 !expiryInput || !lotInput) continue;
             const quantity = parseFloat(quantityInput.value) || 0;
-            const expiry = expiryInput.value.trim();
+ 
+           const expiry = expiryInput.value.trim();
 const lot = lotInput.value.trim();
             totalInputQuantity += quantity;
 
             deadStockData.push({ 
-                productCode: productCode, 
-                yjCode: master.yjCode, 
-                packageForm: master.packageForm,
+ 
+               productCode: productCode, 
        
-                janPackInnerQty: master.janPackInnerQty, 
+         yjCode: master.yjCode, 
+             
+   packageForm: master.packageForm,
+       
+             
+   janPackInnerQty: master.janPackInnerQty, 
            
    
-             yjUnitName: master.yjUnitName,
-                stockQuantityJan: quantity, 
+     
+        yjUnitName: master.yjUnitName,
+               
+ stockQuantityJan: quantity, 
                 expiryDate: expiry, 
-             
+   
+          
 lotNumber: lot 
            
-            });
+ 
+           });
 }
         inventoryData[productCode] = totalInputQuantity;
     });
 const payload = {
         date: dateInput.value.replace(/-/g, ''),
         yjCode: currentYjCode,
-        inventoryData: inventoryData,
+  
+      inventoryData: inventoryData,
         deadStockData: deadStockData,
-    };
-console.log("Saving inventory data. Payload:", payload);
+    };console.log("Saving inventory data. Payload:", payload);
 
     window.showLoading();
     try {
         const res = await fetch('/api/inventory/adjust/save', {
-            method: 'POST',
+       
+     method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload),
+  
+          body: JSON.stringify(payload),
         });
-const resData = await res.json();
+const resData = await 
+res.json();
         if (!res.ok) throw new Error(resData.message || '保存に失敗しました。');
         window.showNotification(resData.message, 'success');
         loadAndRenderDetails(currentYjCode);
@@ -2334,65 +2585,84 @@ const resData = await res.json();
 }
 
 export async function loadAndRenderDetails(yjCode) {
-    currentYjCode = yjCode;
+   
+ currentYjCode = yjCode;
 if (!yjCode) {
         window.showNotification('YJコードを指定してください。', 'error');
         return;
 }
     if (!outputContainer) {
-        outputContainer = document.getElementById('inventory-adjustment-output');
+ 
+       outputContainer = document.getElementById('inventory-adjustment-output');
 }
     
     window.showLoading();
     outputContainer.innerHTML = '<p>データを読み込んでいます...</p>';
 try {
-        const apiUrl = `/api/inventory/adjust/data?yjCode=${yjCode}`;
+ 
+       const apiUrl = `/api/inventory/adjust/data?yjCode=${yjCode}`;
         const res = await fetch(apiUrl);
 if (!res.ok) {
-            const errText = await res.text();
+      
+      const errText = await res.text();
 throw new Error(errText || 'データ取得に失敗しました。');
         }
         
+
         lastLoadedDataCache = await res.json();
 const html = generateFullHtml(lastLoadedDataCache, lastLoadedDataCache);
         outputContainer.innerHTML = html;
         
+        // ▼▼▼【ここから修正】棚卸日を「前日」に設定 ▼▼▼
         const dateInput = document.getElementById('inventory-date');
 if(dateInput) {
-            dateInput.value = getLocalDateString();
+            const yesterday = new Date();
+            yesterday.setDate(yesterday.getDate() - 1);
+            dateInput.value = getLocalDateString(yesterday);
 }
+        // ▲▲▲【修正ここまで】▲▲▲
         
+
         document.querySelectorAll('.final-input-tbody').forEach(tbody => {
-            const productCode = tbody.dataset.productCode;
+            const productCode 
+= tbody.dataset.productCode;
             if (productCode) {
-                updateFinalInventoryTotal(productCode);
+         
+       updateFinalInventoryTotal(productCode);
             }
-        });
+     
+   });
 reverseCalculateStock();
     } catch (err) {
         outputContainer.innerHTML = `<p style="color:red;">エラー: ${err.message}</p>`;
 } finally {
-        window.hideLoading();
+ 
+       window.hideLoading();
 }
 }
 
 export function initDetails() {
     outputContainer = document.getElementById('inventory-adjustment-output');
 if (!outputContainer) {
-        console.error("Inventory Adjustment output container not found.");
+    
+    console.error("Inventory Adjustment output container not found.");
         return;
 }
 
     outputContainer.addEventListener('input', (e) => {
-        const targetClassList = e.target.classList;
+      
+  const targetClassList = e.target.classList;
         
         if (targetClassList.contains('precomp-active-check')) {
-            reverseCalculateStock();
+ 
+           reverseCalculateStock();
         }
 
-        if(targetClassList.contains('lot-quantity-input') || targetClassList.contains('final-inventory-input')){
+     
+   if(targetClassList.contains('lot-quantity-input') || targetClassList.contains('final-inventory-input')){
             const productCode = e.target.dataset.productCode;
-            updateFinalInventoryTotal(productCode); 
+    
+        updateFinalInventoryTotal(productCode); 
       
   }
     });
@@ -2400,36 +2670,49 @@ if (!outputContainer) {
     outputContainer.addEventListener('click', (e) => {
         const target = e.target;
         if (target.classList.contains('add-deadstock-row-btn')) {
-            const productCode = target.dataset.productCode;
-            const master = findMaster(productCode);
+  
+          const productCode = target.dataset.productCode;
+           
+ const master = findMaster(productCode);
             const tbody = document.querySelector(`.final-input-tbody[data-product-code="${productCode}"]`);
-            if(master && tbody){
+     
+       if(master && tbody){
           
-      const newRowHTML = createFinalInputRow(master, null, false);
+     
+ const newRowHTML = createFinalInputRow(master, null, false);
                 tbody.insertAdjacentHTML('beforeend', newRowHTML);
-            }
+ 
+           }
         }
-        if (target.classList.contains('delete-deadstock-row-btn')) {
+     
+   if (target.classList.contains('delete-deadstock-row-btn')) {
             const topRow = target.closest('tr');
-            const bottomRow = topRow.nextElementSibling;
+    
+        const bottomRow = topRow.nextElementSibling;
             
-const productCode = bottomRow.querySelector('[data-product-code]')?.dataset.productCode;
+const 
+productCode = bottomRow.querySelector('[data-product-code]')?.dataset.productCode;
    
             topRow.remove();
-            bottomRow.remove();
+       
+     bottomRow.remove();
             if(productCode) updateFinalInventoryTotal(productCode);
         }
-        if (target.classList.contains('register-inventory-btn')) {
+     
+   if (target.classList.contains('register-inventory-btn')) {
             saveInventoryData();
 }
     });
 
-    outputContainer.addEventListener('submit', (e) => {
+    outputContainer.addEventListener('submit', 
+(e) => {
         e.preventDefault();
         // ▼▼▼【ここから修正】のロジックを修正 ▼▼▼
-        if (e.target.id === 'adjustment-barcode-form') {
+    
+    if (e.target.id === 'adjustment-barcode-form') {
             handleAdjustmentBarcodeScan(e);
-        }
+    
+    }
         // ▲▲▲【修正ここまで】▲▲▲
     });
 console.log("Inventory Adjustment Details Initialized.");
@@ -2974,33 +3257,41 @@ export let clientMap = new Map();
 /**
  * 卸マスタのリストを取得します。
  */
+// ▼▼▼【ここから修正】元の /api/wholesalers/list を参照する状態に戻す ▼▼▼
 async function fetchWholesalers() {
     try {
         const response = await fetch('/api/wholesalers/list');
         if (!response.ok) {
             throw new Error(`卸一覧の読み込みに失敗しました: ${response.statusText}`);
         }
-        return await response.json();
+          return await response.json();
     } catch (error) {
         console.error("Error loading wholesalers:", error);
         window.showNotification(error.message, 'error');
         return [];
     }
 }
+// ▲▲▲【修正ここまで】▲▲▲
 
 /**
  * 卸マスタのマップを取得します。
  */
+// ▼▼▼【ここから修正】wholesaler API のレスポンス (wholesalerCode, wholesalerName) をパースする元の状態に戻す ▼▼▼
 async function fetchWholesalerMap() {
     const wholesalers = await fetchWholesalers();
     const map = new Map();
     if (wholesalers) {
         wholesalers.forEach(w => {
-            map.set(w.wholesalerCode, w.wholesalerName);
+            // ▼▼▼【修正】キー登録時に trim() を追加 ▼▼▼
+            if (w.wholesalerCode) {
+                map.set(w.wholesalerCode.trim(), w.wholesalerName);
+            }
+            // ▲▲▲【修正ここまで】▲▲▲
         });
     }
     return map;
 }
+// ▲▲▲【修正ここまで】▲▲▲
 
 /**
  * 内部の wholesalerMap をAPIから取得した最新のデータで更新します。
@@ -3010,7 +3301,7 @@ async function fetchAndPopulateWholesalers() {
 }
 
 /**
- * ▼▼▼【ここから修正】得意先マスタを読み込む (WASABI: master_data.js [cite: 2112] より) ▼▼▼
+ * ▼▼▼【ここから修正】得意先マスタを読み込む (WASABI: master_data.js より) ▼▼▼
  */
 async function fetchAndPopulateClients() {
 	try {
@@ -3021,7 +3312,13 @@ async function fetchAndPopulateClients() {
 		const clients = await res.json();
 		clientMap.clear();
 		if (clients) {
-			clients.forEach(c => clientMap.set(c.clientCode, c.clientName));
+            // ▼▼▼【修正】キー登録時に trim() を追加 ▼▼▼
+			clients.forEach(c => {
+                if (c.clientCode) {
+                    clientMap.set(c.clientCode.trim(), c.clientName);
+                }
+            });
+            // ▲▲▲【修正ここまで】▲▲▲
 		}
 	} catch (error) {
 		console.error("Error loading clients:", error);
@@ -3034,10 +3331,10 @@ async function fetchAndPopulateClients() {
  */
 export async function refreshClientMap() {
     try {
-        await fetchAndPopulateClients();
+         await fetchAndPopulateClients();
         console.log('得意先マップを更新しました。');
     } catch (error) {
-        console.error("得意先マップの更新に失敗しました:", error);
+         console.error("得意先マップの更新に失敗しました:", error);
         window.showNotification('得意先リストの更新に失敗しました。', 'error');
     }
 }
@@ -3048,7 +3345,7 @@ export async function refreshClientMap() {
  */
 export async function refreshWholesalerMap() {
     try {
-        await fetchAndPopulateWholesalers();
+         await fetchAndPopulateWholesalers();
         console.log('卸業者マップを更新しました。');
     } catch (error) {
         console.error("卸業者マップの更新に失敗しました:", error);
@@ -3062,12 +3359,12 @@ export async function refreshWholesalerMap() {
 export async function loadMasterData() {
     try {
         await Promise.all([
-            fetchAndPopulateClients(),
-            fetchAndPopulateWholesalers()
-        ]);
+             fetchAndPopulateClients(),
+             fetchAndPopulateWholesalers()
+         ]);
         console.log('マスターデータを読み込みました。');
     } catch (error) {
-        console.error("マスターデータの読み込み中にエラーが発生しました:", error);
+         console.error("マスターデータの読み込み中にエラーが発生しました:", error);
         window.showNotification('マスターデータの読み込みに失敗しました。', 'error');
     }
 }
@@ -3987,7 +4284,8 @@ export function initContinuousScan() {
 // C:\Users\wasab\OneDrive\デスクトップ\TKR\static\js\reorder_events.js
 import { hiraganaToKatakana, fetchProductMasterByBarcode } from './utils.js';
 import { showModal } from './search_modal.js';
-import { renderOrderCandidates, addOrUpdateOrderItem } from './reorder_ui.js';
+import { renderOrderCandidates, addOrUpdateOrderItem } from 
+'./reorder_ui.js';
 import { openContinuousScanModal } from './reorder_continuous_scan.js';
 
 // DOM要素 (initReorderEventsで初期化)
@@ -3996,7 +4294,8 @@ let createCsvBtn, barcodeInput, barcodeForm, addFromMasterBtn;
 let runBtn, continuousOrderBtn;
 
 /**
- * 単品バーコードスキャン（手動追加）のハンドラ
+ 
+* 単品バーコードスキャン（手動追加）のハンドラ
  * (旧 reorder.js より移管)
  */
 async function handleOrderBarcodeScan(e) {
@@ -4006,12 +4305,14 @@ async function handleOrderBarcodeScan(e) {
 
     window.showLoading('製品情報を検索中...');
     try {
-        const productMaster = await fetchProductMasterByBarcode(inputValue); // from utils.js
+ 
+       const productMaster = await fetchProductMasterByBarcode(inputValue); // from utils.js
         addOrUpdateOrderItem(productMaster); // from reorder_ui.js
         barcodeInput.value = '';
         barcodeInput.focus();
     } catch (err) {
-        window.showNotification(err.message, 'error');
+        
+window.showNotification(err.message, 'error');
     } finally {
         window.hideLoading();
     }
@@ -4022,43 +4323,52 @@ async function handleOrderBarcodeScan(e) {
  * (旧 reorder.js より移管)
  */
 function handleAddFromMaster() {
-    showModal(
+  
+  showModal(
         document.getElementById('reorder-view'), 
         (selectedProduct) => {
-            // TKRでは採用・未採用の区別なく、選択されたものをそのまま追加
+   
+         // TKRでは採用・未採用の区別なく、選択されたものをそのまま追加
             addOrUpdateOrderItem(selectedProduct); // from reorder_ui.js
         },
         {
-            searchMode: 'inout' // JCSHMSからも検索可能にする
+       
+     searchMode: 'inout' // JCSHMSからも検索可能にする
         }
     );
 }
 
 /**
  * 「発注候補を作成」ボタンのハンドラ
- * (旧 reorder.js より移管)
+ 
+* (旧 reorder.js より移管)
  */
 async function handleGenerateCandidates() {
     window.showLoading('発注候補リストを作成中...');
     const params = new URLSearchParams({
-        kanaName: hiraganaToKatakana(kanaNameInput.value),
+        
+kanaName: hiraganaToKatakana(kanaNameInput.value),
         dosageForm: dosageFormInput.value,
         shelfNumber: shelfNumberInput.value,
-        coefficient: coefficientInput.value,
+     
+   coefficient: coefficientInput.value,
     });
 
     try {
         const res = await fetch(`/api/reorder/candidates?${params.toString()}`);
-        if (!res.ok) {
+        if 
+(!res.ok) {
             const errText = await res.text();
             throw new Error(errText || 'List generation failed');
         }
         const data = await res.json();
         renderOrderCandidates(data, outputContainer); // from reorder_ui.js
-    } catch (err) {
+    } catch 
+(err) {
         outputContainer.innerHTML = `<p class="status-error">エラー: ${err.message}</p>`;
     } finally {
-        window.hideLoading();
+        
+window.hideLoading();
     }
 }
 
@@ -4068,93 +4378,125 @@ async function handleGenerateCandidates() {
  * @param {Function} fetchAndRenderReorderCallback - メインの `fetchAndRenderReorder` (リセット用)
  */
 async function handleCreateCsv(fetchAndRenderReorderCallback) {
-    const rows = outputContainer.querySelectorAll('tbody tr');
+    const 
+rows = outputContainer.querySelectorAll('tbody tr');
     if (rows.length === 0) {
         window.showNotification('発注する品目がありません。', 'error');
         return;
     }
 
-    const backorderPayload = [];
-    let csvContent = "JANコード,品名,数量,卸コード\r\n"; // TKR用のCSVヘッダー
+    const 
+backorderPayload = [];
+    let csvContent = "";
     let hasItemsToOrder = false;
 
     rows.forEach(row => {
-        if (row.classList.contains('provisional-order-item')) {
+      
+  if (row.classList.contains('provisional-order-item')) {
             return; // 発注不可の行はスキップ
-        }
+      
+  }
         
         const quantityInput = row.querySelector('.order-quantity-input');
-        const quantity = parseInt(quantityInput.value, 10);
+   
+     const quantity = parseInt(quantityInput.value, 10);
         
-        if (quantity > 0) {
+       
+ if (quantity > 0) {
             hasItemsToOrder = true;
-            
+     
+       
             const janCode = row.dataset.janCode;
-            const productName = row.cells[0].textContent; // TKRのテーブルレイアウト (colspan=2)
-            const wholesalerCode = row.querySelector('.wholesaler-select').value;
+  
+          const productName = row.cells[0].textContent; // TKRのテーブルレイアウト (colspan=2)
+        
+    const wholesalerCode = row.querySelector('.wholesaler-select').value;
 
             // TKR CSVフォーマット
-            const csvRow = [
-                janCode, 
+   
+         const csvRow = [
+            
+    janCode, 
                 `"${productName.replace(/"/g, '""')}"`, // 品名を""で囲む
                 quantity, 
-                wholesalerCode
+       
+         wholesalerCode
             ].join(',');
-            csvContent += csvRow + "\r\n";
+   
+         csvContent += csvRow + "\r\n";
 
-            const orderMultiplier = parseFloat(row.dataset.orderMultiplier) || 0;
+           
+ const orderMultiplier = parseFloat(row.dataset.orderMultiplier) || 0;
             
-            backorderPayload.push({
+      
+      backorderPayload.push({
                 yjCode: row.dataset.yjCode,
-                packageForm: row.dataset.packageForm,
-                janPackInnerQty: parseFloat(row.dataset.janPackInnerQty),
-                yjUnitName: row.dataset.yjUnitName,
+ 
+               packageForm: row.dataset.packageForm,
+        
+        janPackInnerQty: parseFloat(row.dataset.janPackInnerQty),
+               
+ yjUnitName: row.dataset.yjUnitName,
                 yjQuantity: quantity * orderMultiplier, // YJ単位に換算
-                productName: row.dataset.productName,
-                yjPackUnitQty: parseFloat(row.dataset.yjPackUnitQty) || 0,
-                janPackUnitQty: parseFloat(row.dataset.janPackUnitQty) || 0,
-                janUnitCode: parseInt(row.dataset.janUnitCode, 10) || 0,
+ 
+               productName: row.dataset.productName,
+        
+        yjPackUnitQty: parseFloat(row.dataset.yjPackUnitQty) || 0,
+             
+   janPackUnitQty: parseFloat(row.dataset.janPackUnitQty) || 0,
+                janUnitCode: parseInt(row.dataset.janUnitCode, 
+10) || 0,
                 wholesalerCode: wholesalerCode, // TKRでは string
-            });
+  
+          });
         }
     });
 
     if (!hasItemsToOrder) {
-        window.showNotification('発注数が1以上の品目がありません。', 'error');
+      
+  window.showNotification('発注数が1以上の品目がありません。', 'error');
         return;
     }
 
     window.showLoading('発注残を登録中...');
     try {
         // 1. 発注残をDBに登録
-        const res = await fetch('/api/orders/place', {
+   
+     const res = await fetch('/api/orders/place', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(backorderPayload),
+ 
+           headers: { 'Content-Type': 'application/json' },
+         
+   body: JSON.stringify(backorderPayload),
         });
         const resData = await res.json();
-        if (!res.ok) throw new Error(resData.message || '発注残の登録に失敗しました。');
+        if (!res.ok) throw new Error(resData.message || 
+'発注残の登録に失敗しました。');
         
         window.showNotification(resData.message, 'success');
 
         // 2. Shift-JIS CSVを生成・ダウンロード
         const sjisArray = Encoding.convert(csvContent, {
-            to: 'SJIS',
+      
+      to: 'SJIS',
             from: 'UNICODE',
-            type: 'array'
+    
+        type: 'array'
         });
         const sjisUint8Array = new Uint8Array(sjisArray);
 
-        const blob = new Blob([sjisUint8Array], { type: 'text/csv; charset=shift_jis' }); // MIMEタイプ指定
+        const 
+blob = new Blob([sjisUint8Array], { type: 'text/csv; charset=shift_jis' }); // MIMEタイプ指定
         const link = document.createElement("a");
-        const url = URL.createObjectURL(blob);
+        const url 
+= URL.createObjectURL(blob);
         const now = new Date();
         const timestamp = `${now.getFullYear()}${(now.getMonth()+1).toString().padStart(2, '0')}${now.getDate().toString().padStart(2, '0')}_${now.getHours().toString().padStart(2, '0')}${now.getMinutes().toString().padStart(2, '0')}${now.getSeconds().toString().padStart(2, '0')}`;
         const fileName = `発注書_${timestamp}.csv`;
         
         link.setAttribute("href", url);
         link.setAttribute("download", fileName);
-        link.style.visibility = 'hidden';
+link.style.visibility = 'hidden';
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
@@ -4163,7 +4505,8 @@ async function handleCreateCsv(fetchAndRenderReorderCallback) {
         fetchAndRenderReorderCallback(); 
 
     } catch(err) {
-        window.showNotification(err.message, 'error');
+      
+  window.showNotification(err.message, 'error');
     } finally {
         window.hideLoading();
     }
@@ -4173,27 +4516,34 @@ async function handleCreateCsv(fetchAndRenderReorderCallback) {
  * テーブル内（除外、発注不可など）のクリックイベントハンドラ
  * (旧 reorder.js より移管)
  */
-async function handleTableClicks(e) {
+async function 
+handleTableClicks(e) {
     const target = e.target;
     const row = target.closest('tr');
     if (!row) return;
 
     // 「発注不可」ボタン
     if (target.classList.contains('set-unorderable-btn')) {
-        const productCode = target.dataset.productCode;
+ 
+       const productCode = target.dataset.productCode;
         const productName = row.cells[0].textContent;
         if (!confirm(`「${productName}」を発注不可に設定しますか？\nこの品目は今後、不足品リストに表示されなくなります。`)) {
-            return;
+       
+     return;
         }
         window.showLoading('マスターを更新中...');
         try {
-            // TKRのAPI (mastermanager.goで定義)
+        
+    // TKRのAPI (mastermanager.goで定義)
             const res = await fetch('/api/master/set_order_stopped', { 
+
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ productCode: productCode, status: 1 }),
+       
+         headers: { 'Content-Type': 'application/json' },
+           
+     body: JSON.stringify({ productCode: productCode, status: 1 }),
             });
-            const resData = await res.json();
+const resData = await res.json();
             if (!res.ok) throw new Error(resData.message || '更新に失敗しました。');
             
             row.classList.add('provisional-order-item');
@@ -4202,14 +4552,16 @@ async function handleTableClicks(e) {
             target.disabled = true;
             
             window.showNotification(`「${productName}」を発注不可に設定しました。`, 'success');
-        } catch(err) {
+} catch(err) {
             window.showNotification(err.message, 'error');
         } finally {
-            window.hideLoading();
+      
+      window.hideLoading();
         }
     } 
     // 「発注に変更」ボタン
-    else if (target.classList.contains('change-to-orderable-btn')) {
+    else if (target.classList.contains('change-to-orderable-btn')) 
+{
         row.classList.remove('provisional-order-item');
         row.querySelector('.wholesaler-select').disabled = false;
         row.querySelector('.order-quantity-input').disabled = false;
@@ -4218,15 +4570,18 @@ async function handleTableClicks(e) {
         target.classList.remove('change-to-orderable-btn');
         target.classList.add('remove-order-item-btn');
     } 
-    // 「除外」ボタン
+   
+ // 「除外」ボタン
     else if (target.classList.contains('remove-order-item-btn')) {
         const tbody = row.closest('tbody');
-        const table = tbody.closest('table');
+        const table = 
+tbody.closest('table');
         const wrapper = table.closest('.order-yj-group-wrapper');
         row.remove();
         
         if (tbody.children.length === 0 && wrapper) {
-            wrapper.remove();
+            
+wrapper.remove();
         }
     }
 }
@@ -4236,14 +4591,16 @@ async function handleTableClicks(e) {
  * @param {Function} fetchAndRenderReorderCallback - メインの `fetchAndRenderReorder` 関数
  */
 export function initReorderEvents(fetchAndRenderReorderCallback) {
-    // DOM要素の取得
-    runBtn = document.getElementById('generate-order-candidates-btn');
+    // ▼▼▼【ここを修正】コメント行を削除 ▼▼▼
+    
+runBtn = document.getElementById('generate-order-candidates-btn');
     outputContainer = document.getElementById('order-candidates-output');
     kanaNameInput = document.getElementById('order-kanaName');
     dosageFormInput = document.getElementById('order-dosageForm');
     coefficientInput = document.getElementById('order-reorder-coefficient');
     createCsvBtn = document.getElementById('createOrderCsvBtn');
-    barcodeInput = document.getElementById('order-barcode-input');
+    barcodeInput = 
+document.getElementById('order-barcode-input');
     barcodeForm = document.getElementById('order-barcode-form');
     shelfNumberInput = document.getElementById('order-shelf-number');
     addFromMasterBtn = document.getElementById('add-order-item-from-master-btn');
@@ -4251,20 +4608,23 @@ export function initReorderEvents(fetchAndRenderReorderCallback) {
 
     // イベントリスナーの割り当て
     if (addFromMasterBtn) {
-        addFromMasterBtn.addEventListener('click', handleAddFromMaster);
+    
+    addFromMasterBtn.addEventListener('click', handleAddFromMaster);
     }
     if (continuousOrderBtn) {
         continuousOrderBtn.addEventListener('click', openContinuousScanModal);
     }
-    if (barcodeForm) {
+  
+  if (barcodeForm) {
         barcodeForm.addEventListener('submit', handleOrderBarcodeScan);
     }
     if (runBtn) {
-        runBtn.addEventListener('click', handleGenerateCandidates);
+    
+    runBtn.addEventListener('click', handleGenerateCandidates);
     }
     if (createCsvBtn) {
         createCsvBtn.addEventListener('click', () => handleCreateCsv(fetchAndRenderReorderCallback));
-    }
+}
     if (outputContainer) {
         outputContainer.addEventListener('click', handleTableClicks);
     }
@@ -4301,16 +4661,16 @@ export function addOrUpdateOrderItem(productMaster) {
     if (existingRow) {
         const quantityInput = existingRow.querySelector('.order-quantity-input');
         if (quantityInput) {
-            quantityInput.value = parseInt(quantityInput.value, 10) + 1;
+             quantityInput.value = parseInt(quantityInput.value, 10) + 1;
             window.showNotification(`「${productMaster.productName}」の数量を1増やしました。`, 'success');
         }
         return;
     }
 
-    // 卸業者ドロップダウンを生成
+     // 卸業者ドロップダウンを生成
     let wholesalerOptions = '<option value="">--- 選択 ---</option>';
     wholesalerMap.forEach((name, code) => {
-        const isSelected = (code === productMaster.supplierWholesale);
+         const isSelected = (code === productMaster.supplierWholesale);
         wholesalerOptions += `<option value="${code}" ${isSelected ? 'selected' : ''}>${name}</option>`;
     });
 
@@ -4318,73 +4678,71 @@ export function addOrUpdateOrderItem(productMaster) {
     const actionCellHTML = `
         <td class="center col-action order-actions-cell">
             <div class="order-action-buttons">
-                <button type="button" class="remove-order-item-btn btn">除外</button>
-                <button type="button" class="set-unorderable-btn btn" data-product-code="${productMaster.productCode}">発注不可</button>
+                 <button type="button" class="remove-order-item-btn btn">除外</button>
+                 <button type="button" class="set-unorderable-btn btn" data-product-code="${productMaster.productCode}">発注不可</button>
             </div>
-        </td>
+         </td>
     `;
     
     // TKRのテーブル定義 (table.css) に合わせた列構成
     const newRowHTML = `
-        <tr data-jan-code="${productMaster.productCode}" 
+         <tr data-jan-code="${productMaster.productCode}" 
             data-yj-code="${productMaster.yjCode}"
-            data-product-name="${productMaster.productName}"
+             data-product-name="${productMaster.productName}"
             data-package-form="${productMaster.packageForm}"
-            data-jan-pack-inner-qty="${productMaster.janPackInnerQty}"
+             data-jan-pack-inner-qty="${productMaster.janPackInnerQty}"
             data-yj-unit-name="${productMaster.yjUnitName}"
-            data-yj-pack-unit-qty="${productMaster.yjPackUnitQty}"
+             data-yj-pack-unit-qty="${productMaster.yjPackUnitQty}"
             data-order-multiplier="${productMaster.yjPackUnitQty}"> 
-            
             <td class="left col-product" colspan="2">${productMaster.productName}</td>
             <td class="left col-maker">${productMaster.makerName || ''}</td>
-            <td class="left col-package">${productMaster.formattedPackageSpec}</td>
-            <td class="col-wholesaler"><select class="wholesaler-select" style="width: 100%; font-size: 10px;">${wholesalerOptions}</select></td>
+             <td class="left col-package">${productMaster.formattedPackageSpec}</td>
+             <td class="col-wholesaler"><select class="wholesaler-select" style="width: 100%; font-size: 10px;">${wholesalerOptions}</select></td>
             <td class="col-count">${productMaster.yjPackUnitQty} ${productMaster.yjUnitName}</td>
-            <td class="col-line"><input type="number" value="1" class="order-quantity-input" style="width: 100%; text-align: right;"></td>
-            ${actionCellHTML}
+             <td class="col-line"><input type="number" value="1" class="order-quantity-input" style="width: 100%; text-align: right;"></td>
+             ${actionCellHTML}
         </tr>
     `;
 
     let yjGroupWrapper = outputContainer.querySelector(`.order-yj-group-wrapper[data-yj-code="${yjCode}"]`);
-
-    if (yjGroupWrapper) {
+ if (yjGroupWrapper) {
         const tbody = yjGroupWrapper.querySelector('tbody');
         tbody.insertAdjacentHTML('beforeend', newRowHTML);
     } else {
-        const yjHeaderHTML = `
+         const yjHeaderHTML = `
             <div class="agg-yj-header" style="background-color: #f0f0f0; color: #333; border: 1px solid #ccc;">
                 <span>YJ: ${yjCode}</span>
-                <span class="product-name">${productMaster.productName}</span>
-            </div>`;
+                 <span class="product-name">${productMaster.productName}</span>
+             </div>`;
         
         // TKRのテーブル定義 (table.css) に合わせたヘッダー
         const tableHeader = `
-            <thead>
-                <tr>
+             <thead>
+                 <tr>
                     <th class="col-product" colspan="2">製品名（包装）</th>
                     <th class="col-maker">メーカー</th>
-                    <th class="col-package">包装仕様</th>
-                    <th class="col-wholesaler">卸業者</th>
-                    <th class="col-count">発注単位</th>
-                    <th class="col-line">発注数</th>
-                    <th class="col-action">操作</th>
-                </tr>
+                     <th class="col-package">包装仕様</th>
+                     <th class="col-wholesaler">卸業者</th>
+                     <th class="col-count">発注単位</th>
+                     <th class="col-line">発注数</th>
+                     <th class="col-action">操作</th>
+                 </tr>
             </thead>
-        `;
+         `;
             
         const tableHTML = `
             <table class="data-table" style="margin-bottom: 10px;">
-                ${tableHeader}
-                <tbody>
-                    ${newRowHTML}
+                 ${tableHeader}
+                 <tbody>
+                     ${newRowHTML}
                 </tbody>
-            </table>`;
+             </table>`;
             
         const newGroupHTML = `
-            <div class="order-yj-group-wrapper" data-yj-code="${yjCode}">
+             <div class="order-yj-group-wrapper" data-yj-code="${yjCode}">
                 ${yjHeaderHTML}
-                ${tableHTML}
-            </div>`;
+                 ${tableHTML}
+             </div>`;
         outputContainer.insertAdjacentHTML('beforeend', newGroupHTML);
     }
     window.showNotification(`「${productMaster.productName}」を発注リストに追加しました。`, 'success');
@@ -4396,119 +4754,154 @@ export function addOrUpdateOrderItem(productMaster) {
  * (旧 reorder.js より移管)
  */
 export function renderOrderCandidates(data, container) {
-    outputContainer = container; // 出力先をキャッシュ
+  
+   outputContainer = container; // 出力先をキャッシュ
     if (!data.candidates || data.candidates.length === 0) {
-        container.innerHTML = "<p>発注が必要な品目はありませんでした。</p>";
+       
+  container.innerHTML = "<p>発注が必要な品目はありませんでした。</p>";
         return;
     }
 
     let html = '';
-    data.candidates.forEach(yjGroup => {
-        const yjShortfall = yjGroup.totalReorderPoint - (yjGroup.endingBalance || 0);
+    // ▼▼▼【ここから修正】 data.candidates が null でないことを保証 ▼▼▼
+    (data.candidates || []).forEach(yjGroup => {
+    // ▲▲▲【修正ここまで】▲▲▲
+        
+ const yjShortfall = yjGroup.totalReorderPoint - (yjGroup.endingBalance || 0);
 
         html += `
-            <div class="order-yj-group-wrapper" data-yj-code="${yjGroup.yjCode}">
-                <div class="agg-yj-header" style="background-color: #dc3545;">
-                    <span>YJ: ${yjGroup.yjCode}</span>
+             <div class="order-yj-group-wrapper" data-yj-code="${yjGroup.yjCode}">
+                 <div class="agg-yj-header" style="background-color: #dc3545;">
+                     <span>YJ: ${yjGroup.yjCode}</span>
                     <span class="product-name">${yjGroup.productName}</span>
                     <span class="balance-info">
-                        在庫: ${formatBalance(yjGroup.endingBalance)} | 
-                        発注点: ${formatBalance(yjGroup.totalReorderPoint)} | 
-                        不足数: ${formatBalance(yjShortfall)}
-                    </span>
+                         在庫: ${formatBalance(yjGroup.endingBalance)} | 
+                         発注点: ${formatBalance(yjGroup.totalReorderPoint)} | 
+                         不足数: ${formatBalance(yjShortfall)}
+                     </span>
                 </div>
-        `;
+         `;
 
-        const existingBackordersForYj = yjGroup.packageLedgers.flatMap(p => p.existingBackorders || []);
-        if (existingBackordersForYj.length > 0) {
+        // ▼▼▼【ここから修正】 yjGroup.packageLedgers が null でないことを保証 ▼▼▼
+        const existingBackordersForYj = (yjGroup.packageLedgers || []).flatMap(p => p.existingBackorders || []);
+        // ▲▲▲【修正ここまで】▲▲▲
+  
+       if (existingBackordersForYj.length > 0) {
             html += `<div class="existing-backorders-info">
-                        <strong>＜既存の発注残＞</strong>
-                        <ul>`;
+                     <strong>＜既存の発注残＞</strong>
+                     <ul>`;
             existingBackordersForYj.forEach(bo => {
                 const wName = wholesalerMap.get(bo.wholesalerCode) || bo.wholesalerCode || '不明';
                 html += `<li>${bo.orderDate}: ${bo.productName} - 数量: ${bo.remainingQuantity.toFixed(2)} (${wName})</li>`;
             });
             html += `</ul></div>`;
-        }
+ }
 
         html += `
-                <table class="data-table" style="margin-bottom: 10px;">
-                    <thead>
-                        <tr>
-                            <th class="col-product" colspan="2">製品名（包装）</th>
-                            <th class="col-maker">メーカー</th>
-                            <th class="col-package">包装仕様</th>
-                            <th class="col-wholesaler">卸業者</th>
-                            <th class="col-count">発注単位</th>
-                            <th class="col-line">発注数</th>
-                            <th class="col-action">操作</th>
-                        </tr>
+                 <table class="data-table" style="margin-bottom: 10px;">
+                     <thead>
+                         <tr>
+                             <th class="col-product" colspan="2">製品名（包装）</th>
+                             <th class="col-maker">メーカー</th>
+                             <th class="col-package">包装仕様</th>
+                             <th class="col-wholesaler">卸業者</th>
+                             <th class="col-count">発注単位</th>
+                             <th class="col-line">発注数</th>
+                             <th class="col-action">操作</th>
+                         </tr>
                     </thead>
-                    <tbody>
-        `;
+                     <tbody>
+         `;
         
-        yjGroup.packageLedgers.forEach(pkg => {
-            if (pkg.masters && pkg.masters.length > 0) {
+        // ▼▼▼【ここから修正】 yjGroup.packageLedgers が null でないことを保証 ▼▼▼
+        (yjGroup.packageLedgers || []).forEach(pkg => {
+        // ▲▲▲【修正ここまで】▲▲▲
+            // ▼▼▼【ここから修正】 pkg.masters が null でないことを保証 ▼▼▼
+            if (pkg.masters && Array.isArray(pkg.masters)) {
                 pkg.masters.forEach(master => {
-                    const pkgShortfall = pkg.reorderPoint - (pkg.endingBalance || 0);
+            // ▲▲▲【修正ここまで】▲▲▲
+   
+                  const pkgShortfall = pkg.reorderPoint - (pkg.endingBalance || 0);
                     
-                    if (pkgShortfall > 0) {
+  
+                   if (pkgShortfall > 0) {
+ 
                         const isOrderStopped = master.isOrderStopped === 1;
-                        const isOrderable = !isOrderStopped;
+                  
+       const isOrderable = !isOrderStopped;
 
-                        const rowClass = !isOrderable ? 'provisional-order-item' : '';
-                        const disabledAttr = !isOrderable ? 'disabled' : '';
+              
+           const rowClass = !isOrderable ? 'provisional-order-item' : '';
+      
+                   const disabledAttr = !isOrderable ? 
+ 'disabled' : '';
 
-                        // 発注推奨数を計算 (TKRでは YjPackUnitQty が 0 の場合があるためガード)
-                        const recommendedOrder = master.yjPackUnitQty > 0 ? Math.ceil(pkgShortfall / master.yjPackUnitQty) : 0;
+                     
+    // 発注推奨数を計算 (TKRでは YjPackUnitQty が 0 の場合があるためガード)
+              
+           const recommendedOrder = master.yjPackUnitQty > 0 ? Math.ceil(pkgShortfall / master.yjPackUnitQty) : 0;
+  
+                       let rowWholesalerOptions = '<option value="">--- 選択 ---</option>';
                         
-                        let rowWholesalerOptions = '<option value="">--- 選択 ---</option>';
-                        data.wholesalers.forEach(w => {
-                            const isSelected = (w.wholesalerCode === master.supplierWholesale);
-                            rowWholesalerOptions += `<option value="${w.wholesalerCode}" ${isSelected ? 'selected' : ''}>${w.wholesalerName}</option>`;
-                        });
+                        // ▼▼▼【ここから修正】 data.wholesalers が null でないことを保証 ▼▼▼
+                        if (data.wholesalers && Array.isArray(data.wholesalers)) {
+                            data.wholesalers.forEach(w => {
+                        // ▲▲▲【修正ここまで】▲▲▲
+              
+               const isSelected = (w.wholesalerCode === master.supplierWholesale);
+                            rowWholesalerOptions += `<option 
+ value="${w.wholesalerCode}" ${isSelected ? 'selected' : ''}>${w.wholesalerName}</option>`;
+                            });
+                        }
                         
                         let actionCellHTML = `
-                            <td class="center col-action order-actions-cell">
-                                <div class="order-action-buttons">
+                             <td class="center col-action order-actions-cell">
+                                 <div class="order-action-buttons">
                         `;
                         if (isOrderable) {
-                            actionCellHTML += '<button type="button" class="remove-order-item-btn btn">除外</button>';
+              
+               actionCellHTML += '<button type="button" class="remove-order-item-btn btn">除外</button>';
                         } else {
-                            actionCellHTML += '<button type="button" class="change-to-orderable-btn btn">発注に変更</button>';
-                        }
-                        actionCellHTML += `
-                                    <button type="button" class="set-unorderable-btn btn" data-product-code="${master.productCode}">発注不可</button>
-                                </div>
-                            </td>
-                        `;
+ 
                         
-                        html += `
-                            <tr class="${rowClass}" 
+     actionCellHTML += '<button type="button" class="change-to-orderable-btn btn">発注に変更</button>';
+                        }
+             
+            actionCellHTML += `
+          
+                        
+    <button type="button" class="set-unorderable-btn btn" data-product-code="${master.productCode}">発注不可</button>
+                                 </div>
+                             </td>
+                       `;
+ html += `
+                     
+                       <tr class="${rowClass}" 
                                 data-jan-code="${master.productCode}" 
                                 data-yj-code="${yjGroup.yjCode}"
-                                data-product-name="${master.productName}"
+                                 data-product-name="${master.productName}"
                                 data-package-form="${master.packageForm}"
-                                data-jan-pack-inner-qty="${master.janPackInnerQty}"
-                                data-yj-unit-name="${master.yjUnitName}"
-                                data-yj-pack-unit-qty="${master.yjPackUnitQty}"
-                                data-order-multiplier="${master.yjPackUnitQty}"> 
-                                
-                                <td class="left col-product" colspan="2">${master.productName}</td>
-                                <td class="left col-maker">${master.makerName || ''}</td>
-                                <td class="left col-package">${master.formattedPackageSpec}</td>
-                                <td class="col-wholesaler"><select class="wholesaler-select" style="width: 100%; font-size: 10px;" ${disabledAttr}>${rowWholesalerOptions}</select></td>
-                                <td class="col-count">${master.yjPackUnitQty} ${master.yjUnitName}</td>
+                                 data-jan-pack-inner-qty="${master.janPackInnerQty}"
+                                 data-yj-unit-name="${master.yjUnitName}"
+                                 data-yj-pack-unit-qty="${master.yjPackUnitQty}"
+                                 data-order-multiplier="${master.yjPackUnitQty}"> 
+                         <td class="left col-product" colspan="2">${master.productName}</td>
+                             <td class="left 
+ col-maker">${master.makerName || ''}</td>
+                             <td class="left col-package">${master.formattedPackageSpec}</td>
+                             <td 
+ class="col-wholesaler"><select class="wholesaler-select" style="width: 100%; font-size: 10px;" ${disabledAttr}>${rowWholesalerOptions}</select></td>
+                                 <td class="col-count">${master.yjPackUnitQty} ${master.yjUnitName}</td>
                                 <td class="col-line"><input type="number" value="${recommendedOrder}" class="order-quantity-input" style="width: 100%; text-align: right;" ${disabledAttr}></td>
-                                ${actionCellHTML}
-                            </tr>
-                        `;
+                             ${actionCellHTML}
+                        </tr>
+                     `;
                     }
                 });
             }
         });
         html += `</tbody></table></div>`;
-    });
+ });
     container.innerHTML = html;
 }
 
@@ -4557,7 +4950,7 @@ export async function fetchAndRenderReorder() {
     if (kanaNameInput) kanaNameInput.value = '';
     if (dosageFormInput) dosageFormInput.value = '';
     if (shelfNumberInput) shelfNumberInput.value = '';
-    if (coefficientInput) coefficientInput.value = '1.3';
+    if (coefficientInput) coefficientInput.value = '1.5';
 }
 
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\js\search_modal.js -----
@@ -5036,7 +5429,8 @@ export async function handleFileUpload(apiEndpoint, files, fileInput, uploadResu
 // (WASABI: static/js/valuation.js より移植・TKR用に修正)
 
 import { hiraganaToKatakana, getLocalDateString } from './utils.js';
-import { showModal } from './search_modal.js'; // TKRの検索モーダル
+import { showModal } from 
+'./search_modal.js'; // TKRの検索モーダル
 
 let view, dateInput, runBtn, outputContainer, kanaNameInput, dosageFormInput, exportCsvBtn; // exportPdfBtn を削除
 let reportDataCache = null; // サーバーからの生データをキャッシュ
@@ -5049,61 +5443,86 @@ const formatCurrency = (value) => {
 };
 
 /**
- * サーバーからの計算結果 (インタラクティブビュー) を描画します
+ * サーバーからの計算結果 (インタラクティブビュー) 
+を描画します
  */
 function renderInteractiveView() {
     if (!reportDataCache || reportDataCache.length === 0) {
         outputContainer.innerHTML = '<p>表示するデータがありません。</p>';
-        return;
+return;
     }
 
     let html = '';
     let grandTotalNhiValue = 0;
     let grandTotalPurchaseValue = 0;
     // TKRの剤型マップ
-    const ucMap = {"内": "内", "外": "外", "歯": "歯", "注": "注", "機": "機", "他": "他"};
+    const ucMap 
+= {"内": "内", "外": "外", "歯": "歯", "注": "注", "機": "機", "他": "他"};
 
     reportDataCache.forEach(group => {
-        grandTotalNhiValue += group.totalNhiValue;
+        grandTotalNhiValue 
++= group.totalNhiValue;
         grandTotalPurchaseValue += group.totalPurchaseValue;
 
-        const ucName = ucMap[group.usageClassification.trim()] || group.usageClassification;
+        const ucName = ucMap[group.usageClassification.trim()] || 
+group.usageClassification;
         html += `<div class="agg-yj-header">${ucName} (合計薬価: ${formatCurrency(group.totalNhiValue)} | 合計納入価: ${formatCurrency(group.totalPurchaseValue)})</div>`;
 
-        group.detailRows.forEach(row => {
+        
+group.detailRows.forEach(row => {
             let warningHtml = '';
-            
+       
+     
             if (row.showAlert) {
-                warningHtml = `<span class="warning-link" data-product-code="${row.productCode}" style="color: red; font-weight: bold; cursor: pointer; text-decoration: underline; margin-left: 15px;">[JCSHMS採用]</span>`;
+     
+           warningHtml = `<span class="warning-link" data-product-code="${row.productCode}" style="color: red; font-weight: bold; cursor: pointer; text-decoration: underline; 
+margin-left: 15px;">[JCSHMS採用]</span>`;
             }
-            
+           
+ 
             // TKRの valuation.css に合わせたクラス名
-            html += `
+        
+    html += `
                 <div class="item-row">
-                    <div class="item-row-left">
-                        <span class="product-name">${row.productName}</span>
-                        <span class="package-spec">${row.packageSpec}</span>
-                        ${warningHtml}
+ 
+                   <div class="item-row-left">
+    
+                    <span class="product-name">${row.productName}</span>
+   
+                         <span class="package-spec">${row.packageKey}</span>
+  
+                      ${warningHtml}
+  
+                  </div>
+      
+              <div class="item-row-right">
+         
+               <span class="value-item">在庫: <span class="value">${row.stock.toFixed(2)}</span> ${row.yjUnitName}</span>
+     
+                   <span class="value-item">納入価金額: <span class="value">${formatCurrency(row.totalPurchaseValue)}</span></span>
+  
+                      <span class="value-item">薬価金額: 
+<span class="value">${formatCurrency(row.totalNhiValue)}</span></span>
                     </div>
-                    <div class="item-row-right">
-                        <span class="value-item">在庫: <span class="value">${row.stock.toFixed(2)}</span> ${row.yjUnitName}</span>
-                        <span class="value-item">納入価金額: <span class="value">${formatCurrency(row.totalPurchaseValue)}</span></span>
-                        <span class="value-item">薬価金額: <span class="value">${formatCurrency(row.totalNhiValue)}</span></span>
-                    </div>
-                </div>
-            `;
+   
+             </div>
+           
+ `;
         });
     });
     
     html += `
         <div class="valuation-grand-total">
-            <span>総合計 (薬価): ${formatCurrency(grandTotalNhiValue)}</span>
+         
+   <span>総合計 (薬価): ${formatCurrency(grandTotalNhiValue)}</span>
             <span>総合計 (納入価): ${formatCurrency(grandTotalPurchaseValue)}</span>
-        </div>
+     
+   </div>
     `;
 
     // 「最終帳票を作成」ボタンを削除し、代わりにCSS印刷用のボタンを残す
-    html += `<div style="text-align: right; margin-top: 20px;"><button id="print-valuation-report-btn" class="btn" style="background-color: #198754; color: white;">この画面を印刷</button></div>`;
+    html += `<div style="text-align: right; margin-top: 20px;"><button id="print-valuation-report-btn" class="btn" style="background-color: #198754; 
+color: white;">この画面を印刷</button></div>`;
     outputContainer.innerHTML = html;
 }
 
@@ -5114,30 +5533,37 @@ function renderInteractiveView() {
 async function runCalculation() {
     const date = dateInput.value.replace(/-/g, '');
     if (!date) {
-        window.showNotification('評価基準日を指定してください。', 'error');
+  
+      window.showNotification('評価基準日を指定してください。', 'error');
         return;
     }
     window.showLoading('在庫評価を集計中...');
     try {
-        const kanaName = hiraganaToKatakana(kanaNameInput.value);
+        const 
+kanaName = hiraganaToKatakana(kanaNameInput.value);
         const dosageForm = dosageFormInput.value;
         const params = new URLSearchParams({
-            date: date,
+            date: 
+date,
             kanaName: kanaName,
-            dosageForm: dosageForm,
+           
+ dosageForm: dosageForm,
         });
         const res = await fetch(`/api/valuation?${params.toString()}`);
         if (!res.ok) {
-            const errText = await res.text();
+      
+      const errText = await res.text();
             throw new Error(errText || '在庫評価の計算に失敗しました。');
         }
-        reportDataCache = await res.json(); 
+        
+reportDataCache = await res.json(); 
         renderInteractiveView();
 
     } catch (err) {
         outputContainer.innerHTML = `<p style="color:red;">${err.message}</p>`;
     } finally {
-        window.hideLoading();
+  
+      window.hideLoading();
     }
 }
 
@@ -5146,16 +5572,19 @@ async function runCalculation() {
  * (旧 Excel/PDF ハンドラをCSVに統合)
  */
 function handleExportCSV() {
-    const date = dateInput.value.replace(/-/g, '');
+    const date = dateInput.value.replace(/-/g, 
+'');
     if (!date) {
         window.showNotification('評価基準日を指定してください。', 'error');
         return;
     }
     const kanaName = hiraganaToKatakana(kanaNameInput.value);
-    const dosageForm = dosageFormInput.value;
+    const dosageForm 
+= dosageFormInput.value;
     const params = new URLSearchParams({
         date: date,
-        kanaName: kanaName,
+        kanaName: 
+kanaName,
         dosageForm: dosageForm,
     });
     // 新しいCSV APIを呼び出す
@@ -5163,7 +5592,8 @@ function handleExportCSV() {
 }
 
 /**
- * 在庫評価ビューの初期化
+ 
+* 在庫評価ビューの初期化
  */
 export function initValuationView() {
     view = document.getElementById('valuation-view');
@@ -5172,61 +5602,85 @@ export function initValuationView() {
     dateInput = document.getElementById('valuation-date');
     runBtn = document.getElementById('run-valuation-btn');
     outputContainer = document.getElementById('valuation-output-container');
-    kanaNameInput = document.getElementById('val-kanaName');
+kanaNameInput = document.getElementById('val-kanaName');
     dosageFormInput = document.getElementById('val-dosageForm');
     exportCsvBtn = document.getElementById('export-valuation-csv-btn'); // IDを修正
     
     dateInput.value = getLocalDateString();
     runBtn.addEventListener('click', runCalculation);
     
-    if (exportCsvBtn) {
+    if 
+(exportCsvBtn) {
         exportCsvBtn.addEventListener('click', handleExportCSV);
     }
 
     outputContainer.addEventListener('click', async (e) => {
-        // [JCSHMS採用] リンクの処理
+     
+   // [JCSHMS採用] リンクの処理
         if (e.target.classList.contains('warning-link')) {
-            const productCode = e.target.dataset.productCode;
+         
+   const productCode = e.target.dataset.productCode;
             // TKRの検索モーダルを呼び出す (JCSHMSのデータをコピーするモード)
-            showModal(e.target, async (selectedProduct) => {
-                if (!confirm(`「${selectedProduct.productName}」をマスターに新規採用しますか？`)) {
-                    return;
+    
+        showModal(e.target, async (selectedProduct) => {
+            
+    if (!confirm(`「${selectedProduct.productName}」をマスターに新規採用しますか？`)) {
+                  
+  return;
                 }
-                window.showLoading();
-                try {
-                    // マスター採用APIを呼び出す
-                    const res = await fetch('/api/master/adopt', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        // selectedProduct.productCode (JAN) をキーとして使用
-                        body: JSON.stringify({ productCode: selectedProduct.productCode, gs1Code: selectedProduct.gs1Code })
-                    });
-                    const resData = await res.json();
+      
+          window.showLoading();
+              
+  try {
+                    // 
+マスター採用APIを呼び出す
+                    const res = await 
+fetch('/api/master/adopt', {
+                       
+ method: 'POST',
+                      
+  headers: { 'Content-Type': 'application/json' },
+                  
+      // selectedProduct.productCode (JAN) をキーとして使用
+               
+         body: JSON.stringify({ productCode: selectedProduct.productCode, gs1Code: selectedProduct.gs1Code })
+         
+           });
+             
+       const resData = await res.json();
                     if (!res.ok) throw new Error(resData.message || '採用処理に失敗しました');
                     
                     window.showNotification(`「${resData.productName}」を登録しました。在庫評価を更新します。`, 'success');
-                    await runCalculation(); // データを再計算して表示更新
+                    await runCalculation(); // 
+データを再計算して表示更新
                 } catch (err) {
-                    window.showNotification(err.message, 'error');
+     
+               window.showNotification(err.message, 'error');
                 } finally {
-                    window.hideLoading();
+     
+               window.hideLoading();
                 }
-            }, {
+        
+    }, {
                 searchMode: 'inout', 
-                copyOnly: false 
-            });
+ 
+               copyOnly: false 
+       
+     });
         }
         
         // 「この画面を印刷」ボタン (最終帳票ボタンの機能)
         if (e.target.id === 'print-valuation-report-btn') {
-            // CSS印刷用のクラスを付与
+            
+// CSS印刷用のクラスを付与
             view.classList.add('print-this-view'); 
             window.print();
         }
     });
 
     // 印刷プレビューが閉じられたら、印刷用CSSを解除
-    window.addEventListener('afterprint', () => {
+   
+ window.addEventListener('afterprint', () => {
         view.classList.remove('print-this-view');
     });
 

@@ -44,7 +44,8 @@ func GetStockLedger(conn *sqlx.DB, filters model.AggregationFilters) ([]model.St
 		return nil, fmt.Errorf("failed to get all product codes for yj codes: %w", err)
 	}
 	transactionsByProductCode, err := getTransactionsByProductCodes(conn, allProductCodes)
-	if err != nil {
+	if err !=
+		nil {
 		return nil, fmt.Errorf("failed to get all transactions for product codes: %w", err)
 	}
 
@@ -68,7 +69,8 @@ func GetStockLedger(conn *sqlx.DB, filters model.AggregationFilters) ([]model.St
 	var result []model.StockLedgerYJGroup
 	for _, yjCode := range yjCodes {
 		mastersInYjGroup, ok := mastersByYjCode[yjCode]
-		if !ok || len(mastersInYjGroup) == 0 { //
+		if !ok ||
+			len(mastersInYjGroup) == 0 { //
 			continue
 		}
 		var representativeProductName, representativeYjUnitName string
@@ -113,9 +115,11 @@ func GetStockLedger(conn *sqlx.DB, filters model.AggregationFilters) ([]model.St
 					continue
 				}
 				for _, t := range txs {
-					if t.TransactionDate > stockStartDate && t.TransactionDate <= filters.EndDate { //
+					// ▼▼▼【ここを修正】filters.EndDate の制限を削除し、未来日も集計対象に含める ▼▼▼
+					if t.TransactionDate > stockStartDate { //
 						netChangeAfterStockDate += signedYjQty(t.Flag, t.YjQuantity) //
 					}
+					// ▲▲▲【修正ここまで】▲▲▲
 				}
 			}
 
@@ -132,7 +136,8 @@ func GetStockLedger(conn *sqlx.DB, filters model.AggregationFilters) ([]model.St
 					if t.TransactionDate >= filters.StartDate && t.TransactionDate <= filters.EndDate {
 						netChangeInPeriod += signedYjQty(t.Flag, t.YjQuantity) //
 						txCopy := t
-						txsForPackageInPeriod = append(txsForPackageInPeriod, &txCopy) //
+						txsForPackageInPeriod = append(txsForPackageInPeriod, &txCopy)
+						//
 					}
 				}
 			}
@@ -178,7 +183,8 @@ func GetStockLedger(conn *sqlx.DB, filters model.AggregationFilters) ([]model.St
 				}
 
 				transactionsInPeriod = append(transactionsInPeriod, model.LedgerTransaction{TransactionRecord: *t, RunningBalance: runningBalance}) //
-				lastProcessedDate = t.TransactionDate                                                                                               //
+				lastProcessedDate = t.TransactionDate
+				//
 			}
 
 			if inventorySum, ok := periodInventorySums[lastProcessedDate]; ok { //

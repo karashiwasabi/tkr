@@ -20,7 +20,8 @@ var ma2jCodeRegex = regexp.MustCompile(`^MA2J[0-9]{9}$`)
 
 func FindOrCreateMaster(tx *sqlx.Tx, productCodeOrKey string, productName string) (*model.ProductMaster, error) {
 
-	if productCodeOrKey == "0000000000000" || productCodeOrKey == "" {
+	if productCodeOrKey == "0000000000000" ||
+		productCodeOrKey == "" {
 		if productName != "" {
 			var existingMaster model.ProductMaster
 			err := tx.Get(&existingMaster, "SELECT * FROM product_master WHERE kana_name_short = ?", productName)
@@ -111,7 +112,8 @@ func FindOrCreateMaster(tx *sqlx.Tx, productCodeOrKey string, productName string
 	}
 
 	provisionalProductCode := productCodeOrKey
-	if (!isJANKey && !isGS1Key) || productCodeOrKey == "0000000000000" || productCodeOrKey == "" {
+	if (!isJANKey && !isGS1Key) ||
+		productCodeOrKey == "0000000000000" || productCodeOrKey == "" {
 		newPJCode, seqErr := database.NextSequenceInTx(tx, "MA2J", "MA2J", 9)
 		if seqErr != nil {
 			return nil, fmt.Errorf("failed to get next MA2J sequence for provisional master (Key: %s): %w", productCodeOrKey, seqErr)
@@ -158,6 +160,21 @@ func JcshmsToProductMasterInput(jcshms *model.JcshmsInfo) model.ProductMasterInp
 	}
 	janUnitCodeInt, _ := strconv.Atoi(jcshms.JanUnitCode.String)
 
+	// ▼▼▼【ここから修正】剤型区分のロジックをご要望に合わせて変更 ▼▼▼
+	var usageClass string
+	if strings.TrimSpace(jcshms.YjCode) == "" {
+		// YJコード(JC009)が空白の場合は、JC013の値に関わらず強制的に「他」を設定
+		usageClass = "他"
+	} else {
+		// YJコードが存在する場合
+		usageClass = strings.TrimSpace(jcshms.UsageClassification) // JC013の値を取得
+		if usageClass == "" {
+			// YJコードは存在するが、JC013が空白だった場合も「他」を設定
+			usageClass = "他"
+		}
+	}
+	// ▲▲▲【修正ここまで】▲▲▲
+
 	return model.ProductMasterInput{
 		ProductCode: jcshms.ProductCode,
 		YjCode:      jcshms.YjCode,
@@ -170,7 +187,7 @@ func JcshmsToProductMasterInput(jcshms *model.JcshmsInfo) model.ProductMasterInp
 
 		MakerName:           strings.TrimSpace(jcshms.MakerName),
 		Specification:       strings.TrimSpace(jcshms.Specification),
-		UsageClassification: strings.TrimSpace(jcshms.UsageClassification),
+		UsageClassification: usageClass, // ▼▼▼【修正】変更後の変数を設定
 		PackageForm:         strings.TrimSpace(jcshms.PackageForm),
 		YjUnitName:          strings.TrimSpace(jcshms.YjUnitName),
 		YjPackUnitQty:       jcshms.YjPackUnitQty,
@@ -199,10 +216,12 @@ func UpsertProductMasterSqlx(tx *sqlx.Tx, input model.ProductMasterInput) (*mode
 	query := `
 		INSERT INTO product_master (
 			product_code, yj_code, gs1_code, product_name, kana_name, kana_name_short, generic_name,
-			maker_name, specification, usage_classification, package_form, yj_unit_name, yj_pack_unit_qty,
+			maker_name, 
+specification, usage_classification, package_form, yj_unit_name, yj_pack_unit_qty,
 			jan_pack_inner_qty, jan_unit_code, jan_pack_unit_qty, origin,
 			nhi_price, purchase_price,
-			flag_poison, flag_deleterious, flag_narcotic, flag_psychotropic, flag_stimulant, flag_stimulant_raw,
+			flag_poison, flag_deleterious, flag_narcotic, flag_psychotropic, flag_stimulant, 
+flag_stimulant_raw,
 			is_order_stopped, supplier_wholesale,
 			group_code, shelf_number, category, user_notes
 		) VALUES (
@@ -239,7 +258,8 @@ func UpsertProductMasterSqlx(tx *sqlx.Tx, input model.ProductMasterInput) (*mode
 		return nil, fmt.Errorf("failed to re-fetch master after upsert for %s: %w", input.ProductCode, err)
 	}
 
-	return &insertedMaster, nil
+	return &insertedMaster,
+		nil
 }
 
 func MasterToInput(m *model.ProductMaster) model.ProductMasterInput {

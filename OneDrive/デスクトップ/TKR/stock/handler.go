@@ -2,17 +2,13 @@
 package stock
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
-	"net/url"
 
 	"database/sql" // ▼▼▼【追加】sql パッケージをインポート ▼▼▼
 	"strconv"      // ▼▼▼【追加】strconv パッケージをインポート ▼▼▼
-	"strings"
-	"time"
 	"tkr/database"
 	"tkr/mappers"
 
@@ -25,66 +21,13 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
+// ▼▼▼【ここから削除】未使用の quoteAll 関数 ▼▼▼
+/*
 func quoteAll(s string) string {
 	return `"` + strings.ReplaceAll(s, `"`, `""`) + `"`
 }
-
-// ▼▼▼【ここから修正】ExportCurrentStockHandler を product_master 基準に変更 ▼▼▼
-func ExportCurrentStockHandler(db *sqlx.DB) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-
-		// 1. 在庫起点テーブル (package_stock) ではなく、
-		//    product_master から全ての PackageKey 情報を取得
-		allMasterKeysMap, err := database.GetAllPackageKeysFromMasters(db)
-		if err != nil {
-			http.Error(w, "Failed to get all package keys from masters: "+err.Error(), http.StatusInternalServerError)
-			return
-		}
-
-		// (GetRepresentativeProductNameMap は不要)
-
-		var buf bytes.Buffer
-		buf.Write([]byte{0xEF, 0xBB, 0xBF}) // UTF-8 BOM
-
-		// 3. ヘッダーを PackageKey, ProductName, JAN数量 に変更
-		header := []string{
-			"PackageKey",
-			"ProductName",
-			"JAN数量",
-		}
-		buf.WriteString(strings.Join(header, ",") + "\r\n")
-
-		// 4. データをCSV行に変換 (allMasterKeysMap をループ)
-		for key, keyInfo := range allMasterKeysMap {
-			if keyInfo.Representative == nil {
-				log.Printf("WARN: Skipping invalid PackageKey in export (no representative): %s", key)
-				continue
-			}
-
-			// YJ数量 ではなく、JAN数量を 0.00 として出力
-			janQty := 0.0
-
-			// 代表品名を取得
-			productName := keyInfo.Representative.ProductName
-
-			record := []string{
-				quoteAll(key), // マスタから取得した最新の PackageKey
-				quoteAll(productName),
-				quoteAll(fmt.Sprintf("%.2f", janQty)), // JAN数量は 0.00 固定
-			}
-			buf.WriteString(strings.Join(record, ",") + "\r\n")
-		}
-		// ▲▲▲【修正ここまで】▲▲▲
-
-		today := time.Now().Format("20060102")
-		filename := fmt.Sprintf("TKR在庫データ_%s.csv", today) // ファイル名を変更
-
-		w.Header().Set("Content-Type", "text/csv; charset=utf-8")
-		w.Header().Set("Content-Disposition", "attachment; filename*=UTF-8''"+url.PathEscape(filename))
-
-		w.Write(buf.Bytes())
-	}
-}
+*/
+// ▲▲▲【削除ここまで】▲▲▲
 
 // ▼▼▼ ImportTKRStockCSVHandler は変更なし (ご要望の「洗い替え」ロジックを実装済み) ▼▼▼
 func ImportTKRStockCSVHandler(db *sqlx.DB) http.HandlerFunc {

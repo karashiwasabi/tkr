@@ -186,21 +186,28 @@ func ImportAllMastersHandler(db *sqlx.DB) http.HandlerFunc {
 
 			// 2. ベースデータの決定
 			if jcshmsInfo != nil {
-				// 2A. JCSHMSに情報が見つかった場合
+				// 2A.JCSHMSに情報が見つかった場合
 				input = mastermanager.JcshmsToProductMasterInput(jcshmsInfo)
 				input.Origin = "JCSHMS" // JcshmsToProductMasterInput が設定するが、明示的に "JCSHMS" を維持
 
 			} else {
-				// 2B. JCSHMSに情報が見つからなかった場合
+				// 2B.JCSHMSに情報が見つからなかった場合
 				csvProductName := get("product_name")
 				dbProductName := csvProductName
 				if !strings.HasPrefix(csvProductName, "◆") {
 					dbProductName = "◆" + csvProductName
 				}
 
+				// ▼▼▼【ここに追加】CSVの剤型区分が空白なら「他」を設定 ▼▼▼
+				csvUsageClass := get("usage_classification")
+				if csvUsageClass == "" {
+					csvUsageClass = "他"
+				}
+				// ▲▲▲【追加ここまで】▲▲▲
+
 				input = model.ProductMasterInput{
 					ProductCode: productCode,
-					YjCode:      "", // 3B で自動採番するため、ここでは空
+					YjCode:      "", // 3B で設定するため、ここでは空
 					Gs1Code:     get("gs1_code"),
 					ProductName: dbProductName,
 					KanaName:    get("kana_name"),
@@ -208,7 +215,7 @@ func ImportAllMastersHandler(db *sqlx.DB) http.HandlerFunc {
 					GenericName:         get("generic_name"),
 					MakerName:           get("maker_name"),
 					Specification:       get("specification"),
-					UsageClassification: get("usage_classification"),
+					UsageClassification: csvUsageClass, // ▼▼▼【修正】変更後の変数を設定
 					PackageForm:         get("package_form"),
 					YjUnitName:          get("yj_unit_name"),
 					YjPackUnitQty:       getFloat("yj_pack_unit_qty"),
@@ -228,7 +235,7 @@ func ImportAllMastersHandler(db *sqlx.DB) http.HandlerFunc {
 
 			// 3. YJコードの処理 (CSVのYJは無視)
 			if jcshmsInfo != nil {
-				// 3A. JCSHMS由来の場合
+				// 3A.JCSHMS由来の場合
 				if jcshmsInfo.YjCode == "" {
 					// JCSHMS由来だがYJなし (JC009が空)
 					newYj, seqErr := database.NextSequenceInTx(tx, "MA2Y", "MA2Y", 8)
@@ -244,27 +251,36 @@ func ImportAllMastersHandler(db *sqlx.DB) http.HandlerFunc {
 				// else (jcshmsInfo.YjCode != ""):
 				// JcshmsToProductMasterInput で input.YjCode に設定済みなので何もしない
 			} else {
-				// 3B. JCSHMSになかった場合 (PROVISIONAL)
-				// CSVのyj_codeは無視し、強制的に自動採番
+				// 3B.JCSHMSになかった場合(PROVISIONAL)
+				// ▼▼▼【ここから修正】YJコードの採番ロジックを変更 ▼▼▼
 				csvYjCode := get("yj_code")
-				if csvYjCode != "" {
-					log.Printf("WARN: Master import ignored CSV YJ_CODE ('%s') for PROVISIONAL item %s.", csvYjCode, productCode)
-				}
 
-				newYj, seqErr := database.NextSequenceInTx(tx, "MA2Y", "MA2Y", 8)
-				if seqErr != nil {
-					log.Printf("ERROR: YJコード自動採番失敗 (PROVISIONAL/ProductCode: %s): %v. Rolling back...", productCode, seqErr)
-					http.Error(w, "YJコードの自動採番に失敗しました: "+seqErr.Error(), http.StatusInternalServerError)
-					return
+				if csvYjCode == "" ||
+					strings.HasPrefix(csvYjCode, "MA2Y") {
+					// CSVのYJコードが空欄、または MA2Y で始まる場合のみ、自動採番
+					newYj, seqErr := database.NextSequenceInTx(tx, "MA2Y", "MA2Y", 8)
+					if seqErr != nil {
+						log.Printf("ERROR: YJコード自動採番失敗 (PROVISIONAL/ProductCode: %s): %v. Rolling back...", productCode, seqErr)
+						http.Error(w, "YJコードの自動採番に失敗しました: "+seqErr.Error(), http.StatusInternalServerError)
+						return
+					}
+					input.YjCode = newYj
+					if csvYjCode != "" {
+						log.Printf("INFO: Master import (PROVISIONAL item %s) had MA2Y YJCode ('%s'). Re-assigned new YJ: %s.", productCode, csvYjCode, newYj)
+					}
+				} else {
+					// CSVに MA2Y 以外（例: 610...）が記載されている場合は、その値を採用する
+					input.YjCode = csvYjCode
+					log.Printf("INFO: Master import (PROVISIONAL item %s) adopted YJCode from CSV: %s.", productCode, csvYjCode)
 				}
-				input.YjCode = newYj
+				// ▲▲▲【修正ここまで】▲▲▲
 			}
 
 			// 4. カナ名短縮 (JC019) の処理
 			csvKanaNameShort := get("kana_name_short")
 
 			if jcshmsInfo != nil {
-				// 4A. JCSHMS由来の場合
+				// 4A.JCSHMS由来の場合
 				// (input.KanaNameShort には JcshmsToProductMasterInput によって JC019 が入っている)
 				if input.KanaNameShort == "" {
 					// JCSHMS(JC019)が空だった場合のみ、CSVの値をフォールバックとして使用
@@ -272,7 +288,7 @@ func ImportAllMastersHandler(db *sqlx.DB) http.HandlerFunc {
 					// (CSVも空なら input.KanaNameShort は "" のまま)
 				}
 			} else {
-				// 4B. JCSHMSになかった場合 (PROVISIONAL)
+				// 4B.JCSHMSになかった場合(PROVISIONAL)
 				if csvKanaNameShort != "" {
 					input.KanaNameShort = csvKanaNameShort
 				} else {
@@ -299,6 +315,7 @@ func ImportAllMastersHandler(db *sqlx.DB) http.HandlerFunc {
 		}
 
 		// ▼▼▼【ここを修正】カウンターのリセット処理を「最後」に戻す ▼▼▼
+		// ▼▼▼【修正】 seqErr -> err に変更 ▼▼▼
 		if err := database.InitializeSequenceFromMaxYjCode(tx); err != nil {
 			log.Printf("ERROR: Failed to re-initialize YJ (MA2Y) sequence: %v. Rolling back...", err)
 			http.Error(w, "自動採番カウンター(MA2Y)のリセットに失敗しました: "+err.Error(), http.StatusInternalServerError)
@@ -309,6 +326,7 @@ func ImportAllMastersHandler(db *sqlx.DB) http.HandlerFunc {
 			http.Error(w, "自動採番カウンター(MA2J)のリセットに失敗しました: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
+		// ▲▲▲【修正ここまで】▲▲▲
 		// ▲▲▲【修正ここまで】▲▲▲
 
 		if err := tx.Commit(); err != nil {

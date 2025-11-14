@@ -42,5 +42,5 @@ export async function fetchAndRenderReorder() {
     if (kanaNameInput) kanaNameInput.value = '';
     if (dosageFormInput) dosageFormInput.value = '';
     if (shelfNumberInput) shelfNumberInput.value = '';
-    if (coefficientInput) coefficientInput.value = '1.3';
+    if (coefficientInput) coefficientInput.value = '1.5';
 }

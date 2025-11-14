@@ -80,6 +80,28 @@ class="btn">集計期間保存</button>
              </fieldset>
     
     </div>
+    <div class="config-form-container">
+            <fieldset>
+                <legend>得意先マスタ インポート</legend>
+                <div class="form-row">
+                    <div class="form-group flex-full">
+                        <p style="font-size: 10px; margin: 0 0 5px 0;">
+                            CSV (UTF-8) を読み込み、得意先マスタ (client_master) を上書き (Upsert) します。<br>
+                            CSV形式: <strong>client_code</strong> (必須), <strong>client_name</strong> (必須)
+                        </p>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="importClientsInput" style="font-size: 10px; font-weight: bold;">得意先CSVファイル:</label>
+                        <input type="file" id="importClientsInput" class="hidden" accept=".csv,.CSV">
+                    </div>
+                    <div class="form-actions" style="margin-top: 5px;">
+                        <button id="importClientsBtn" class="btn">得意先CSV インポート実行</button>
+                    </div>
+                </div>
+            </fieldset>
+        </div>
          <div id="wholesalerListContainer" class="table-container">
             <table id="wholesalerListTable" class="data-table">
                 <thead>
@@ -145,27 +167,6 @@ class="btn">集計期間保存</button>
     </section>
     <section class="config-section">
         <h2>在庫データ移行</h2>
-     
-   
-        <div class="config-form-container">
-            <fieldset>
-   
-                 <legend>A.
-現在在庫のエクスポート (TKR独自形式)</legend>
-                <div class="form-row">
-                    <div class="form-group flex-full">
-                        <p style="font-size: 10px; margin: 0 0 5px 0;">
-                            現在の在庫（最新の棚卸）をTKR独自形式 (PackageKey, ProductName, JAN数量) でCSVエクスポートします。
-                        </p>
-                    </div>
-                </div>
-                <div class="form-actions" style="margin-top: 5px;">
-                  
- 
-                     <button id="exportTkrStockBtn" class="btn">TKR独自CSV エクスポート</button>
-                </div>
-            </fieldset>
-        </div>
 
         <div class="config-form-container">
             <fieldset>
@@ -207,6 +208,26 @@ TKR独自CSVインポート (全洗い替え)</legend>
     <section class="config-section">
         <h2>マスタデータ移行</h2>
         
+<div class="config-form-container">
+            <fieldset>
+                <legend>JCSHMS (SOU) マスター更新</legend>
+                <div class="form-row">
+                    <div class="form-group flex-full">
+                        <p style="font-size: 10px; margin: 0 0 5px 0;">
+                            SOUフォルダ内の <strong>JCSHMS.CSV</strong> および <strong>JANCODE.CSV</strong> を読み込み、
+                            データベースの JCSHMS / JANCODE テーブルを洗い替えます。<br>
+                            <span style="color: #dc3545; font-weight: bold;">
+                                警告: この処理は時間がかかる場合があります。処理が完了するまで画面を閉じないでください。
+                            </span>
+                        </p>
+                    </div>
+                </div>
+                <div class="form-actions" style="margin-top: 5px;">
+                    <button id="importJcshmsBtn" class="btn">JCSHMS (SOU) 更新実行</button>
+                </div>
+            </fieldset>
+        </div>
+
         <div class="config-form-container">
        
      <fieldset>

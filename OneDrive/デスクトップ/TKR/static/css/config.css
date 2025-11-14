@@ -68,15 +68,18 @@
     margin-left: 10px;
 }
 
-/* ▼▼▼【ここから追加】インラインスタイルをIDセレクタに移動 ▼▼▼ */
+/* ▼▼▼【ここから修正】インラインスタイルをIDセレクタに移動 ▼▼▼ */
 #wholesalerListContainer {
     max-height: 300px;
     margin-top: 10px;
+    overflow-y: auto; /* ★【追加】コンテナ内スクロールを有効化 */
 }
-#wholesalerListTable th.col-config-code   { width: 25%; }
+#wholesalerListTable th.col-config-code   { width: 25%;
+}
 #wholesalerListTable th.col-config-name   { width: 60%; }
-#wholesalerListTable th.col-config-action { width: 15%; }
-/* ▲▲▲【追加ここまで】▲▲▲ */
+#wholesalerListTable th.col-config-action { width: 15%;
+}
+/* ▲▲▲【修正ここまで】▲▲▲ */
 
 /* 卸一覧テーブルの削除ボタン */
 #wholesalerListTable .delete-wholesaler-btn {

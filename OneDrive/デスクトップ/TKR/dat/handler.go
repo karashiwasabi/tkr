@@ -55,7 +55,8 @@ func UploadDatHandler(db *sqlx.DB) http.HandlerFunc {
 						fileResult)
 				continue
 			}
-			parsedRecords, parseErr := parsers.ParseDat(file)
+			parsedRecords,
+				parseErr := parsers.ParseDat(file)
 			file.Close()
 			if parseErr != nil {
 				log.Printf("Failed to parse DAT file %s: %v", fileHeader.Filename, parseErr)
@@ -86,7 +87,8 @@ func UploadDatHandler(db *sqlx.DB) http.HandlerFunc {
 			if len(insertedTransactions) > 0 {
 				var deliveredItems []model.Backorder
 				for _, rec := range insertedTransactions {
-					if rec.Flag == 1 {
+					if rec.Flag ==
+						1 {
 						deliveredItems = append(deliveredItems, model.Backorder{
 							YjCode:          rec.YjCode,
 							PackageForm:     rec.PackageForm,
@@ -159,7 +161,8 @@ func ProcessDatRecords(tx *sqlx.Tx, parsedRecords []model.DatRecord) ([]model.Tr
 		ClientCode string
 	})
 	for _, rec := range recordsToProcess {
-		if rec.Flag == 1 || rec.Flag == 2 {
+		if rec.Flag == 1 ||
+			rec.Flag == 2 {
 			receiptKeysToDelete[rec.ReceiptNumber] = struct {
 				Date       string
 				ClientCode string
@@ -172,7 +175,8 @@ func ProcessDatRecords(tx *sqlx.Tx, parsedRecords []model.DatRecord) ([]model.Tr
 
 	for receiptNumber, keyInfo := range receiptKeysToDelete {
 		log.Printf("Deleting existing DAT records for Receipt: %s, Date: %s, Client: %s", receiptNumber, keyInfo.Date, keyInfo.ClientCode)
-		const q = `DELETE FROM transaction_records WHERE receipt_number = ? AND transaction_date = ? AND client_code = ? AND flag IN (1, 2)`
+		const q = `DELETE FROM transaction_records WHERE receipt_number = ?
+AND transaction_date = ? AND client_code = ? AND flag IN (1, 2)`
 		_, err := tx.Exec(q, receiptNumber, keyInfo.Date, keyInfo.ClientCode)
 		if err != nil {
 			return nil, fmt.Errorf("failed to delete existing DAT records for receipt %s: %w", receiptNumber, err)
@@ -214,8 +218,18 @@ func ProcessDatRecords(tx *sqlx.Tx, parsedRecords []model.DatRecord) ([]model.Tr
 			LotNumber:       rec.LotNumber,
 		}
 
-		transaction.JanQuantity = rec.DatQuantity
-		transaction.YjQuantity = rec.DatQuantity * master.JanPackInnerQty
+		// ▼▼▼【ここから修正】YjQuantity と JanQuantity の計算ロジックを reprocess.go に統一 ▼▼▼
+
+		// 1. YJ数量を (reprocess.go と同様に) YjPackUnitQty で計算
+		transaction.YjQuantity = rec.DatQuantity * master.YjPackUnitQty
+
+		// 2. JAN数量を (reprocess.go と同様に) YJ数量から逆算
+		if master.JanPackInnerQty > 0 {
+			transaction.JanQuantity = transaction.YjQuantity / master.JanPackInnerQty
+		} else {
+			transaction.JanQuantity = 0 //
+		}
+		// ▲▲▲【修正ここまで】▲▲▲
 
 		if transaction.UnitPrice == 0 {
 			transaction.UnitPrice = master.NhiPrice

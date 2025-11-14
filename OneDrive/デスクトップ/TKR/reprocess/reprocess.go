@@ -95,12 +95,7 @@ func ExecuteReprocess(conn *sqlx.DB) error {
 
 			// 3. 金額を再計算 (TKRのFlag定義に合わせてロジックを分岐)
 			switch rec.Flag {
-			case 1: // 納品
-				// TKRでは納品時の単価(UnitPrice)はYJ単位、PurchasePriceは未使用
-				// 最新マスターの薬価(NhiPrice)を単価とする
-				rec.UnitPrice = master.NhiPrice
-				rec.Subtotal = rec.YjQuantity * rec.UnitPrice
-
+			// ▼▼▼【ここから修正】 flag = 1 (納品) を default と同じ扱いに変更 ▼▼▼
 			case 0, 3: // 棚卸, 処方
 				rec.UnitPrice = master.NhiPrice // 薬価を単価とする
 				rec.Subtotal = rec.YjQuantity * rec.UnitPrice
@@ -109,9 +104,10 @@ func ExecuteReprocess(conn *sqlx.DB) error {
 				rec.UnitPrice = master.NhiPrice
 				rec.Subtotal = rec.YjQuantity * rec.UnitPrice
 
-			default: // その他 (入出庫 11, 12 など)
+			default: // 納品(1), その他 (入出庫 11, 12 など)
 				// 数量の変更を反映するため金額は再計算するが、単価は維持する
 				rec.Subtotal = rec.YjQuantity * rec.UnitPrice
+				// ▲▲▲【修正ここまで】▲▲▲
 			}
 
 			// 4. 処理ステータスを更新 (TKRの定義に合わせて修正)

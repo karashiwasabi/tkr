@@ -33,25 +33,26 @@ func GetInventoryDataHandler(conn *sqlx.DB) http.HandlerFunc {
 			return
 		}
 		now := time.Now()
-		endDate := now
-		// TKRでは集計開始日を「(本日 - N日)」または「最新棚卸日」の *遅い方* にする
-		// GetStockLedger がそのロジックを内包している
+		// ▼▼▼【ここを修正】endDate を「本日」から「未来("99991231")」に変更 ▼▼▼
+		endDate := "99991231" //
+		// ▲▲▲【修正ここまで】▲▲▲
 		startDate := now.AddDate(0, 0, -cfg.CalculationPeriodDays)
 		yesterdayDate := now.AddDate(0, 0, -1)
 
-		// 2. 本日時点の理論在庫を取得
+		// 2. 本日時点の理論在庫を取得 (EndDate を未来日に設定)
 		filtersToday := model.AggregationFilters{
 			StartDate: startDate.Format("20060102"),
-			EndDate:   endDate.Format("20060102"),
+			EndDate:   endDate, //
 			YjCode:    yjCode,
 		}
 		ledgerToday, err := aggregation.GetStockLedger(conn, filtersToday)
-		if err != nil {
+		if err !=
+			nil {
 			http.Error(w, "Failed to get today's stock ledger: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
 
-		// 3. 昨日時点の理論在庫を取得
+		// 3. 昨日時点の理論在庫を取得 (EndDate は「昨日」のまま)
 		filtersYesterday := model.AggregationFilters{
 			StartDate: startDate.Format("20060102"),
 			EndDate:   yesterdayDate.Format("20060102"),
@@ -185,7 +186,8 @@ func SaveInventoryDataHandler(conn *sqlx.DB) http.HandlerFunc {
 		}
 
 		// ▼▼▼【ログ追加】▼▼▼
-		log.Printf("[SaveInventoryDataHandler] Calling SaveGuidedInventoryData with Date: %s, YjCode: %s, Masters found: %d, DeadStock items: %d", payload.Date, payload.YjCode, len(masters), len(payload.DeadStockData))
+		log.Printf("[SaveInventoryDataHandler] Calling SaveGuidedInventoryData with Date: %s, YjCode: %s, Masters found: %d, DeadStock items: %d",
+			payload.Date, payload.YjCode, len(masters), len(payload.DeadStockData))
 		// ▲▲▲
 
 		if err := database.SaveGuidedInventoryData(tx, payload.Date, payload.YjCode, masters, payload.InventoryData, payload.DeadStockData); err != nil {
