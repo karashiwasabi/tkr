@@ -31,7 +31,8 @@ const SelectColumns = `
 	nhi_price, purchase_price,
 	flag_poison, flag_deleterious, flag_narcotic, flag_psychotropic, flag_stimulant, flag_stimulant_raw,
 	is_order_stopped, supplier_wholesale,
-	group_code, shelf_number, category, user_notes
+	group_code, shelf_number, 
+category, user_notes
 `
 
 func ScanProductMaster(row interface{ Scan(...interface{}) error }) (*model.ProductMaster, error) {
@@ -111,7 +112,8 @@ func GetFilteredProductMasters(dbtx DBTX, usageClass, kanaName, genericName, she
 
 	if usageClass != "" {
 		mustConditions = append(mustConditions, "usage_classification = ?")
-		args = append(args, usageClass)
+		args = append(args,
+			usageClass)
 	} else {
 		return []model.ProductMaster{}, nil
 	}
@@ -204,7 +206,7 @@ func GetProductMasterByBarcode(dbtx DBTX, barcodeStr string) (*model.ProductMast
 func GetProductMastersByYjCode(dbtx DBTX, yjCode string) ([]*model.ProductMaster, error) {
 	var masters []*model.ProductMaster
 	query := `SELECT * FROM product_master WHERE yj_code = ?
- ORDER BY product_code`
+ORDER BY product_code`
 	err := dbtx.Select(&masters, query, yjCode)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -253,7 +255,8 @@ INSERT INTO product_master (
     origin, nhi_price, purchase_price, flag_poison, flag_deleterious, flag_narcotic, 
     
  flag_psychotropic, 
- flag_stimulant, flag_stimulant_raw, 
+ flag_stimulant, 
+flag_stimulant_raw, 
 is_order_stopped, 
     supplier_wholesale, group_code, shelf_number, category, user_notes
 ) VALUES (
@@ -310,3 +313,20 @@ func GetAllPackageKeysFromMasters(dbtx DBTX) (map[string]MasterPackageKeyInfo, e
 
 	return keyInfoMap, nil
 }
+
+// ▼▼▼【ここに追加】 (WASABI: db/product_master.go  より移植) ▼▼▼
+// UpdatePricesAndSuppliersInTx は、納入価と採用卸を一括更新します。 (TKR用に sqlx.Tx を使用)
+func UpdatePricesAndSuppliersInTx(tx *sqlx.Tx, updates []model.PriceUpdate) error {
+	// sqlx.NamedExec を使うために :field 形式のプレースホルダに変更
+	const q = `UPDATE product_master SET purchase_price = :newPrice, supplier_wholesale = :newWholesaler
+WHERE product_code = :productCode`
+
+	// NamedExec はスライス（[]model.PriceUpdate）を受け取って一括実行できる
+	_, err := tx.NamedExec(q, updates)
+	if err != nil {
+		return fmt.Errorf("UpdatePricesAndSuppliersInTx failed (NamedExec): %w", err)
+	}
+	return nil
+}
+
+// ▲▲▲【追加ここまで】▲▲▲

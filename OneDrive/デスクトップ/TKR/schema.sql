@@ -10,7 +10,8 @@ CREATE TABLE IF NOT EXISTS product_master (
     generic_name TEXT,    -- ★ WASABIからの追加
     maker_name TEXT,
     
-specification TEXT,
+specification 
+TEXT,
     usage_classification TEXT,
     package_form TEXT,
     yj_unit_name TEXT,
@@ -31,7 +32,8 @@ specification TEXT,
     supplier_wholesale TEXT,
     group_code TEXT,
   
-  shelf_number TEXT,
+ 
+ shelf_number TEXT,
     category TEXT,
     user_notes TEXT
 );
@@ -66,7 +68,8 @@ CREATE TABLE IF NOT EXISTS transaction_records (
   tax_amount REAL,
   
  tax_rate REAL, 
-  expiry_date TEXT,
+  
+expiry_date TEXT,
   lot_number TEXT,
   flag_poison INTEGER,
   flag_deleterious INTEGER,
@@ -82,7 +85,8 @@ CREATE TABLE IF NOT EXISTS jcshms (
   JC020 TEXT, JC021 TEXT, JC022 TEXT, JC023 TEXT, JC024 TEXT, JC025 TEXT, JC026 TEXT, JC027 TEXT, JC028 TEXT, JC029 TEXT,
   JC030 TEXT, JC031 TEXT, JC032 TEXT, JC033 TEXT, JC034 TEXT, JC035 TEXT, JC036 TEXT, JC037 TEXT, JC038 TEXT, JC039 TEXT,
   JC040 TEXT, JC041 TEXT, 
-JC042 TEXT, JC043 TEXT, JC044 REAL, JC045 TEXT, JC046 TEXT, JC047 TEXT, JC048 TEXT, JC049 TEXT, 
+JC042 TEXT, JC043 TEXT, 
+JC044 REAL, JC045 TEXT, JC046 TEXT, JC047 TEXT, JC048 TEXT, JC049 TEXT, 
   JC050 REAL, JC051 TEXT, JC052 TEXT, JC053 TEXT, JC054 TEXT, JC055 TEXT, JC056 TEXT, JC057 TEXT, JC058 TEXT, JC059 TEXT,
   JC060 TEXT, JC061 INTEGER, JC062 INTEGER, JC063 INTEGER, JC064 INTEGER, JC065 INTEGER, JC066 INTEGER, JC067 TEXT, JC068 TEXT, JC069 TEXT,
   JC070 TEXT, JC071 TEXT, JC072 TEXT, JC073 TEXT, JC074 TEXT, JC075 TEXT, JC076 TEXT, JC077 TEXT, JC078 TEXT, JC079 TEXT,
@@ -157,7 +161,7 @@ CREATE TABLE IF NOT EXISTS backorders (
   jan_pack_unit_qty REAL,
   jan_unit_code INTEGER
 );
--- ▲▲▲【変更ここまで】▲▲▲
+-- ▲▲▲【変更ここまで】▲▲▲ 
 CREATE TABLE IF NOT EXISTS precomp_records (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   transaction_date TEXT,
@@ -215,6 +219,18 @@ INSERT OR IGNORE INTO code_sequences(name, last_no) VALUES ('MA2Y', 0);
 INSERT OR IGNORE INTO code_sequences(name, last_no) VALUES ('CL', 0);
 -- ▼▼▼【ここに追加】仮ProductCode用シーケンス ▼▼▼
 INSERT OR IGNORE INTO code_sequences(name, last_no) VALUES ('MA2J', 0);
+-- ▲▲▲【追加ここまで】▲▲▲
+
+-- ▼▼▼【ここから追加】見積・価格設定機能用テーブル ▼▼▼
+CREATE TABLE IF NOT EXISTS product_quotes (
+    product_code TEXT NOT NULL,
+    wholesaler_code TEXT NOT NULL,
+    quote_price REAL NOT NULL,
+    quote_date TEXT NOT NULL,
+    PRIMARY KEY (product_code, wholesaler_code)
+);
+CREATE INDEX IF NOT EXISTS idx_product_quotes_product_code ON product_quotes (product_code);
+CREATE INDEX IF NOT EXISTS idx_product_quotes_wholesaler_code ON product_quotes (wholesaler_code);
 -- ▲▲▲【追加ここまで】▲▲▲
 
 -- ▼▼▼【ここから追加】包装キー単位の在庫起点テーブル ▼▼▼

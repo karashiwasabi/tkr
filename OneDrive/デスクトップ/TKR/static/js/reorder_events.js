@@ -1,14 +1,16 @@
 // C:\Users\wasab\OneDrive\デスクトップ\TKR\static\js\reorder_events.js
 import { hiraganaToKatakana, fetchProductMasterByBarcode } from './utils.js';
 import { showModal } from './search_modal.js';
-import { renderOrderCandidates, addOrUpdateOrderItem } from 
+import { renderOrderCandidates, 
+addOrUpdateOrderItem } from 
 './reorder_ui.js';
 import { openContinuousScanModal } from './reorder_continuous_scan.js';
 
 // DOM要素 (initReorderEventsで初期化)
 let outputContainer, kanaNameInput, dosageFormInput, coefficientInput, shelfNumberInput;
 let createCsvBtn, barcodeInput, barcodeForm, addFromMasterBtn;
-let runBtn, continuousOrderBtn;
+let 
+runBtn, continuousOrderBtn;
 
 /**
  
@@ -19,16 +21,17 @@ async function handleOrderBarcodeScan(e) {
     e.preventDefault();
     const inputValue = barcodeInput.value.trim();
     if (!inputValue) return;
-
-    window.showLoading('製品情報を検索中...');
+window.showLoading('製品情報を検索中...');
     try {
  
        const productMaster = await fetchProductMasterByBarcode(inputValue); // from utils.js
-        addOrUpdateOrderItem(productMaster); // from reorder_ui.js
+       
+ addOrUpdateOrderItem(productMaster); // from reorder_ui.js
         barcodeInput.value = '';
         barcodeInput.focus();
     } catch (err) {
-        
+     
+   
 window.showNotification(err.message, 'error');
     } finally {
         window.hideLoading();
@@ -39,17 +42,21 @@ window.showNotification(err.message, 'error');
  * 「品目検索から追加」ボタンのハンドラ
  * (旧 reorder.js より移管)
  */
-function handleAddFromMaster() {
+function 
+handleAddFromMaster() {
   
   showModal(
         document.getElementById('reorder-view'), 
-        (selectedProduct) => {
+        (selectedProduct) => 
+{
    
          // TKRでは採用・未採用の区別なく、選択されたものをそのまま追加
-            addOrUpdateOrderItem(selectedProduct); // from reorder_ui.js
+           
+ addOrUpdateOrderItem(selectedProduct); // from reorder_ui.js
         },
         {
-       
+    
+   
      searchMode: 'inout' // JCSHMSからも検索可能にする
         }
     );
@@ -63,28 +70,34 @@ function handleAddFromMaster() {
 async function handleGenerateCandidates() {
     window.showLoading('発注候補リストを作成中...');
     const params = new URLSearchParams({
-        
+     
+   
 kanaName: hiraganaToKatakana(kanaNameInput.value),
         dosageForm: dosageFormInput.value,
         shelfNumber: shelfNumberInput.value,
-     
+  
+   
    coefficient: coefficientInput.value,
     });
 
     try {
-        const res = await fetch(`/api/reorder/candidates?${params.toString()}`);
+        const res = 
+await fetch(`/api/reorder/candidates?${params.toString()}`);
         if 
 (!res.ok) {
             const errText = await res.text();
-            throw new Error(errText || 'List generation failed');
+            throw new Error(errText 
+|| 'List generation failed');
         }
         const data = await res.json();
         renderOrderCandidates(data, outputContainer); // from reorder_ui.js
-    } catch 
+   
+ } catch 
 (err) {
         outputContainer.innerHTML = `<p class="status-error">エラー: ${err.message}</p>`;
     } finally {
-        
+     
+   
 window.hideLoading();
     }
 }
@@ -95,83 +108,110 @@ window.hideLoading();
  * @param {Function} fetchAndRenderReorderCallback - メインの `fetchAndRenderReorder` (リセット用)
  */
 async function handleCreateCsv(fetchAndRenderReorderCallback) {
-    const 
-rows = outputContainer.querySelectorAll('tbody tr');
+  
+  // ▼▼▼【ここを修正】発注可テーブルの行のみを対象にする ▼▼▼
+    const rows = outputContainer.querySelectorAll('#orderable-table tbody tr');
+    // ▲▲▲【修正ここまで】▲▲▲
+
     if (rows.length === 0) {
         window.showNotification('発注する品目がありません。', 'error');
         return;
     }
 
-    const 
+  
+  const 
 backorderPayload = [];
     let csvContent = "";
     let hasItemsToOrder = false;
 
     rows.forEach(row => {
       
-  if (row.classList.contains('provisional-order-item')) {
+  
+if (row.classList.contains('provisional-order-item')) {
             return; // 発注不可の行はスキップ
       
-  }
+  
+}
         
         const quantityInput = row.querySelector('.order-quantity-input');
    
-     const quantity = parseInt(quantityInput.value, 10);
+  
+   const quantity = parseInt(quantityInput.value, 10);
         
        
- if (quantity > 0) {
+ if 
+(quantity > 0) {
             hasItemsToOrder = true;
      
-       
+  
+     
             const janCode = row.dataset.janCode;
   
-          const productName = row.cells[0].textContent; // TKRのテーブルレイアウト (colspan=2)
+  
+        const productName = row.cells[0].textContent; // TKRのテーブルレイアウト (colspan=2)
         
-    const wholesalerCode = row.querySelector('.wholesaler-select').value;
+  
+  const wholesalerCode = row.querySelector('.wholesaler-select').value;
 
             // TKR CSVフォーマット
    
-         const csvRow = [
+  
+       const csvRow = [
             
-    janCode, 
+  
+  janCode, 
                 `"${productName.replace(/"/g, '""')}"`, // 品名を""で囲む
-                quantity, 
+  
+              quantity, 
        
-         wholesalerCode
+  
+       wholesalerCode
             ].join(',');
    
-         csvContent += csvRow + "\r\n";
+  
+       csvContent += csvRow + "\r\n";
 
            
- const orderMultiplier = parseFloat(row.dataset.orderMultiplier) || 0;
+ const 
+orderMultiplier = parseFloat(row.dataset.orderMultiplier) || 0;
             
       
-      backorderPayload.push({
+  
+    backorderPayload.push({
                 yjCode: row.dataset.yjCode,
  
-               packageForm: row.dataset.packageForm,
+  
+             packageForm: row.dataset.packageForm,
         
-        janPackInnerQty: parseFloat(row.dataset.janPackInnerQty),
+  
+      janPackInnerQty: parseFloat(row.dataset.janPackInnerQty),
                
- yjUnitName: row.dataset.yjUnitName,
+ yjUnitName: 
+row.dataset.yjUnitName,
                 yjQuantity: quantity * orderMultiplier, // YJ単位に換算
  
-               productName: row.dataset.productName,
+  
+             productName: row.dataset.productName,
         
-        yjPackUnitQty: parseFloat(row.dataset.yjPackUnitQty) || 0,
+  
+      yjPackUnitQty: parseFloat(row.dataset.yjPackUnitQty) || 0,
              
-   janPackUnitQty: parseFloat(row.dataset.janPackUnitQty) || 0,
+  
+ janPackUnitQty: parseFloat(row.dataset.janPackUnitQty) || 0,
                 janUnitCode: parseInt(row.dataset.janUnitCode, 
-10) || 0,
+10) ||
+0,
                 wholesalerCode: wholesalerCode, // TKRでは string
   
-          });
+  
+        });
         }
     });
 
     if (!hasItemsToOrder) {
       
-  window.showNotification('発注数が1以上の品目がありません。', 'error');
+  
+window.showNotification('発注数が1以上の品目がありません。', 'error');
         return;
     }
 
@@ -179,41 +219,49 @@ backorderPayload = [];
     try {
         // 1. 発注残をDBに登録
    
-     const res = await fetch('/api/orders/place', {
+  
+   const res = await fetch('/api/orders/place', {
             method: 'POST',
  
-           headers: { 'Content-Type': 'application/json' },
+  
+         headers: { 'Content-Type': 'application/json' },
          
-   body: JSON.stringify(backorderPayload),
+  
+ body: JSON.stringify(backorderPayload),
         });
         const resData = await res.json();
         if (!res.ok) throw new Error(resData.message || 
 '発注残の登録に失敗しました。');
         
-        window.showNotification(resData.message, 'success');
+        window.showNotification(resData.message, 
+'success');
 
         // 2. Shift-JIS CSVを生成・ダウンロード
         const sjisArray = Encoding.convert(csvContent, {
       
-      to: 'SJIS',
+  
+    to: 'SJIS',
             from: 'UNICODE',
     
-        type: 'array'
+  
+      type: 'array'
         });
         const sjisUint8Array = new Uint8Array(sjisArray);
 
         const 
-blob = new Blob([sjisUint8Array], { type: 'text/csv; charset=shift_jis' }); // MIMEタイプ指定
+blob = 
+new Blob([sjisUint8Array], { type: 'text/csv; charset=shift_jis' }); // MIMEタイプ指定
         const link = document.createElement("a");
         const url 
 = URL.createObjectURL(blob);
-        const now = new Date();
+const now = new Date();
         const timestamp = `${now.getFullYear()}${(now.getMonth()+1).toString().padStart(2, '0')}${now.getDate().toString().padStart(2, '0')}_${now.getHours().toString().padStart(2, '0')}${now.getMinutes().toString().padStart(2, '0')}${now.getSeconds().toString().padStart(2, '0')}`;
         const fileName = `発注書_${timestamp}.csv`;
         
         link.setAttribute("href", url);
         link.setAttribute("download", fileName);
-link.style.visibility = 'hidden';
+link.style.visibility = 
+'hidden';
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
@@ -223,7 +271,8 @@ link.style.visibility = 'hidden';
 
     } catch(err) {
       
-  window.showNotification(err.message, 'error');
+  
+window.showNotification(err.message, 'error');
     } finally {
         window.hideLoading();
     }
@@ -234,72 +283,112 @@ link.style.visibility = 'hidden';
  * (旧 reorder.js より移管)
  */
 async function 
-handleTableClicks(e) {
+handleTableClicks(e, handleGenerateCandidatesCallback) {
+ 
     const target = e.target;
     const row = target.closest('tr');
     if (!row) return;
 
-    // 「発注不可」ボタン
+    // 「発注不可」ボタン (発注可テーブル内)
     if (target.classList.contains('set-unorderable-btn')) {
  
-       const productCode = target.dataset.productCode;
+  
+     const productCode = target.dataset.productCode;
         const productName = row.cells[0].textContent;
         if (!confirm(`「${productName}」を発注不可に設定しますか？\nこの品目は今後、不足品リストに表示されなくなります。`)) {
        
-     return;
+  
+   return;
         }
         window.showLoading('マスターを更新中...');
         try {
         
-    // TKRのAPI (mastermanager.goで定義)
+  
+  // TKRのAPI (mastermanager.goで定義)
             const res = await fetch('/api/master/set_order_stopped', { 
 
-                method: 'POST',
+  
+              method: 'POST',
        
-         headers: { 'Content-Type': 'application/json' },
+  
+       headers: { 'Content-Type': 'application/json' },
            
-     body: JSON.stringify({ productCode: productCode, status: 1 }),
+  
+   body: JSON.stringify({ productCode: productCode, status: 1 }),
             });
-const resData = await res.json();
+const resData 
+= await res.json();
             if (!res.ok) throw new Error(resData.message || '更新に失敗しました。');
             
-            row.classList.add('provisional-order-item');
-            row.querySelector('.wholesaler-select').disabled = true;
-            row.querySelector('.order-quantity-input').disabled = true;
-            target.disabled = true;
-            
+            // ▼▼▼【ここから修正】行を移動させる処理を追加 ▼▼▼
             window.showNotification(`「${productName}」を発注不可に設定しました。`, 'success');
-} catch(err) {
+            
+            // 1. 発注可テーブルから行を削除
+            row.remove(); 
+            
+            // 2. 発注不可テーブルに行を再構築して追加 (簡易的に、ページリロード)
+            window.showNotification('発注不可リストに移動しました。リストを更新します。', 'info');
+            handleGenerateCandidatesCallback(); // 発注候補を再生成して全体を再描画
+            // ▲▲▲【修正ここまで】▲▲▲
+
+} catch(err) 
+{
             window.showNotification(err.message, 'error');
         } finally {
       
-      window.hideLoading();
+  
+    window.hideLoading();
         }
     } 
-    // 「発注に変更」ボタン
+    // 「発注に変更」ボタン (発注不可テーブル内)
     else if (target.classList.contains('change-to-orderable-btn')) 
 {
-        row.classList.remove('provisional-order-item');
-        row.querySelector('.wholesaler-select').disabled = false;
-        row.querySelector('.order-quantity-input').disabled = false;
+        // ▼▼▼【ここから修正】行を移動させる処理を追加 ▼▼▼
+        const productCode = row.dataset.janCode;
+        if (!productCode) return;
 
-        target.textContent = '除外';
-        target.classList.remove('change-to-orderable-btn');
-        target.classList.add('remove-order-item-btn');
+        window.showLoading('マスターを更新中...');
+        try {
+            // 1. APIでマスターを発注可 (0) に更新
+            const res = await fetch('/api/master/set_order_stopped', { 
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ productCode: productCode, status: 0 }),
+            });
+            const resData = await res.json();
+            if (!res.ok) throw new Error(resData.message || '更新に失敗しました。');
+
+            window.showNotification(`「${row.dataset.productName}」を発注可に変更しました。`, 'success');
+
+            // 2. 発注不可テーブルから行を削除
+            row.remove();
+
+            // 3. 発注可テーブルに行を追加 (簡易的に、ページリロード)
+            window.showNotification('発注対象リストに移動しました。リストを更新します。', 'info');
+            handleGenerateCandidatesCallback(); // 発注候補を再生成して全体を再描画
+
+        } catch(err) {
+            window.showNotification(err.message, 'error');
+        } finally {
+            window.hideLoading();
+        }
+        // ▲▲▲【修正ここまで】▲▲▲
     } 
    
- // 「除外」ボタン
+ // 「除外」ボタン (発注可テーブル内)
     else if (target.classList.contains('remove-order-item-btn')) {
+        // ▼▼▼【ここから修正】テーブル構造の変更に対応 ▼▼▼
         const tbody = row.closest('tbody');
         const table = 
 tbody.closest('table');
-        const wrapper = table.closest('.order-yj-group-wrapper');
         row.remove();
         
-        if (tbody.children.length === 0 && wrapper) {
-            
-wrapper.remove();
+        if (tbody.children.length === 0 && table.id === 'orderable-table') {
+            const header = outputContainer.querySelector('h3');
+            if(header) header.textContent = `発注対象品目 (0件)`;
+            tbody.innerHTML = '<tr><td colspan="8">発注対象の品目はありません。</td></tr>';
         }
+        // ▲▲▲【修正ここまで】▲▲▲
     }
 }
 
@@ -309,7 +398,8 @@ wrapper.remove();
  */
 export function initReorderEvents(fetchAndRenderReorderCallback) {
     // ▼▼▼【ここを修正】コメント行を削除 ▼▼▼
-    
+ 
+   
 runBtn = document.getElementById('generate-order-candidates-btn');
     outputContainer = document.getElementById('order-candidates-output');
     kanaNameInput = document.getElementById('order-kanaName');
@@ -318,7 +408,7 @@ runBtn = document.getElementById('generate-order-candidates-btn');
     createCsvBtn = document.getElementById('createOrderCsvBtn');
     barcodeInput = 
 document.getElementById('order-barcode-input');
-    barcodeForm = document.getElementById('order-barcode-form');
+barcodeForm = document.getElementById('order-barcode-form');
     shelfNumberInput = document.getElementById('order-shelf-number');
     addFromMasterBtn = document.getElementById('add-order-item-from-master-btn');
     continuousOrderBtn = document.getElementById('continuous-order-btn');
@@ -326,23 +416,27 @@ document.getElementById('order-barcode-input');
     // イベントリスナーの割り当て
     if (addFromMasterBtn) {
     
-    addFromMasterBtn.addEventListener('click', handleAddFromMaster);
+ 
+   addFromMasterBtn.addEventListener('click', handleAddFromMaster);
     }
     if (continuousOrderBtn) {
         continuousOrderBtn.addEventListener('click', openContinuousScanModal);
     }
   
-  if (barcodeForm) {
+ 
+ if (barcodeForm) {
         barcodeForm.addEventListener('submit', handleOrderBarcodeScan);
     }
     if (runBtn) {
-    
-    runBtn.addEventListener('click', handleGenerateCandidates);
+        // ▼▼▼【修正】handleGenerateCandidates を直接登録 ▼▼▼
+        runBtn.addEventListener('click', handleGenerateCandidates);
     }
     if (createCsvBtn) {
         createCsvBtn.addEventListener('click', () => handleCreateCsv(fetchAndRenderReorderCallback));
 }
-    if (outputContainer) {
-        outputContainer.addEventListener('click', handleTableClicks);
+ 
+   if (outputContainer) {
+        // ▼▼▼【修正】handleTableClicks に handleGenerateCandidates を渡す ▼▼▼
+        outputContainer.addEventListener('click', (e) => handleTableClicks(e, handleGenerateCandidates));
     }
 }

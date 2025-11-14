@@ -22,3 +22,19 @@ type Backorder struct {
 	// フロントエンドからの発注データ受け取り用フィールド (DBカラムなし)
 	YjQuantity float64 `json:"yjQuantity,omitempty"`
 }
+
+// ▼▼▼【ここから追加】 (WASABI: model/types.go  より) ▼▼▼
+type PriceUpdate struct {
+	ProductCode      string  `json:"productCode"`
+	NewPurchasePrice float64 `json:"newPrice"`
+	NewSupplier      string  `json:"newWholesaler"`
+}
+
+type ProductQuote struct {
+	ProductCode    string  `db:"product_code" json:"productCode"`
+	WholesalerCode string  `db:"wholesaler_code" json:"wholesalerCode"`
+	QuotePrice     float64 `db:"quote_price" json:"quotePrice"`
+	QuoteDate      string  `db:"quote_date" json:"quoteDate"`
+}
+
+// ▲▲▲【追加ここまで】▲▲▲

@@ -639,6 +639,46 @@
     margin-left: 10px;
 }
 
+----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\css\pricing.css -----
+/* C:\Users\wasab\OneDrive\デスクトップ\TKR\static\css\pricing.css */
+/* (TKRのstyles.css, table.cssをベースに、pricing.js が必要とするスタイルを追加) */
+
+#pricing-output-container .data-table {
+    font-size: 10px; /* 他のビューと合わせる */
+}
+
+#pricing-output-container .data-table th,
+#pricing-output-container .data-table td {
+    padding: 3px 4px; /* TKRの検索モーダル と同様のパディング */
+    height: auto;
+    min-height: 18px;
+}
+
+/* 決定納入価 */
+#pricing-output-container .manual-price-input {
+    width: 100%;
+    /* ▼▼▼【ここを修正】左右の padding を 3px から 2px に変更 ▼▼▼ */
+    padding: 3px 2px;
+    /* ▲▲▲【修正ここまで】▲▲▲ */
+    font-size: 10px;
+    text-align: right;
+    box-sizing: border-box; 
+}
+
+/* 採用卸 */
+#pricing-output-container .supplier-select {
+    width: 100%;
+    font-size: 10px;
+    padding: 2px;
+    box-sizing: border-box;
+}
+
+/* 見積価格（最安値） */
+#pricing-output-container .data-table td.right[style*="background-color: #d1e7dd"] {
+    background-color: #d1e7dd !important; /* CSSの詳細度を上げる */
+    font-weight: bold;
+}
+
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\css\reorder.css -----
 /* C:\Users\wasab\OneDrive\デスクトップ\TKR\static\css\reorder.css */
 
@@ -2091,6 +2131,69 @@ class="btn">マスタCSV エクスポート</button>
     </div>
 </div>
 
+----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\views\pricing_view.html -----
+<div id="pricing-view" class="view">
+    <h1>見積・価格設定</h1>
+    
+    <div class="filter-container">
+        <fieldset>
+            <legend>操作パネル</legend>
+            <div class="search-form-container">
+                <div class="search-filter-row">
+                    <div class="form-group">
+                        <label for="pricing-wholesaler-select">卸業者（テンプレート作成用）:</label>
+                        <select id="pricing-wholesaler-select" class="search-filter-input"></select>
+                    </div>
+                    <button id="pricing-export-btn" class="btn">見積テンプレート(全件)作成</button>
+                    <button id="pricing-export-unregistered-btn" class="btn">見積テンプレート(未登録品)作成</button>
+                </div>
+                
+                <div class="search-filter-row" style="margin-top: 10px; border-top: 1px dashed #ccc; padding-top: 10px;">
+                    <div class="form-group">
+                        <label>見積CSV（卸から受領）:</label>
+                        <input type="file" id="pricing-upload-input" multiple accept=".csv,.CSV">
+                    </div>
+                    <span style="font-size: 10px; color: #555;">※複数ファイル同時選択可。<br>ファイル名は「(優先順位)_(卸名)_...」にしてください。</span>
+                </div>
+                
+                <div class="search-filter-row" style="margin-top: 10px; border-top: 1px dashed #ccc; padding-top: 10px;">
+                    <div class="form-group">
+                        <label>価格一括インポート (バックアップCSV):</label>
+                        <button id="pricing-direct-import-btn" class="btn">バックアップCSV読込</button>
+                        <input type="file" id="pricing-direct-import-input" class="hidden" accept=".csv,.CSV">
+                    </div>
+                    <a href="/api/pricing/backup_export" id="pricing-backup-export-btn" class="btn" style="margin-left: auto;">価格・卸バックアップ(全件)</a>
+                </div>
+            </div>
+        </fieldset>
+    </div>
+
+    <div class="filter-container" style="background-color: #f0f4f8;">
+        <fieldset>
+            <legend>表示フィルタ・一括操作</legend>
+            <div class="search-form-container">
+                <div class="search-filter-row">
+                    <div class="form-group">
+                        <label for="pricing-maker-filter">メーカー名 (部分一致):</label>
+                        <input type="text" id="pricing-maker-filter" class="search-filter-input" autocomplete="off">
+                    </div>
+                    <div class="form-group">
+                        <label style="margin-top: 10px;">
+                            <input type="checkbox" id="pricing-unregistered-filter"> 採用卸が未設定の品目のみ表示
+                        </label>
+                    </div>
+                    <button id="set-lowest-price-btn" class="btn" style="margin-left: auto; background-color: #17a2b8; color: white;">表示品目を最安値に自動設定</button>
+                    <button id="pricing-bulk-update-btn" class="btn" style="background-color: #28a745; color: white;">表示品目の一括更新を保存</button>
+                </div>
+            </div>
+        </fieldset>
+    </div>
+
+    <div id="pricing-output-container" class="table-container">
+        <p>見積CSVをアップロードしてください。</p>
+    </div>
+</div>
+
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\views\reorder_view.html -----
 <div id="reorder-view" class="view">
     <h1>発注</h1>
@@ -2323,12 +2426,14 @@ class="btn">マスタCSV エクスポート</button>
     <link rel="stylesheet" href="/static/css/inventory_adjustment.css">
     <link rel="stylesheet" href="/static/css/search_modal.css">
     <link rel="stylesheet" href="/static/css/search_form_group.css">
-   <link rel="stylesheet" href="/static/css/modal.css">
+  
+ <link rel="stylesheet" href="/static/css/modal.css">
     <link rel="stylesheet" href="/static/css/inout.css">
     <link rel="stylesheet" href="/static/css/deadstock.css">
     <link rel="stylesheet" href="/static/css/reorder.css">
     <link rel="stylesheet" href="/static/css/backorder.css">
     <link rel="stylesheet" href="/static/css/valuation.css">
+    <link rel="stylesheet" href="/static/css/pricing.css">
     </head>
 <body>
   
@@ -2338,10 +2443,12 @@ class="btn">マスタCSV エクスポート</button>
         <button id="inOutViewBtn" class="btn">入出庫</button>
        
          <button id="inventoryAdjustmentViewBtn" class="btn">棚卸調整</button>
-        <button id="deadStockViewBtn" class="btn">不動在庫</button>
+        <button id="deadStockViewBtn" 
+class="btn">不動在庫</button>
         <button id="reorderViewBtn" class="btn">発注</button>
         <button id="backorderViewBtn" class="btn">発注残管理</button>
         <button id="valuationViewBtn" class="btn">在庫評価</button>
+        <button id="pricingViewBtn" class="btn">見積・価格設定</button>
         <button id="masterEditViewBtn" class="btn">マスタ編集</button>
      
        <button id="precompViewBtn" class="btn">予製管理</button>
@@ -2354,7 +2461,8 @@ class="btn">マスタCSV エクスポート</button>
       
   {{if .Views}}
     
-           
+     
+      
             {{range .Views}}
                  {{.}}
        
@@ -2365,7 +2473,8 @@ class="btn">マスタCSV エクスポート</button>
             <div id="dat-upload-view" class="view active">DATビュー</div>
  
          
-         
+   
+      
   <div id="usage-upload-view" class="view">USAGEビュー</div>
          
    <div id="inventory-adjustment-view" class="view">棚卸調整ビュー</div>
@@ -2376,10 +2485,12 @@ class="btn">マスタCSV エクスポート</button>
      
              <div id="deadstock-view" class="view">不動在庫ビュー</div>
  
-             
+           
+  
              <div id="reorder-view" class="view">発注ビュー</div>
              <div id="backorder-view" class="view">発注残管理ビュー</div>
              <div id="valuation-view" class="view">在庫評価ビュー</div>
+             <div id="pricing-view" class="view">見積・価格設定ビュー</div>
              {{end}}
      
    </main>
@@ -2388,11 +2499,13 @@ class="btn">マスタCSV エクスポート</button>
         <div class="spinner"></div>
         <span id="loading-message">処理中...</span>
     </div>
-    <div id="notification-box"></div>
+    
+<div id="notification-box"></div>
 
  {{ template "common_search_modal" .
 }}
- {{ template "common_input_modal" . }}
+ {{ template "common_input_modal" .
+}}
     <script src="/static/js/lib/encoding.min.js"></script>
     <script type="module" src="/static/js/app.js?v=2025110701"></script>
     </body>

@@ -45,7 +45,8 @@ func GetStockLedger(conn *sqlx.DB, filters model.AggregationFilters) ([]model.St
 		return nil, fmt.Errorf("failed to get all product codes for yj codes: %w", err)
 	}
 	transactionsByProductCode, err := getTransactionsByProductCodes(conn, allProductCodes)
-	if err != nil {
+	if err !=
+		nil {
 		return nil, fmt.Errorf("failed to get all transactions for product codes: %w", err)
 	}
 
@@ -69,7 +70,8 @@ func GetStockLedger(conn *sqlx.DB, filters model.AggregationFilters) ([]model.St
 	var result []model.StockLedgerYJGroup
 	for _, yjCode := range yjCodes {
 		mastersInYjGroup, ok := mastersByYjCode[yjCode]
-		if !ok || len(mastersInYjGroup) == 0 { //
+		if !ok ||
+			len(mastersInYjGroup) == 0 { //
 			continue
 		}
 		var representativeProductName, representativeYjUnitName string
@@ -114,9 +116,11 @@ func GetStockLedger(conn *sqlx.DB, filters model.AggregationFilters) ([]model.St
 					continue
 				}
 				for _, t := range txs {
-					if t.TransactionDate > stockStartDate && t.TransactionDate <= filters.EndDate { //
+					// ▼▼▼【ここを修正】filters.EndDate の制限を削除し、未来日も集計対象に含める ▼▼▼
+					if t.TransactionDate > stockStartDate { //
 						netChangeAfterStockDate += signedYjQty(t.Flag, t.YjQuantity) //
 					}
+					// ▲▲▲【修正ここまで】▲▲▲
 				}
 			}
 
@@ -133,7 +137,8 @@ func GetStockLedger(conn *sqlx.DB, filters model.AggregationFilters) ([]model.St
 					if t.TransactionDate >= filters.StartDate && t.TransactionDate <= filters.EndDate {
 						netChangeInPeriod += signedYjQty(t.Flag, t.YjQuantity) //
 						txCopy := t
-						txsForPackageInPeriod = append(txsForPackageInPeriod, &txCopy) //
+						txsForPackageInPeriod = append(txsForPackageInPeriod, &txCopy)
+						//
 					}
 				}
 			}
@@ -179,7 +184,8 @@ func GetStockLedger(conn *sqlx.DB, filters model.AggregationFilters) ([]model.St
 				}
 
 				transactionsInPeriod = append(transactionsInPeriod, model.LedgerTransaction{TransactionRecord: *t, RunningBalance: runningBalance}) //
-				lastProcessedDate = t.TransactionDate                                                                                               //
+				lastProcessedDate = t.TransactionDate
+				//
 			}
 
 			if inventorySum, ok := periodInventorySums[lastProcessedDate]; ok { //
@@ -2469,6 +2475,57 @@ func GetPreCompoundingStatusByPatient(conn DBTX, patientNumber string) (string, 
 }
 
 
+----- C:\Users\wasab\OneDrive\デスクトップ\TKR\database\pricing_queries.go -----
+package database
+
+import (
+	"fmt"
+	"tkr/model"
+
+	"github.com/jmoiron/sqlx"
+)
+
+// UpsertProductQuotesInTx は複数の見積データをトランザクション内でUPSERTします。
+func UpsertProductQuotesInTx(tx *sqlx.Tx, quotes []model.ProductQuote) error {
+	const q = `
+		INSERT INTO product_quotes (
+			product_code, wholesaler_code, quote_price, quote_date
+		) VALUES (
+			:product_code, :wholesaler_code, :quote_price, :quote_date
+		)
+		ON CONFLICT(product_code, wholesaler_code) DO UPDATE SET
+			quote_price = excluded.quote_price,
+			quote_date = excluded.quote_date
+	`
+	// NamedExecでスライスをバルクインサート
+	_, err := tx.NamedExec(q, quotes)
+	if err != nil {
+		return fmt.Errorf("failed to bulk upsert product quotes: %w", err)
+	}
+	return nil
+}
+
+// GetAllProductQuotes は全ての見積データを取得し、[product_code][wholesaler_code] -> price のマップを返します。
+func GetAllProductQuotes(dbtx DBTX) (map[string]map[string]float64, error) {
+	var quotes []model.ProductQuote
+	const q = `SELECT product_code, wholesaler_code, quote_price FROM product_quotes`
+
+	err := dbtx.Select(&quotes, q)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get all product quotes: %w", err)
+	}
+
+	resultMap := make(map[string]map[string]float64)
+	for _, q := range quotes {
+		if _, ok := resultMap[q.ProductCode]; !ok {
+			resultMap[q.ProductCode] = make(map[string]float64)
+		}
+		resultMap[q.ProductCode][q.WholesalerCode] = q.QuotePrice
+	}
+	return resultMap, nil
+}
+
+
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\database\product_master_query.go -----
 // C:\Users\wasab\OneDrive\デスクトップ\TKR\database\product_master_query.go
 package database
@@ -2503,7 +2560,8 @@ const SelectColumns = `
 	nhi_price, purchase_price,
 	flag_poison, flag_deleterious, flag_narcotic, flag_psychotropic, flag_stimulant, flag_stimulant_raw,
 	is_order_stopped, supplier_wholesale,
-	group_code, shelf_number, category, user_notes
+	group_code, shelf_number, 
+category, user_notes
 `
 
 func ScanProductMaster(row interface{ Scan(...interface{}) error }) (*model.ProductMaster, error) {
@@ -2583,7 +2641,8 @@ func GetFilteredProductMasters(dbtx DBTX, usageClass, kanaName, genericName, she
 
 	if usageClass != "" {
 		mustConditions = append(mustConditions, "usage_classification = ?")
-		args = append(args, usageClass)
+		args = append(args,
+			usageClass)
 	} else {
 		return []model.ProductMaster{}, nil
 	}
@@ -2676,7 +2735,7 @@ func GetProductMasterByBarcode(dbtx DBTX, barcodeStr string) (*model.ProductMast
 func GetProductMastersByYjCode(dbtx DBTX, yjCode string) ([]*model.ProductMaster, error) {
 	var masters []*model.ProductMaster
 	query := `SELECT * FROM product_master WHERE yj_code = ?
- ORDER BY product_code`
+ORDER BY product_code`
 	err := dbtx.Select(&masters, query, yjCode)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -2725,7 +2784,8 @@ INSERT INTO product_master (
     origin, nhi_price, purchase_price, flag_poison, flag_deleterious, flag_narcotic, 
     
  flag_psychotropic, 
- flag_stimulant, flag_stimulant_raw, 
+ flag_stimulant, 
+flag_stimulant_raw, 
 is_order_stopped, 
     supplier_wholesale, group_code, shelf_number, category, user_notes
 ) VALUES (
@@ -2782,6 +2842,23 @@ func GetAllPackageKeysFromMasters(dbtx DBTX) (map[string]MasterPackageKeyInfo, e
 
 	return keyInfoMap, nil
 }
+
+// ▼▼▼【ここに追加】 (WASABI: db/product_master.go  より移植) ▼▼▼
+// UpdatePricesAndSuppliersInTx は、納入価と採用卸を一括更新します。 (TKR用に sqlx.Tx を使用)
+func UpdatePricesAndSuppliersInTx(tx *sqlx.Tx, updates []model.PriceUpdate) error {
+	// sqlx.NamedExec を使うために :field 形式のプレースホルダに変更
+	const q = `UPDATE product_master SET purchase_price = :newPrice, supplier_wholesale = :newWholesaler
+WHERE product_code = :productCode`
+
+	// NamedExec はスライス（[]model.PriceUpdate）を受け取って一括実行できる
+	_, err := tx.NamedExec(q, updates)
+	if err != nil {
+		return fmt.Errorf("UpdatePricesAndSuppliersInTx failed (NamedExec): %w", err)
+	}
+	return nil
+}
+
+// ▲▲▲【追加ここまで】▲▲▲
 
 
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\database\sequence.go -----
@@ -4430,25 +4507,26 @@ func GetInventoryDataHandler(conn *sqlx.DB) http.HandlerFunc {
 			return
 		}
 		now := time.Now()
-		endDate := now
-		// TKRでは集計開始日を「(本日 - N日)」または「最新棚卸日」の *遅い方* にする
-		// GetStockLedger がそのロジックを内包している
+		// ▼▼▼【ここを修正】endDate を「本日」から「未来("99991231")」に変更 ▼▼▼
+		endDate := "99991231" //
+		// ▲▲▲【修正ここまで】▲▲▲
 		startDate := now.AddDate(0, 0, -cfg.CalculationPeriodDays)
 		yesterdayDate := now.AddDate(0, 0, -1)
 
-		// 2. 本日時点の理論在庫を取得
+		// 2. 本日時点の理論在庫を取得 (EndDate を未来日に設定)
 		filtersToday := model.AggregationFilters{
 			StartDate: startDate.Format("20060102"),
-			EndDate:   endDate.Format("20060102"),
+			EndDate:   endDate, //
 			YjCode:    yjCode,
 		}
 		ledgerToday, err := aggregation.GetStockLedger(conn, filtersToday)
-		if err != nil {
+		if err !=
+			nil {
 			http.Error(w, "Failed to get today's stock ledger: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
 
-		// 3. 昨日時点の理論在庫を取得
+		// 3. 昨日時点の理論在庫を取得 (EndDate は「昨日」のまま)
 		filtersYesterday := model.AggregationFilters{
 			StartDate: startDate.Format("20060102"),
 			EndDate:   yesterdayDate.Format("20060102"),
@@ -4582,7 +4660,8 @@ func SaveInventoryDataHandler(conn *sqlx.DB) http.HandlerFunc {
 		}
 
 		// ▼▼▼【ログ追加】▼▼▼
-		log.Printf("[SaveInventoryDataHandler] Calling SaveGuidedInventoryData with Date: %s, YjCode: %s, Masters found: %d, DeadStock items: %d", payload.Date, payload.YjCode, len(masters), len(payload.DeadStockData))
+		log.Printf("[SaveInventoryDataHandler] Calling SaveGuidedInventoryData with Date: %s, YjCode: %s, Masters found: %d, DeadStock items: %d",
+			payload.Date, payload.YjCode, len(masters), len(payload.DeadStockData))
 		// ▲▲▲
 
 		if err := database.SaveGuidedInventoryData(tx, payload.Date, payload.YjCode, masters, payload.InventoryData, payload.DeadStockData); err != nil {
@@ -5562,12 +5641,20 @@ func JcshmsToProductMasterInput(jcshms *model.JcshmsInfo) model.ProductMasterInp
 	}
 	janUnitCodeInt, _ := strconv.Atoi(jcshms.JanUnitCode.String)
 
-	// ▼▼▼【ここから追加】剤型区分が空白なら「他」を設定 ▼▼▼
-	usageClass := strings.TrimSpace(jcshms.UsageClassification)
-	if usageClass == "" {
+	// ▼▼▼【ここから修正】剤型区分のロジックをご要望に合わせて変更 ▼▼▼
+	var usageClass string
+	if strings.TrimSpace(jcshms.YjCode) == "" {
+		// YJコード(JC009)が空白の場合は、JC013の値に関わらず強制的に「他」を設定
 		usageClass = "他"
+	} else {
+		// YJコードが存在する場合
+		usageClass = strings.TrimSpace(jcshms.UsageClassification) // JC013の値を取得
+		if usageClass == "" {
+			// YJコードは存在するが、JC013が空白だった場合も「他」を設定
+			usageClass = "他"
+		}
 	}
-	// ▲▲▲【追加ここまで】▲▲▲
+	// ▲▲▲【修正ここまで】▲▲▲
 
 	return model.ProductMasterInput{
 		ProductCode: jcshms.ProductCode,
@@ -5610,7 +5697,8 @@ func UpsertProductMasterSqlx(tx *sqlx.Tx, input model.ProductMasterInput) (*mode
 	query := `
 		INSERT INTO product_master (
 			product_code, yj_code, gs1_code, product_name, kana_name, kana_name_short, generic_name,
-			maker_name, specification, usage_classification, package_form, yj_unit_name, yj_pack_unit_qty,
+			maker_name, 
+specification, usage_classification, package_form, yj_unit_name, yj_pack_unit_qty,
 			jan_pack_inner_qty, jan_unit_code, jan_pack_unit_qty, origin,
 			nhi_price, purchase_price,
 			flag_poison, flag_deleterious, flag_narcotic, flag_psychotropic, flag_stimulant, 
@@ -5981,6 +6069,22 @@ type Backorder struct {
 	// フロントエンドからの発注データ受け取り用フィールド (DBカラムなし)
 	YjQuantity float64 `json:"yjQuantity,omitempty"`
 }
+
+// ▼▼▼【ここから追加】 (WASABI: model/types.go  より) ▼▼▼
+type PriceUpdate struct {
+	ProductCode      string  `json:"productCode"`
+	NewPurchasePrice float64 `json:"newPrice"`
+	NewSupplier      string  `json:"newWholesaler"`
+}
+
+type ProductQuote struct {
+	ProductCode    string  `db:"product_code" json:"productCode"`
+	WholesalerCode string  `db:"wholesaler_code" json:"wholesalerCode"`
+	QuotePrice     float64 `db:"quote_price" json:"quotePrice"`
+	QuoteDate      string  `db:"quote_date" json:"quoteDate"`
+}
+
+// ▲▲▲【追加ここまで】▲▲▲
 
 
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\model\transaction_types.go -----
@@ -7027,6 +7131,518 @@ func ImportAllPrecompHandler(db *sqlx.DB) http.HandlerFunc {
 }
 
 
+----- C:\Users\wasab\OneDrive\デスクトップ\TKR\pricing\handler.go -----
+// C:\Users\wasab\OneDrive\デスクトップ\TKR\pricing\handler.go
+package pricing
+
+import (
+	"bufio"
+	"encoding/csv"
+	"encoding/json"
+	"fmt"
+	"log"
+	"mime/multipart"
+	"net/http"
+	"net/url"
+	"sort"
+	"strconv"
+	"strings"
+	"time"
+	"tkr/database"
+	"tkr/mappers"
+	"tkr/model"
+
+	"github.com/jmoiron/sqlx"
+)
+
+// writeJsonError はエラーレスポンスを返します
+func writeJsonError(w http.ResponseWriter, message string, code int) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(code)
+	json.NewEncoder(w).Encode(map[string]string{"message": message})
+}
+
+// GetExportDataHandler は見積依頼CSVを作成します (WASABI
+func GetExportDataHandler(db *sqlx.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		wholesalerName := r.URL.Query().Get("wholesalerName")
+		unregisteredOnlyStr := r.URL.Query().Get("unregisteredOnly")
+		unregisteredOnly := unregisteredOnlyStr == "true"
+
+		if wholesalerName == "" {
+			writeJsonError(w, "Wholesaler name is required", http.StatusBadRequest)
+			return
+		}
+
+		allMasters, err := database.GetAllProductMasters(db) // TKR
+		if err != nil {
+			writeJsonError(w, "Failed to get products for export", http.StatusInternalServerError)
+			return
+		}
+
+		var mastersToProcess []*model.ProductMaster
+		for _, p := range allMasters {
+			// TKRでは仮マスター(MA2J)を除外
+			if strings.HasPrefix(p.ProductCode, "MA2J") {
+				continue
+			}
+			mastersToProcess = append(mastersToProcess, p)
+		}
+
+		var dataToExport []*model.ProductMaster
+		if unregisteredOnly {
+			for _, p := range mastersToProcess {
+				if p.SupplierWholesale == "" { // 採用卸が未設定
+					dataToExport = append(dataToExport, p)
+				}
+			}
+			if len(dataToExport) == 0 {
+				writeJsonError(w, "未登録の品目が見つかりませんでした。", http.StatusNotFound)
+				return
+			}
+		} else {
+			dataToExport = mastersToProcess
+		}
+
+		dateStr := r.URL.Query().Get("date")
+		fileType := "ALL"
+		if unregisteredOnly {
+			fileType = "UNREGISTERED"
+		}
+		fileName := fmt.Sprintf("価格見積依頼_%s_%s_%s.csv", wholesalerName, fileType, dateStr)
+		fileName = url.PathEscape(fileName) // ファイル名をURLエンコード
+
+		w.Header().Set("Content-Type", "text/csv; charset=utf-8")
+		w.Header().Set("Content-Disposition", "attachment; filename*=UTF-8''"+fileName)
+		w.Write([]byte{0xEF, 0xBB, 0xBF}) // UTF-8 BOM
+
+		csvWriter := csv.NewWriter(w)
+		defer csvWriter.Flush()
+
+		headers := []string{"product_code", "product_name", "maker_name", "package_spec", "purchase_price"}
+		if err := csvWriter.Write(headers); err != nil {
+			log.Printf("Failed to write CSV header: %v", err)
+		}
+
+		for _, m := range dataToExport {
+			// mappers.ToProductMasterView を使って包装仕様を取得
+			view := mappers.ToProductMasterView(m) // TKR
+			formattedSpec := view.FormattedPackageSpec
+
+			record := []string{
+				// ▼▼▼【ここを修正】 "=%q" から "%q" に変更 ▼▼▼
+				fmt.Sprintf("%q", m.ProductCode),
+				// ▲▲▲【修正ここまで】▲▲▲
+				m.ProductName,
+				m.MakerName,
+				formattedSpec,
+				"", // purchase_price is left empty
+			}
+			if err := csvWriter.Write(record); err != nil {
+				log.Printf("Failed to write product row to CSV (JAN: %s): %v", m.ProductCode, err)
+			}
+		}
+	}
+}
+
+// QuoteDataWithSpec は価格比較画面用のデータ構造です (WASABI
+type QuoteDataWithSpec struct {
+	model.ProductMaster
+	FormattedPackageSpec string             `json:"formattedPackageSpec"`
+	Quotes               map[string]float64 `json:"quotes"`
+}
+
+// UploadResponse はアップロード結果のデータ構造です (WASABI
+type UploadResponse struct {
+	ProductData     []QuoteDataWithSpec `json:"productData"`
+	WholesalerOrder []string            `json:"wholesalerOrder"`
+}
+
+// UploadQuotesHandler は見積CSVをDBに保存し、比較データを返します (WASABI 修正)
+func UploadQuotesHandler(db *sqlx.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if err := r.ParseMultipartForm(32 << 20); err != nil {
+			writeJsonError(w, "File upload error", http.StatusBadRequest)
+			return
+		}
+
+		wholesalerFiles := r.MultipartForm.File["files"]
+		wholesalerNames := r.MultipartForm.Value["wholesalerNames"]
+
+		if len(wholesalerFiles) != len(wholesalerNames) {
+			writeJsonError(w, "File and wholesaler name mismatch", http.StatusBadRequest)
+			return
+		}
+
+		// TKRの卸マップを取得
+		wholesalerMasterMap, err := database.GetWholesalerMap(db)
+		if err != nil {
+			writeJsonError(w, "卸マスタの取得に失敗しました: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		// 卸名 -> 卸コード の逆引きマップを作成
+		wholesalerReverseMap := make(map[string]string)
+		for code, name := range wholesalerMasterMap {
+			wholesalerReverseMap[name] = code
+		}
+
+		tx, err := db.Beginx()
+		if err != nil {
+			writeJsonError(w, "トランザクションの開始に失敗: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		defer tx.Rollback()
+
+		quoteDate := time.Now().Format("20060102")
+		var wholesalerOrder []string // 画面表示用の卸名リスト
+
+		for i, fileHeader := range wholesalerFiles {
+			wholesalerName := wholesalerNames[i]
+			wholesalerOrder = append(wholesalerOrder, wholesalerName) // 順番を保持
+
+			wholesalerCode, ok := wholesalerReverseMap[wholesalerName]
+			if !ok {
+				log.Printf("WARN: Wholesaler name '%s' not found in master. Skipping file.", wholesalerName)
+				continue // マスタにない卸名はスキップ
+			}
+
+			if err := processQuoteFile(tx, fileHeader, wholesalerCode, quoteDate); err != nil {
+				writeJsonError(w, fmt.Sprintf("ファイル '%s' の処理に失敗: %v", fileHeader.Filename, err), http.StatusInternalServerError)
+				return
+			}
+		}
+
+		// データベースから全マスターと保存された見積データを取得
+		allMasters, err := database.GetAllProductMasters(db)
+		if err != nil {
+			writeJsonError(w, "Failed to get all product masters", http.StatusInternalServerError)
+			return
+		}
+		allQuotes, err := database.GetAllProductQuotes(tx) // 新設
+		if err != nil {
+			writeJsonError(w, "Failed to get product quotes", http.StatusInternalServerError)
+			return
+		}
+
+		var responseData []QuoteDataWithSpec
+		for _, master := range allMasters {
+			view := mappers.ToProductMasterView(master) // TKR
+			formattedSpec := view.FormattedPackageSpec
+
+			// 見積データをアタッチ
+			quotesForThisProduct := make(map[string]float64)
+			if quotes, ok := allQuotes[master.ProductCode]; ok {
+				for wCode, price := range quotes {
+					if wName, ok := wholesalerMasterMap[wCode]; ok {
+						quotesForThisProduct[wName] = price // 卸コード -> 卸名 に変換して格納
+					}
+				}
+			}
+
+			responseData = append(responseData, QuoteDataWithSpec{
+				ProductMaster:        *master,
+				FormattedPackageSpec: formattedSpec,
+				Quotes:               quotesForThisProduct,
+			})
+		}
+
+		if err := tx.Commit(); err != nil {
+			writeJsonError(w, "トランザクションのコミットに失敗: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		finalResponse := UploadResponse{
+			ProductData:     responseData,
+			WholesalerOrder: wholesalerOrder,
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(finalResponse)
+	}
+}
+
+// processQuoteFile は単一の見積CSVファイルを解析しDBに保存します
+func processQuoteFile(tx *sqlx.Tx, fileHeader *multipart.FileHeader, wholesalerCode string, quoteDate string) error {
+	file, err := fileHeader.Open()
+	if err != nil {
+		return fmt.Errorf("could not open uploaded file: %w", err)
+	}
+	defer file.Close()
+
+	// BOMスキップ
+	br := bufio.NewReader(file)
+	bom, err := br.Peek(3)
+	if err == nil && bom[0] == 0xef && bom[1] == 0xbb && bom[2] == 0xbf {
+		br.Discard(3)
+	}
+	csvReader := csv.NewReader(br)
+	csvReader.LazyQuotes = true
+	rows, err := csvReader.ReadAll()
+	if err != nil || len(rows) < 1 {
+		return fmt.Errorf("could not parse CSV: %w", err)
+	}
+
+	header := rows[0]
+	codeIndex, priceIndex := -1, -1
+	for i, h := range header {
+		if h == "product_code" {
+			codeIndex = i
+		}
+		if h == "purchase_price" {
+			priceIndex = i
+		}
+	}
+	if codeIndex == -1 || priceIndex == -1 {
+		return fmt.Errorf("required columns (product_code, purchase_price) not found")
+	}
+
+	var quotes []model.ProductQuote
+	for _, row := range rows[1:] {
+		if len(row) <= codeIndex || len(row) <= priceIndex {
+			continue
+		}
+		productCode := strings.Trim(strings.TrimSpace(row[codeIndex]), `="`)
+		priceStr := row[priceIndex]
+		if productCode == "" || priceStr == "" {
+			continue
+		}
+		price, err := strconv.ParseFloat(priceStr, 64)
+		if err != nil {
+			continue
+		}
+		quotes = append(quotes, model.ProductQuote{
+			ProductCode:    productCode,
+			WholesalerCode: wholesalerCode,
+			QuotePrice:     price,
+			QuoteDate:      quoteDate,
+		})
+	}
+
+	if len(quotes) > 0 {
+		if err := database.UpsertProductQuotesInTx(tx, quotes); err != nil { // 新設
+			return fmt.Errorf("failed to save quotes to DB: %w", err)
+		}
+	}
+	return nil
+}
+
+// BulkUpdateHandler は価格比較画面からのマスター更新を処理します (WASABI
+func BulkUpdateHandler(db *sqlx.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var payload []model.PriceUpdate
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			writeJsonError(w, "Invalid request body: "+err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		tx, err := db.Beginx()
+		if err != nil {
+			writeJsonError(w, "Failed to start transaction", http.StatusInternalServerError)
+			return
+		}
+		defer tx.Rollback()
+
+		if err := database.UpdatePricesAndSuppliersInTx(tx, payload); err != nil { // TKR
+			writeJsonError(w, "Failed to update prices: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		if err := tx.Commit(); err != nil {
+			writeJsonError(w, "Failed to commit transaction", http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{
+			"message": fmt.Sprintf("%d件の医薬品マスターを更新しました。", len(payload)),
+		})
+	}
+}
+
+// GetAllMastersForPricingHandler は価格比較画面の初期表示用データを返します (WASABI 修正)
+func GetAllMastersForPricingHandler(db *sqlx.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		// TKRのDB関数を呼ぶ
+		allMasters, err := database.GetAllProductMasters(db)
+		if err != nil {
+			writeJsonError(w, "Failed to get all product masters for pricing", http.StatusInternalServerError)
+			return
+		}
+		// TKRの見積テーブルから全見積もりを取得
+		allQuotes, err := database.GetAllProductQuotes(db)
+		if err != nil {
+			writeJsonError(w, "Failed to get product quotes", http.StatusInternalServerError)
+			return
+		}
+		// TKRの卸マップを取得
+		wholesalerMasterMap, err := database.GetWholesalerMap(db)
+		if err != nil {
+			writeJsonError(w, "卸マスタの取得に失敗しました: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		var wholesalerOrder []string
+		for _, name := range wholesalerMasterMap {
+			wholesalerOrder = append(wholesalerOrder, name)
+		}
+		sort.Strings(wholesalerOrder)
+
+		responseData := make([]QuoteDataWithSpec, 0, len(allMasters))
+		for _, master := range allMasters {
+			view := mappers.ToProductMasterView(master) // TKR
+			formattedSpec := view.FormattedPackageSpec
+
+			// 見積データをアタッチ
+			quotesForThisProduct := make(map[string]float64)
+			if quotes, ok := allQuotes[master.ProductCode]; ok {
+				for wCode, price := range quotes {
+					if wName, ok := wholesalerMasterMap[wCode]; ok {
+						quotesForThisProduct[wName] = price // 卸コード -> 卸名 に変換
+					}
+				}
+			}
+
+			responseData = append(responseData, QuoteDataWithSpec{
+				ProductMaster:        *master,
+				FormattedPackageSpec: formattedSpec,
+				Quotes:               quotesForThisProduct,
+			})
+		}
+
+		finalResponse := UploadResponse{
+			ProductData:     responseData,
+			WholesalerOrder: wholesalerOrder,
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(finalResponse)
+	}
+}
+
+// DirectImportHandler はバックアップCSVから納入価・卸を一括更新します (WASABI
+func DirectImportHandler(db *sqlx.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		file, _, err := r.FormFile("file")
+		if err != nil {
+			writeJsonError(w, "No file uploaded", http.StatusBadRequest)
+			return
+		}
+		defer file.Close()
+
+		br := bufio.NewReader(file)
+		bom, err := br.Peek(3)
+		if err == nil && bom[0] == 0xef && bom[1] == 0xbb && bom[2] == 0xbf {
+			br.Discard(3)
+		}
+		csvReader := csv.NewReader(br)
+		csvReader.LazyQuotes = true
+		rows, err := csvReader.ReadAll()
+		if err != nil {
+			writeJsonError(w, "Failed to parse CSV file: "+err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		var updates []model.PriceUpdate
+		for i, row := range rows {
+			if i == 0 {
+				continue
+			}
+			if len(row) < 6 {
+				continue
+			}
+			productCode := strings.Trim(strings.TrimSpace(row[0]), `="`)
+			priceStr := strings.TrimSpace(row[4])
+			supplierCode := strings.TrimSpace(row[5])
+			if productCode == "" || priceStr == "" || supplierCode == "" {
+				continue
+			}
+			price, err := strconv.ParseFloat(priceStr, 64)
+			if err != nil {
+				continue
+			}
+			updates = append(updates, model.PriceUpdate{
+				ProductCode:      productCode,
+				NewPurchasePrice: price,
+				NewSupplier:      supplierCode,
+			})
+		}
+
+		if len(updates) == 0 {
+			writeJsonError(w, "No valid data to import found in the file.", http.StatusBadRequest)
+			return
+		}
+
+		tx, err := db.Beginx() // TKR
+		if err != nil {
+			writeJsonError(w, "Failed to start transaction", http.StatusInternalServerError)
+			return
+		}
+		defer tx.Rollback()
+
+		if err := database.UpdatePricesAndSuppliersInTx(tx, updates); err != nil { // TKR
+			writeJsonError(w, "Failed to update prices: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		if err := tx.Commit(); err != nil {
+			writeJsonError(w, "Failed to commit transaction", http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{
+			"message": fmt.Sprintf("%d件の納入価と卸情報を更新しました。", len(updates)),
+		})
+	}
+}
+
+// BackupExportHandler は現在の納入価・卸をCSVにバックアップします (WASABI
+func BackupExportHandler(db *sqlx.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		allMasters, err := database.GetAllProductMasters(db) // TKR
+		if err != nil {
+			writeJsonError(w, "Failed to get products for backup export", http.StatusInternalServerError)
+			return
+		}
+
+		now := time.Now()
+		fileName := fmt.Sprintf("納入価・卸バックアップ_%s.csv", now.Format("20060102_150405"))
+		fileName = url.PathEscape(fileName) // ファイル名をURLエンコード
+
+		w.Header().Set("Content-Type", "text/csv; charset=utf-8")
+		w.Header().Set("Content-Disposition", "attachment; filename*=UTF-8''"+fileName)
+		w.Write([]byte{0xEF, 0xBB, 0xBF}) // UTF-8 BOM
+
+		csvWriter := csv.NewWriter(w)
+		defer csvWriter.Flush()
+
+		headers := []string{"product_code", "product_name", "maker_name", "package_spec", "purchase_price", "supplier_wholesale"}
+		if err := csvWriter.Write(headers); err != nil {
+			log.Printf("Failed to write CSV header: %v", err)
+		}
+
+		for _, m := range allMasters {
+			view := mappers.ToProductMasterView(m) // TKR
+			formattedSpec := view.FormattedPackageSpec
+
+			record := []string{
+				// ▼▼▼【ここを修正】 "=%q" から "%q" に変更 ▼▼▼
+				fmt.Sprintf("%q", m.ProductCode),
+				// ▲▲▲【修正ここまで】▲▲▲
+				m.ProductName,
+				m.MakerName,
+				formattedSpec,
+				strconv.FormatFloat(m.PurchasePrice, 'f', 2, 64),
+				m.SupplierWholesale,
+			}
+			if err := csvWriter.Write(record); err != nil {
+				log.Printf("Failed to write product row to CSV (JAN: %s): %v", m.ProductCode, err)
+			}
+		}
+	}
+}
+
+
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\product\handler.go -----
 // C:\Users\wasab\OneDrive\デスクトップ\TKR\product\handler.go
 package product
@@ -7547,13 +8163,13 @@ func GenerateOrderCandidatesHandler(conn *sqlx.DB) http.HandlerFunc {
 		}
 
 		now := time.Now()
-		// TKRの集計ロジックはEndDateを「本日」とする
-		endDate := now
+		// ▼▼▼【ここを修正】TKRの集計ロジックのEndDateを「本日」から「未来」に変更 ▼▼▼
+		endDate := "99991231" //
 		startDate := now.AddDate(0, 0, -cfg.CalculationPeriodDays)
 
 		filters := model.AggregationFilters{
 			StartDate:   startDate.Format("20060102"),
-			EndDate:     endDate.Format("20060102"), // TKRは "99991231" ではなく本日
+			EndDate:     endDate, //
 			KanaName:    kanaName,
 			DosageForm:  dosageForm,
 			ShelfNumber: shelfNumber,
@@ -7579,7 +8195,8 @@ func GenerateOrderCandidatesHandler(conn *sqlx.DB) http.HandlerFunc {
 		backordersByPackageKey := make(map[string][]model.Backorder)
 		for _, bo := range allBackorders {
 			// units.ResolveName を使って単位名を解決する
-			resolvedKey := fmt.Sprintf("%s|%s|%g|%s", bo.YjCode, bo.PackageForm, bo.JanPackInnerQty, units.ResolveName(bo.YjUnitName))
+			resolvedKey :=
+				fmt.Sprintf("%s|%s|%g|%s", bo.YjCode, bo.PackageForm, bo.JanPackInnerQty, units.ResolveName(bo.YjUnitName))
 			backordersByPackageKey[resolvedKey] = append(backordersByPackageKey[resolvedKey], bo)
 		}
 
@@ -9148,6 +9765,10 @@ import (
 	"tkr/masteredit"
 	"tkr/precomp"
 	"tkr/product"
+
+	// ▼▼▼【ここに追加】▼▼▼
+	"tkr/pricing"
+	// ▲▲▲【追加ここまで】▲▲▲
 	"tkr/reorder"
 	"tkr/reprocess"
 	"tkr/stock"
@@ -9393,7 +10014,8 @@ func main() {
 
 	mux.HandleFunc("/api/clients", func(w http.ResponseWriter, r *http.Request) {
 		clients, err := database.GetAllClients(dbConn)
-		if err != nil {
+		if err !=
+			nil {
 			http.Error(w, "Failed to get clients", http.StatusInternalServerError)
 			return
 		}
@@ -9440,6 +10062,15 @@ func main() {
 	mux.HandleFunc("/api/valuation/export_csv", valuation.ExportValuationCSVHandler(dbConn))
 	// ▲▲▲【修正ここまで】▲▲▲
 
+	// ▼▼▼【ここから追加】見積・価格設定API ▼▼▼
+	mux.HandleFunc("/api/pricing/all_masters", pricing.GetAllMastersForPricingHandler(dbConn))
+	mux.HandleFunc("/api/pricing/export", pricing.GetExportDataHandler(dbConn))
+	mux.HandleFunc("/api/pricing/upload", pricing.UploadQuotesHandler(dbConn))
+	mux.HandleFunc("/api/pricing/update", pricing.BulkUpdateHandler(dbConn))
+	mux.HandleFunc("/api/pricing/direct_import", pricing.DirectImportHandler(dbConn))
+	mux.HandleFunc("/api/pricing/backup_export", pricing.BackupExportHandler(dbConn))
+	// ▲▲▲【追加ここまで】▲▲▲
+
 	port := ":8080"
 	log.Printf("Starting server on http://localhost%s", port)
 
@@ -9479,7 +10110,8 @@ CREATE TABLE IF NOT EXISTS product_master (
     generic_name TEXT,    -- ★ WASABIからの追加
     maker_name TEXT,
     
-specification TEXT,
+specification 
+TEXT,
     usage_classification TEXT,
     package_form TEXT,
     yj_unit_name TEXT,
@@ -9500,7 +10132,8 @@ specification TEXT,
     supplier_wholesale TEXT,
     group_code TEXT,
   
-  shelf_number TEXT,
+ 
+ shelf_number TEXT,
     category TEXT,
     user_notes TEXT
 );
@@ -9535,7 +10168,8 @@ CREATE TABLE IF NOT EXISTS transaction_records (
   tax_amount REAL,
   
  tax_rate REAL, 
-  expiry_date TEXT,
+  
+expiry_date TEXT,
   lot_number TEXT,
   flag_poison INTEGER,
   flag_deleterious INTEGER,
@@ -9551,7 +10185,8 @@ CREATE TABLE IF NOT EXISTS jcshms (
   JC020 TEXT, JC021 TEXT, JC022 TEXT, JC023 TEXT, JC024 TEXT, JC025 TEXT, JC026 TEXT, JC027 TEXT, JC028 TEXT, JC029 TEXT,
   JC030 TEXT, JC031 TEXT, JC032 TEXT, JC033 TEXT, JC034 TEXT, JC035 TEXT, JC036 TEXT, JC037 TEXT, JC038 TEXT, JC039 TEXT,
   JC040 TEXT, JC041 TEXT, 
-JC042 TEXT, JC043 TEXT, JC044 REAL, JC045 TEXT, JC046 TEXT, JC047 TEXT, JC048 TEXT, JC049 TEXT, 
+JC042 TEXT, JC043 TEXT, 
+JC044 REAL, JC045 TEXT, JC046 TEXT, JC047 TEXT, JC048 TEXT, JC049 TEXT, 
   JC050 REAL, JC051 TEXT, JC052 TEXT, JC053 TEXT, JC054 TEXT, JC055 TEXT, JC056 TEXT, JC057 TEXT, JC058 TEXT, JC059 TEXT,
   JC060 TEXT, JC061 INTEGER, JC062 INTEGER, JC063 INTEGER, JC064 INTEGER, JC065 INTEGER, JC066 INTEGER, JC067 TEXT, JC068 TEXT, JC069 TEXT,
   JC070 TEXT, JC071 TEXT, JC072 TEXT, JC073 TEXT, JC074 TEXT, JC075 TEXT, JC076 TEXT, JC077 TEXT, JC078 TEXT, JC079 TEXT,
@@ -9626,7 +10261,7 @@ CREATE TABLE IF NOT EXISTS backorders (
   jan_pack_unit_qty REAL,
   jan_unit_code INTEGER
 );
--- ▲▲▲【変更ここまで】▲▲▲
+-- ▲▲▲【変更ここまで】▲▲▲ 
 CREATE TABLE IF NOT EXISTS precomp_records (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   transaction_date TEXT,
@@ -9684,6 +10319,18 @@ INSERT OR IGNORE INTO code_sequences(name, last_no) VALUES ('MA2Y', 0);
 INSERT OR IGNORE INTO code_sequences(name, last_no) VALUES ('CL', 0);
 -- ▼▼▼【ここに追加】仮ProductCode用シーケンス ▼▼▼
 INSERT OR IGNORE INTO code_sequences(name, last_no) VALUES ('MA2J', 0);
+-- ▲▲▲【追加ここまで】▲▲▲
+
+-- ▼▼▼【ここから追加】見積・価格設定機能用テーブル ▼▼▼
+CREATE TABLE IF NOT EXISTS product_quotes (
+    product_code TEXT NOT NULL,
+    wholesaler_code TEXT NOT NULL,
+    quote_price REAL NOT NULL,
+    quote_date TEXT NOT NULL,
+    PRIMARY KEY (product_code, wholesaler_code)
+);
+CREATE INDEX IF NOT EXISTS idx_product_quotes_product_code ON product_quotes (product_code);
+CREATE INDEX IF NOT EXISTS idx_product_quotes_wholesaler_code ON product_quotes (wholesaler_code);
 -- ▲▲▲【追加ここまで】▲▲▲
 
 -- ▼▼▼【ここから追加】包装キー単位の在庫起点テーブル ▼▼▼
