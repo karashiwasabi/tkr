@@ -329,14 +329,14 @@ func main() {
 	mux.HandleFunc("/api/valuation/export_csv", valuation.ExportValuationCSVHandler(dbConn))
 	// ▲▲▲【修正ここまで】▲▲▲
 
-	// ▼▼▼【ここから追加】見積・価格設定API ▼▼▼
+	// ▼▼▼【ここから修正】pricing パッケージのハンドラ呼び出しを分割後のものに変更 ▼▼▼
 	mux.HandleFunc("/api/pricing/all_masters", pricing.GetAllMastersForPricingHandler(dbConn))
 	mux.HandleFunc("/api/pricing/export", pricing.GetExportDataHandler(dbConn))
 	mux.HandleFunc("/api/pricing/upload", pricing.UploadQuotesHandler(dbConn))
 	mux.HandleFunc("/api/pricing/update", pricing.BulkUpdateHandler(dbConn))
 	mux.HandleFunc("/api/pricing/direct_import", pricing.DirectImportHandler(dbConn))
 	mux.HandleFunc("/api/pricing/backup_export", pricing.BackupExportHandler(dbConn))
-	// ▲▲▲【追加ここまで】▲▲▲
+	// ▲▲▲【修正ここまで】▲▲▲
 
 	port := ":8080"
 	log.Printf("Starting server on http://localhost%s", port)

@@ -62,68 +62,94 @@ func SearchProductsHandler(conn *sqlx.DB) http.HandlerFunc {
 		dosageForm := q.Get("dosageForm")
 		genericName := q.Get("genericName")
 		shelfNumber := q.Get("shelfNumber")
+		// ▼▼▼【ここを修正】searchMode の取得を復活させる ▼▼▼
+		searchMode := q.Get("searchMode")
 
-		// ▼▼▼【ここから修正】ロジックを全面的に変更 ▼▼▼
+		// ▼▼▼【ここから修正】searchMode によって分岐するロジックを復活 ▼▼▼
+		if searchMode == "inout" {
+			// --- 「JCSHMSから採用」フロー (マスタ編集, 入出庫明細) ---
 
-		// 1. 採用済みの全JANコードマップを取得
-		adoptedCodeMap, err := database.GetAllAdoptedProductCodesMap(conn)
-		if err != nil {
-			http.Error(w, "Failed to get adopted product map: "+err.Error(), http.StatusInternalServerError)
-			return
-		}
-
-		mergedResults := []model.ProductMasterView{}
-		seenCodes := make(map[string]bool)
-
-		// 2. JCSHMS から検索 (未採用/採用済 候補)
-		jcshmsResults, err := database.GetFilteredJcshmsInfo(conn, dosageForm, kanaName, genericName)
-		if err != nil {
-			http.Error(w, "Failed to search jcshms_master: "+err.Error(), http.StatusInternalServerError)
-			return
-		}
-
-		for _, jcshmsInfo := range jcshmsResults {
-			input := mastermanager.JcshmsToProductMasterInput(jcshmsInfo)
-			tempMaster := inputToMaster(input)
-			view := mappers.ToProductMasterView(tempMaster)
-
-			// 3. 採用済マップで照会し、赤文字フラグを設定
-			if _, ok := adoptedCodeMap[view.ProductCode]; ok {
-				view.IsAdopted = true
-			} else {
-				view.IsAdopted = false
+			// 1. 採用済みの全JANコードマップを取得
+			adoptedCodeMap, err := database.GetAllAdoptedProductCodesMap(conn)
+			if err != nil {
+				http.Error(w, "Failed to get adopted product map: "+err.Error(), http.StatusInternalServerError)
+				return
 			}
 
-			mergedResults = append(mergedResults, view)
-			seenCodes[view.ProductCode] = true
-		}
+			mergedResults := []model.ProductMasterView{}
+			seenCodes := make(map[string]bool)
 
-		// 4. 独自マスタ(PROVISIONAL)から検索
-		// (JCSHMS由来のマスタは↑で処理済みなので、ここでは除外するか、重複を許容してseenCodesで弾く)
-		// (GetFilteredProductMasters は棚番(shelfNumber)検索も含むため、別途実行が必要)
-		adoptedMasters, err := database.GetFilteredProductMasters(conn, dosageForm, kanaName, genericName, shelfNumber)
-		if err != nil {
-			http.Error(w, "Failed to search product_master: "+err.Error(), http.StatusInternalServerError)
-			return
-		}
-
-		for _, master := range adoptedMasters {
-			if seenCodes[master.ProductCode] {
-				continue // JCSHMS検索で既に追加済みのものはスキップ
+			// 2. JCSHMS から検索 (未採用/採用済 候補)
+			jcshmsResults, err := database.GetFilteredJcshmsInfo(conn, dosageForm, kanaName, genericName)
+			if err != nil {
+				http.Error(w, "Failed to search jcshms_master: "+err.Error(), http.StatusInternalServerError)
+				return
 			}
-			view := mappers.ToProductMasterView(&master)
-			view.IsAdopted = true // product_masterにあるものは常に採用済み
-			mergedResults = append(mergedResults, view)
-			seenCodes[master.ProductCode] = true
+
+			for _, jcshmsInfo := range jcshmsResults {
+				input := mastermanager.JcshmsToProductMasterInput(jcshmsInfo)
+				tempMaster := inputToMaster(input)
+				view := mappers.ToProductMasterView(tempMaster)
+
+				// 3. 採用済マップで照会し、赤文字フラグを設定
+				if _, ok := adoptedCodeMap[view.ProductCode]; ok {
+					view.IsAdopted = true
+				} else {
+					view.IsAdopted = false
+				}
+
+				mergedResults = append(mergedResults, view)
+				seenCodes[view.ProductCode] = true
+			}
+
+			// 4. 独自マスタ(PROVISIONAL)から検索
+			adoptedMasters, err := database.GetFilteredProductMasters(conn, dosageForm, kanaName, genericName, shelfNumber)
+			if err != nil {
+				http.Error(w, "Failed to search product_master: "+err.Error(), http.StatusInternalServerError)
+				return
+			}
+
+			for _, master := range adoptedMasters {
+				if seenCodes[master.ProductCode] {
+					continue // JCSHMS検索で既に追加済みのものはスキップ
+				}
+				view := mappers.ToProductMasterView(&master)
+				view.IsAdopted = true // product_masterにあるものは常に採用済み
+				mergedResults = append(mergedResults, view)
+				seenCodes[master.ProductCode] = true
+			}
+
+			// 5. 最終結果をソート
+			sort.Slice(mergedResults, func(i, j int) bool {
+				return mergedResults[i].KanaName < mergedResults[j].KanaName
+			})
+
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(mergedResults)
+
+		} else {
+			// --- それ以外の通常検索 (棚卸調整, DAT取込, 発注) ---
+
+			localMasters, err := database.GetFilteredProductMasters(conn, dosageForm, kanaName, genericName, shelfNumber)
+			if err != nil {
+				http.Error(w, "Failed to search product_master: "+err.Error(), http.StatusInternalServerError)
+				return
+			}
+
+			results := make([]model.ProductMasterView, len(localMasters))
+			for i, master := range localMasters {
+				view := mappers.ToProductMasterView(&master)
+				view.IsAdopted = true // ローカルに存在するので全て採用済み
+				results[i] = view
+			}
+
+			sort.Slice(results, func(i, j int) bool {
+				return results[i].KanaName < results[j].KanaName
+			})
+
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(results)
 		}
-
-		// 5. 最終結果をソート
-		sort.Slice(mergedResults, func(i, j int) bool {
-			return mergedResults[i].KanaName < mergedResults[j].KanaName
-		})
-
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(mergedResults)
 		// ▲▲▲【修正ここまで】▲▲▲
 	}
 }
