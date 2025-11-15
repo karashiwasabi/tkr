@@ -173,7 +173,9 @@ func main() {
 				data.BarcodeFormID = "master-barcode-form"
 				data.BarcodeFormInputID = "master-search-gs1-barcode"
 				data.SearchButtonID = "masterSearchBtn"
-				data.SearchButtonText = "品目検索..."
+				// ▼▼▼【ここを修正】ボタンテキストを "品目検索..." から "既存マスタ検索" に変更 ▼▼▼
+				data.SearchButtonText = "既存マスタ検索"
+				// ▲▲▲【修正ここまで】▲▲▲
 			default:
 				data.Prefix = ""
 			}

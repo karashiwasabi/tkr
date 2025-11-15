@@ -103,6 +103,32 @@ func GetAllProductMasters(dbtx DBTX) ([]*model.ProductMaster, error) {
 	return masters, nil
 }
 
+// ▼▼▼【ここから追加】採用済みの全 ProductCode をマップで取得する関数 ▼▼▼
+func GetAllAdoptedProductCodesMap(dbtx DBTX) (map[string]bool, error) {
+	rows, err := dbtx.Query(`SELECT product_code FROM product_master`)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return make(map[string]bool), nil
+		}
+		return nil, fmt.Errorf("failed to query all product codes: %w", err)
+	}
+	defer rows.Close()
+
+	codeMap := make(map[string]bool)
+	for rows.Next() {
+		var code string
+		if err := rows.Scan(&code); err != nil {
+			return nil, fmt.Errorf("failed to scan product code: %w", err)
+		}
+		if code != "" {
+			codeMap[code] = true
+		}
+	}
+	return codeMap, nil
+}
+
+// ▲▲▲【追加ここまで】▲▲▲
+
 func GetFilteredProductMasters(dbtx DBTX, usageClass, kanaName, genericName, shelfNumber string) ([]model.ProductMaster, error) {
 	var masters []model.ProductMaster
 

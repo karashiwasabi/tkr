@@ -4,6 +4,7 @@ package masteredit
 import (
 	"database/sql" // sql をインポート
 	"encoding/json"
+	"errors"
 	"fmt" // 変更
 	"log"
 	"net/http"
@@ -76,6 +77,7 @@ func renderMasterListHTML(masters []model.ProductMaster, statusMessage string) s
    
 
 
+
             <th class="col-product">製品名</th>
             <th class="col-kana">カナ名</th>
             <th class="col-maker">メーカー</th>
@@ -94,6 +96,7 @@ func renderMasterListHTML(masters []model.ProductMaster, statusMessage string) s
 			sb.WriteString(fmt.Sprintf(`<tr data-product-code="%s">`,
 				master.ProductCode))
 			sb.WriteString(fmt.Sprintf(`<td 
+
 class="center col-action"><button class="edit-master-btn 
  btn" data-code="%s">編集</button></td>`, master.ProductCode))
 			sb.WriteString(fmt.Sprintf(`<td class="col-yj">%s</td>`, master.YjCode))
@@ -113,7 +116,7 @@ class="center col-action"><button class="edit-master-btn
 	return sb.String()
 }
 
-// ▼▼▼【ここを修正】UpdateMasterHandler の在庫チェックロジックを削除 ▼▼▼
+// ▼▼▼【ここを修正】UpdateMasterHandler に「新規作成」ロジックを追加 ▼▼▼
 func UpdateMasterHandler(db *sqlx.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
@@ -128,11 +131,7 @@ func UpdateMasterHandler(db *sqlx.DB) http.HandlerFunc {
 			return
 		}
 
-		if input.ProductCode == "" {
-			log.Println("UpdateMasterHandler: Product Code (JAN) cannot be empty.")
-			http.Error(w, "Product Code (JAN) cannot be empty.", http.StatusBadRequest)
-			return
-		}
+		// productCode が空でもエラーにしなくなった
 
 		tx, err := db.Beginx()
 		if err != nil {
@@ -142,35 +141,86 @@ func UpdateMasterHandler(db *sqlx.DB) http.HandlerFunc {
 		}
 		defer tx.Rollback()
 
-		// 1. 編集前のマスタ情報を取得
+		alertMessage := ""
+		isNew := false
+
+		// 1. 既存マスタ情報を取得
 		oldMaster, err := database.GetProductMasterByCode(tx, input.ProductCode)
+
 		if err != nil {
-			log.Printf("UpdateMasterHandler: Failed to get old master (JAN: %s): %v", input.ProductCode, err)
-			http.Error(w, "Failed to retrieve master before edit", http.StatusInternalServerError)
-			return
+			if errors.Is(err, sql.ErrNoRows) {
+				// -------------------------------------------------
+				// B. 新規作成の場合
+				// -------------------------------------------------
+				isNew = true
+				log.Printf("UpdateMasterHandler: No existing master found for ProductCode [%s]. Treating as NEW.", input.ProductCode)
+
+				// B-1. ProductCode (JAN) の採番
+				if input.ProductCode == "" {
+					newCode, seqErr := database.NextSequenceInTx(tx, "MA2J", "MA2J", 9)
+					if seqErr != nil {
+						http.Error(w, "JANコード(MA2J)の自動採番に失敗しました: "+seqErr.Error(), http.StatusInternalServerError)
+						return
+					}
+					input.ProductCode = newCode
+					log.Printf("UpdateMasterHandler: Assigned new ProductCode (MA2J): %s", newCode)
+				}
+
+				// B-2. YjCode の採番
+				if input.YjCode == "" {
+					newYj, seqErr := database.NextSequenceInTx(tx, "MA2Y", "MA2Y", 8)
+					if seqErr != nil {
+						http.Error(w, "YJコード(MA2Y)の自動採番に失敗しました: "+seqErr.Error(), http.StatusInternalServerError)
+						return
+					}
+					input.YjCode = newYj
+					log.Printf("UpdateMasterHandler: Assigned new YjCode (MA2Y): %s", newYj)
+				}
+
+				// B-3. Origin の設定
+				if input.Origin != "JCSHMS" {
+					input.Origin = "PROVISIONAL"
+				}
+
+				// B-4. 剤型のフォールバック
+				if input.UsageClassification == "" {
+					input.UsageClassification = "他"
+				}
+
+			} else {
+				// -------------------------------------------------
+				// C. 既存マスタ取得時のDBエラー
+				// -------------------------------------------------
+				log.Printf("UpdateMasterHandler: Failed to get old master (JAN: %s): %v", input.ProductCode, err)
+				http.Error(w, "Failed to retrieve master before edit", http.StatusInternalServerError)
+				return
+			}
 		}
 
-		// 2. 編集前後の PackageKey を計算
-		oldYjUnitName := units.ResolveName(oldMaster.YjUnitName)
-		oldKey := fmt.Sprintf("%s|%s|%g|%s", oldMaster.YjCode, oldMaster.PackageForm, oldMaster.JanPackInnerQty, oldYjUnitName)
+		// -------------------------------------------------
+		// A. 更新の場合
+		// -------------------------------------------------
+		if !isNew {
+			log.Printf("UpdateMasterHandler: Found existing master for ProductCode [%s]. Treating as UPDATE.", input.ProductCode)
+			// 2. 編集前後の PackageKey を計算
+			oldYjUnitName := units.ResolveName(oldMaster.YjUnitName)
+			oldKey := fmt.Sprintf("%s|%s|%g|%s", oldMaster.YjCode, oldMaster.PackageForm, oldMaster.JanPackInnerQty, oldYjUnitName)
 
-		newYjUnitName := units.ResolveName(input.YjUnitName)
-		newKey := fmt.Sprintf("%s|%s|%g|%s", input.YjCode, input.PackageForm, input.JanPackInnerQty, newYjUnitName)
+			newYjUnitName := units.ResolveName(input.YjUnitName)
+			newKey := fmt.Sprintf("%s|%s|%g|%s", input.YjCode, input.PackageForm, input.JanPackInnerQty, newYjUnitName)
 
-		alertMessage := ""
+			if oldKey != newKey {
+				alertMessage = "PackageKeyが変更されました。棚卸（在庫振替）を実施してください。"
 
-		// ▼▼▼【ここから修正】コメントアウトと不正な改行を削除 ▼▼▼
-		if oldKey != newKey {
-			alertMessage = "PackageKeyが変更されました。棚卸（在庫振替）を実施してください。"
+				input.UserNotes = fmt.Sprintf("(自動記録: 旧Key [%s] から在庫振替要) %s", oldKey, input.UserNotes)
 
-			input.UserNotes = fmt.Sprintf("(自動記録: 旧Key [%s] から在庫振替要) %s", oldKey, input.UserNotes)
-
-			log.Printf("UpdateMasterHandler: PackageKey changed for %s. OldKey [%s] NewKey [%s]. Alert set.",
-				input.ProductCode, oldKey, newKey)
+				log.Printf("UpdateMasterHandler: PackageKey changed for %s.OldKey [%s] NewKey [%s]. Alert set.",
+					input.ProductCode, oldKey, newKey)
+			}
 		}
 		// ▲▲▲【修正ここまで】▲▲▲
 
-		// 6. マスタをDBに保存 (input.UserNotes はアラート発生時に更新されている)
+		// 6. マスタをDBに保存
 		if _, err := mastermanager.UpsertProductMasterSqlx(tx, input); err != nil {
 			log.Printf("UpdateMasterHandler: Failed to upsert product master (JAN: %s): %v", input.ProductCode, err)
 			http.Error(w, "Failed to upsert product master", http.StatusInternalServerError)
