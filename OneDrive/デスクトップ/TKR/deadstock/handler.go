@@ -30,13 +30,19 @@ func ListDeadStockHandler(db *sqlx.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		startDate := r.URL.Query().Get("startDate")
 		endDate := r.URL.Query().Get("endDate")
+		// ▼▼▼【ここに追加】excludeZeroStock を取得 ▼▼▼
+		excludeZeroStock := r.URL.Query().Get("excludeZeroStock") == "true"
+		// ▲▲▲【追加ここまで】▲▲▲
 
-		if startDate == "" || endDate == "" {
+		if startDate == "" ||
+			endDate == "" {
 			http.Error(w, "startDate and endDate (YYYYMMDD) are required.", http.StatusBadRequest)
 			return
 		}
 
-		items, err := database.GetDeadStockList(db, startDate, endDate)
+		// ▼▼▼【ここを修正】excludeZeroStock を渡す ▼▼▼
+		items, err := database.GetDeadStockList(db, startDate, endDate, excludeZeroStock)
+		// ▲▲▲【修正ここまで】▲▲▲
 		if err != nil {
 			http.Error(w, "Failed to get dead stock list: "+err.Error(), http.StatusInternalServerError)
 			return
@@ -76,7 +82,8 @@ func UploadDeadStockCSVHandler(db *sqlx.DB) http.HandlerFunc {
 		}
 
 		date := r.FormValue("date")
-		if date == "" || len(date) != 8 {
+		if date == "" ||
+			len(date) != 8 {
 			http.Error(w, "日付(YYYYMMDD)が不正です。", http.StatusBadRequest)
 			return
 		}
@@ -126,7 +133,8 @@ func registerDeadStockCSVAsInventory(tx *sqlx.Tx, records []parsers.ParsedDeadSt
 	// ▲▲▲【修正ここまで】▲▲▲
 
 	var lastReceiptNumber string
-	err := tx.Get(&lastReceiptNumber, `SELECT receipt_number FROM transaction_records WHERE receipt_number LIKE ? ORDER BY receipt_number DESC LIMIT 1`, prefix+"%")
+	err := tx.Get(&lastReceiptNumber, `SELECT receipt_number FROM transaction_records WHERE receipt_number LIKE ?
+ORDER BY receipt_number DESC LIMIT 1`, prefix+"%")
 	if err != nil && err != sql.ErrNoRows {
 		return 0, fmt.Errorf("伝票番号の採番に失敗: %w", err)
 	}
@@ -259,13 +267,18 @@ func ExportDeadStockHandler(db *sqlx.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		startDate := r.URL.Query().Get("startDate")
 		endDate := r.URL.Query().Get("endDate")
+		// ▼▼▼【ここに追加】excludeZeroStock を取得（CSVエクスポートは常に在庫ゼロを含む）▼▼▼
+		excludeZeroStock := false //
+		// ▲▲▲【追加ここまで】▲▲▲
 
 		if startDate == "" || endDate == "" {
 			http.Error(w, "startDate and endDate (YYYYMMDD) are required.", http.StatusBadRequest)
 			return
 		}
 
-		items, err := database.GetDeadStockList(db, startDate, endDate)
+		// ▼▼▼【ここを修正】excludeZeroStock (false) を渡す ▼▼▼
+		items, err := database.GetDeadStockList(db, startDate, endDate, excludeZeroStock)
+		// ▲▲▲【修正ここまで】▲▲▲
 		if err != nil {
 			http.Error(w, "Failed to get dead stock list: "+err.Error(), http.StatusInternalServerError)
 			return
@@ -295,14 +308,19 @@ func ExportDeadStockHandler(db *sqlx.DB) http.HandlerFunc {
 						quoteAll(lot.ExpiryDate),
 						quoteAll(lot.LotNumber),
 					}
-					buf.WriteString(strings.Join(record, ",") + "\r\n")
+					buf.WriteString(strings.Join(record, ",") +
+						"\r\n")
 				}
-			} else if item.StockQuantityYj > 0 {
+				// ▼▼▼【ここを修正】YJ在庫 -> JAN在庫 で判定 ▼▼▼
+			} else if item.StockQuantityJan > 0 {
+				// ▲▲▲【修正ここまで】▲▲▲
 				record := []string{
 					quoteAll(""),
 					quoteAll(""),
 					quoteAll(item.ProductName),
-					quoteAll("0.00"),
+					// ▼▼▼【ここを修正】0.00 -> item.StockQuantityJan ▼▼▼
+					quoteAll(fmt.Sprintf("%.2f", item.StockQuantityJan)),
+					// ▲▲▲【修正ここまで】▲▲▲
 					quoteAll(""),
 					quoteAll(""),
 				}
@@ -312,7 +330,7 @@ func ExportDeadStockHandler(db *sqlx.DB) http.HandlerFunc {
 
 		filename := fmt.Sprintf("不動在庫リスト_%s-%s.csv", startDate, endDate)
 
-		w.Header().Set("Content-Type", "text/csv; charset=utf-8")
+		w.Header().Set("Content-Type", "text/csv;charset=utf-8")
 		w.Header().Set("Content-Disposition", "attachment; filename*=UTF-8''"+url.PathEscape(filename))
 
 		w.Write(buf.Bytes())

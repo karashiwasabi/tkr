@@ -26,9 +26,13 @@ type PackageStock struct {
 
 // DeadStockItem は不動在庫リストの表示用構造体です。
 type DeadStockItem struct {
-	PackageKey          string      `db:"package_key" json:"packageKey"`
-	YjCode              string      `db:"yj_code" json:"yjCode"`
-	StockQuantityYj     float64     `db:"stock_quantity_yj" json:"stockQuantityYj"`
+	PackageKey      string  `db:"package_key" json:"packageKey"`
+	YjCode          string  `db:"yj_code" json:"yjCode"`
+	StockQuantityYj float64 `db:"stock_quantity_yj" json:"stockQuantityYj"`
+	// ▼▼▼【ここに追加】JAN数量（計算結果）と内包装数量（計算用）▼▼▼
+	StockQuantityJan float64 `json:"stockQuantityJan"` // JSONに追加
+	JanPackInnerQty  float64 `db:"jan_pack_inner_qty"` // DBから取得
+	// ▲▲▲【追加ここまで】▲▲▲
 	ProductName         string      `db:"product_name" json:"productName"` // 代表品名
 	PackageSpec         string      `db:"package_spec" json:"packageSpec"` // 代表包装仕様
 	LotDetails          []LotDetail `json:"lotDetails"`                    // 棚卸明細

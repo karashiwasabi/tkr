@@ -5,7 +5,7 @@
     flex-wrap: wrap;
     gap: 10px 16px;
     padding: 10px;
-    border: 1px solid #ccc;
+border: 1px solid #ccc;
     background-color: #f7f7f7;
     align-items: flex-end;
     margin-bottom: 15px;
@@ -14,7 +14,7 @@
 .deadstock-controls .form-group {
     display: flex;
     flex-direction: column;
-    gap: 4px;
+gap: 4px;
 }
 .deadstock-controls .form-group label {
     font-size: 10px;
@@ -36,7 +36,7 @@
 .deadstock-upload-area {
     background-color: #f0f4f8; 
     border-color: #cce;
-    margin-top: -10px; 
+    margin-top: -10px;
 }
 /* ▲▲▲【追加ここまで】▲▲▲ */
 
@@ -46,11 +46,14 @@
 }
 
 /* ▼▼▼【ここから修正】列幅を調整 ▼▼▼ */
-#deadstock-table th.col-ds-action { width: 10%; } /* ★追加 */
-#deadstock-table th.col-ds-key { width: 20%; } /* 25% -> 20% */
-#deadstock-table th.col-ds-name { width: 25%; } /* 変更なし */
-#deadstock-table th.col-ds-qty { width: 10%; } /* 変更なし */
-#deadstock-table th.col-ds-details { width: 35%; } /* 40% -> 35% */
+#deadstock-table th.col-ds-action { width: 8%;
+} /* ★ 10% -> 8% */
+#deadstock-table th.col-ds-key { width: 24%; } /* ★ 20% -> 24% */
+#deadstock-table th.col-ds-name { width: 25%;
+} /* 変更なし */
+#deadstock-table th.col-ds-qty { width: 8%; } /* ★ 10% -> 8% */
+#deadstock-table th.col-ds-details { width: 35%;
+} /* 変更なし */
 /* ▲▲▲【修正ここまで】▲▲▲ */
 
 #deadstock-table .lot-details-list {

@@ -110,7 +110,6 @@ func GetInventoryDataHandler(conn *sqlx.DB) http.HandlerFunc {
 		deadStockDetails := make([]model.DeadStockRecord, len(latestInventoryTxs))
 		for i, tx := range latestInventoryTxs {
 			deadStockDetails[i] = model.DeadStockRecord{
-				// ID: tx.ID, // DeadStockRecord には ID は不要（Scanしない）
 				ProductCode:      tx.JanCode,
 				YjCode:           tx.YjCode,
 				PackageForm:      tx.PackageForm,

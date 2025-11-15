@@ -28,10 +28,7 @@ func GetDeadStockByYjCode(tx *sqlx.Tx, yjCode string) ([]model.DeadStockRecord, 
 	var records []model.DeadStockRecord
 	for rows.Next() {
 		var r model.DeadStockRecord
-		if err := rows.Scan(
-			&r.ID, &r.ProductCode, &r.StockQuantityJan, &r.ExpiryDate, &r.LotNumber,
-			&r.YjCode, &r.PackageForm, &r.JanPackInnerQty, &r.YjUnitName,
-		); err != nil {
+		if err := rows.Scan(&r.ID, &r.ProductCode, &r.StockQuantityJan, &r.ExpiryDate, &r.LotNumber, &r.YjCode, &r.PackageForm, &r.JanPackInnerQty, &r.YjUnitName); err != nil {
 			return nil, err
 		}
 		records = append(records, r)

@@ -10,20 +10,24 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
+// ▼▼▼【ここを修正】シグネチャに excludeZeroStock を追加 ▼▼▼
 // GetDeadStockList は、指定された期間に処方(flag=3)されていない在庫品目（不動在庫）のリストを取得します。
-func GetDeadStockList(db *sqlx.DB, startDate, endDate string) ([]model.DeadStockItem, error) {
+func GetDeadStockList(db *sqlx.DB, startDate, endDate string, excludeZeroStock bool) ([]model.DeadStockItem, error) {
+	// ▲▲▲【修正ここまで】▲▲▲
 
 	// B: 期間内に処方(flag=3)された package_key のリストを作成
 	const movedKeysQuery = `
 		SELECT DISTINCT 
-			T.yj_code || '|' || 
+			T.yj_code ||
+'|' || 
 			COALESCE(T.package_form, '不明') || '|' || 
 			PRINTF('%g', COALESCE(T.jan_pack_inner_qty, 0)) || '|' ||
-			COALESCE(U.name, T.yj_unit_name, '不明') AS package_key
+COALESCE(U.name, T.yj_unit_name, '不明') AS package_key
 		FROM transaction_records AS T
 		LEFT JOIN units AS U ON T.yj_unit_name = U.code
 		WHERE T.flag = 3 
-		  AND T.transaction_date BETWEEN ? AND ?
+		  AND T.transaction_date BETWEEN ?
+AND ?
 	`
 
 	// A: product_master から構築した全 package_key
@@ -31,11 +35,14 @@ func GetDeadStockList(db *sqlx.DB, startDate, endDate string) ([]model.DeadStock
 		SELECT
 			P.yj_code || '|' || 
 			COALESCE(P.package_form, '不明') || '|' ||
-			PRINTF('%g', COALESCE(P.jan_pack_inner_qty, 0)) || '|' || 
+PRINTF('%g', COALESCE(P.jan_pack_inner_qty, 0)) || '|' || 
 			COALESCE(U.name, P.yj_unit_name, '不明') AS package_key,
 			P.yj_code,
 			MIN(P.kana_name) as kana_name, 
-			MIN(P.usage_classification) as usage_classification
+			MIN(P.usage_classification) as usage_classification,
+			-- ▼▼▼【ここに追加】代表の内包装数量を取得 ▼▼▼
+			MIN(P.jan_pack_inner_qty) as jan_pack_inner_qty
+			-- ▲▲▲【追加ここまで】▲▲▲
 		FROM product_master AS P
 		LEFT JOIN units AS U ON P.yj_unit_name = U.code
 		WHERE P.yj_code != "" 
@@ -45,10 +52,11 @@ func GetDeadStockList(db *sqlx.DB, startDate, endDate string) ([]model.DeadStock
 	// C: 全期間の理論在庫（通算在庫）を集計
 	const theoreticalStockQuery = `
 		SELECT 
-			T.yj_code || '|' || 
+			T.yj_code ||
+'|' || 
 			COALESCE(T.package_form, '不明') || '|' || 
 			PRINTF('%g', COALESCE(T.jan_pack_inner_qty, 0)) || '|' ||
-			COALESCE(U.name, T.yj_unit_name, '不明') AS package_key,
+COALESCE(U.name, T.yj_unit_name, '不明') AS package_key,
 			SUM(CASE 
 				WHEN T.flag = 1 THEN T.yj_quantity  -- 納品 (+)
 				WHEN T.flag = 3 THEN -T.yj_quantity -- 処方 (-)
@@ -68,19 +76,31 @@ func GetDeadStockList(db *sqlx.DB, startDate, endDate string) ([]model.DeadStock
 			A.yj_code, 
 			COALESCE(PS.stock_quantity_yj, C.theoretical_stock, 0) AS stock_quantity_yj,
 			A.kana_name,             -- ソート用
-			A.usage_classification   -- ソート用
+			A.usage_classification,   -- ソート用
+			-- ▼▼▼【ここに追加】内包装数量 ▼▼▼
+			A.jan_pack_inner_qty
+			-- ▲▲▲【追加ここまで】▲▲▲
 		FROM (
 			` + allMasterKeysQuery + `
 		) AS A
 		LEFT JOIN (
 			` + movedKeysQuery + `
-		) AS B ON A.package_key = B.package_key
+		) AS B ON A.package_key 
+= B.package_key
 		LEFT JOIN package_stock AS PS ON A.package_key = PS.package_key -- D: 棚卸在庫
 		LEFT JOIN (
 			` + theoreticalStockQuery + `
 		) AS C ON A.package_key = C.package_key -- C: 理論在庫
 		WHERE 
 			B.package_key IS NULL -- 期間内に動きがなかったもの
+	`
+	// ▼▼▼【ここに追加】在庫ゼロ除外オプション ▼▼▼
+	if excludeZeroStock {
+		query += ` AND COALESCE(PS.stock_quantity_yj, C.theoretical_stock, 0) > 0`
+	}
+	// ▲▲▲【追加ここまで】▲▲▲
+
+	query += `
 		ORDER BY 
 			-- ▼▼▼【ここから修正】「内外歯注機他」の順序に変更 ▼▼▼
 			CASE COALESCE(A.usage_classification, '他')
@@ -110,6 +130,14 @@ func GetDeadStockList(db *sqlx.DB, startDate, endDate string) ([]model.DeadStock
 	for i := range items {
 		item := &items[i]
 
+		// ▼▼▼【ここに追加】YJ在庫 -> JAN在庫 への換算 ▼▼▼
+		if item.JanPackInnerQty > 0 {
+			item.StockQuantityJan = item.StockQuantityYj / item.JanPackInnerQty
+		} else {
+			item.StockQuantityJan = 0 // 内包装数量がなければ 0
+		}
+		// ▲▲▲【追加ここまで】▲▲▲
+
 		// 代表品名と包装仕様を取得
 		var masterInfo struct {
 			ProductName   string  `db:"product_name"`
@@ -132,12 +160,15 @@ func GetDeadStockList(db *sqlx.DB, startDate, endDate string) ([]model.DeadStock
 				units.ResolveName(masterInfo.YjUnitName)) // ※表示用の仕様は units.ResolveName を使う
 		}
 
+		// ▼▼▼【ここを修正】YJ在庫 -> JAN在庫 で判定 ▼▼▼
 		// 在庫が 0 より大きい品目のみロット・期限を取得
-		if item.StockQuantityYj > 0 {
+		if item.StockQuantityJan > 0 {
+			// ▲▲▲【修正ここまで】▲▲▲
 			err = db.Select(&item.LotDetails, `
 				SELECT 
 					T.jan_code, 
-					COALESCE(P.gs1_code, '') AS gs1_code, 
+					COALESCE(P.gs1_code, '') AS 
+gs1_code, 
 					T.package_spec, 
 					T.expiry_date, 
 					T.lot_number, 
@@ -145,7 +176,8 @@ func GetDeadStockList(db *sqlx.DB, startDate, endDate string) ([]model.DeadStock
 					T.jan_unit_name
 				FROM transaction_records AS T
 				LEFT JOIN product_master AS P ON T.jan_code = P.product_code
-				WHERE T.yj_code = ? AND T.flag = 0 
+				WHERE T.yj_code = ?
+AND T.flag = 0 
 				  AND T.transaction_date = (
 					  SELECT MAX(last_inventory_date) 
 					  FROM package_stock 
