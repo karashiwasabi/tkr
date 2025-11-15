@@ -1,15 +1,12 @@
-// C:\Users\wasab\OneDrive\デスクトップ\TKR\dat\handler.go
+// C:\Users\wasab\OneDrive\デスクトップ\TKR\dat\dat_upload_handler.go
 package dat
 
 import (
-	"database/sql"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log"
 	"mime/multipart"
 	"net/http"
-	"tkr/barcode"
 	"tkr/database"
 	"tkr/mappers"
 	"tkr/mastermanager"
@@ -19,6 +16,8 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
+// ▼▼▼【ここから削除】dat_utils.go に移管するため ▼▼▼
+/*
 func respondJSONError(w http.ResponseWriter, message string, statusCode int) {
 	log.Println("Error response:", message)
 	w.Header().Set("Content-Type", "application/json")
@@ -28,6 +27,8 @@ func respondJSONError(w http.ResponseWriter, message string, statusCode int) {
 		"results": []interface{}{},
 	})
 }
+*/
+// ▲▲▲【削除ここまで】▲▲▲
 
 func UploadDatHandler(db *sqlx.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -218,18 +219,14 @@ AND transaction_date = ? AND client_code = ? AND flag IN (1, 2)`
 			LotNumber:       rec.LotNumber,
 		}
 
-		// ▼▼▼【ここから修正】YjQuantity と JanQuantity の計算ロジックを reprocess.go に統一 ▼▼▼
-
-		// 1. YJ数量を (reprocess.go と同様に) YjPackUnitQty で計算
 		transaction.YjQuantity = rec.DatQuantity * master.YjPackUnitQty
 
-		// 2. JAN数量を (reprocess.go と同様に) YJ数量から逆算
 		if master.JanPackInnerQty > 0 {
-			transaction.JanQuantity = transaction.YjQuantity / master.JanPackInnerQty
+			transaction.JanQuantity = transaction.YjQuantity /
+				master.JanPackInnerQty
 		} else {
-			transaction.JanQuantity = 0 //
+			transaction.JanQuantity = 0
 		}
-		// ▲▲▲【修正ここまで】▲▲▲
 
 		if transaction.UnitPrice == 0 {
 			transaction.UnitPrice = master.NhiPrice
@@ -246,68 +243,6 @@ AND transaction_date = ? AND client_code = ? AND flag IN (1, 2)`
 		insertedCount++
 	}
 	return insertedTransactions, nil
-}
-
-func SearchDatHandler(db *sqlx.DB) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet {
-			respondJSONError(w, "Method Not Allowed", http.StatusMethodNotAllowed)
-			return
-		}
-
-		barcodeStr := r.URL.Query().Get("barcode")
-		log.Printf("Received DAT search request... Barcode: [%s]", barcodeStr)
-
-		if barcodeStr == "" {
-			respondJSONError(w, "バーコードを入力してください。", http.StatusBadRequest)
-			return
-		}
-
-		master, err := database.GetProductMasterByBarcode(db, barcodeStr)
-		if err != nil {
-			if errors.Is(err, sql.ErrNoRows) {
-				log.Printf("Product master not found for Barcode: %s", barcodeStr)
-				respondJSONError(w, "バーコードに対応するマスターが見つかりません。", http.StatusNotFound)
-			} else {
-				log.Printf("Error searching product master by Barcode %s: %v", barcodeStr, err)
-				respondJSONError(w, fmt.Sprintf("マスター検索エラー: %v", err), http.StatusInternalServerError)
-			}
-			return
-		}
-
-		productCode := master.ProductCode
-
-		// ▼▼▼【ここから修正】YYYYMM と Lot のみを使用する ▼▼▼
-		var expiryYYYYMM, lotNumber string
-		if len(barcodeStr) > 14 {
-			gs1Result, parseErr := barcode.Parse(barcodeStr)
-			if parseErr == nil && gs1Result != nil {
-				expiryYYYYMM = gs1Result.ExpiryDate
-				lotNumber = gs1Result.LotNumber
-			}
-		}
-
-		log.Printf("Search criteria: ProductCode(JAN)='%s', Expiry(YYYYMM)='%s', Lot='%s'",
-			productCode, expiryYYYYMM, lotNumber)
-
-		// Expiry(4) ('2028') を削除
-		transactions, err := database.SearchTransactions(db, productCode, expiryYYYYMM, lotNumber)
-		// ▲▲▲【修正ここまで】▲▲▲
-
-		if err != nil {
-			log.Printf("Error searching transactions: %v", err)
-			respondJSONError(w, "トランザクション検索中にエラーが発生しました。", http.StatusInternalServerError)
-			return
-		}
-
-		log.Printf("Found %d transactions matching criteria.", len(transactions))
-
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
-			"message":      fmt.Sprintf("%d 件のデータが見つかりました。", len(transactions)),
-			"transactions": transactions,
-		})
-	}
 }
 
 func OpenFileHeader(fh *multipart.FileHeader) (multipart.File, error) {

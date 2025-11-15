@@ -176,9 +176,7 @@ func main() {
 		}
 	})
 
-	// ▼▼▼【ここから修正】APIルーティングをすべて削除し、SetupRoutesを呼び出す ▼▼▼
 	SetupRoutes(mux, dbConn)
-	// ▲▲▲【修正ここまで】▲▲▲
 
 	port := ":8080"
 	log.Printf("Starting server on http://localhost%s", port)

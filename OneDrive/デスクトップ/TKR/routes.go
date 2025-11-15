@@ -28,7 +28,6 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
-// SetupRoutes はすべてのAPIエンドポイントをmuxに登録します
 func SetupRoutes(mux *http.ServeMux, dbConn *sqlx.DB) {
 
 	mux.HandleFunc("/api/jcshms/", func(w http.ResponseWriter, r *http.Request) {
@@ -110,8 +109,7 @@ func SetupRoutes(mux *http.ServeMux, dbConn *sqlx.DB) {
 
 	mux.HandleFunc("/api/clients", func(w http.ResponseWriter, r *http.Request) {
 		clients, err := database.GetAllClients(dbConn)
-		if err !=
-			nil {
+		if err != nil {
 			http.Error(w, "Failed to get clients", http.StatusInternalServerError)
 			return
 		}
