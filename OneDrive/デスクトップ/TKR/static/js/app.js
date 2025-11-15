@@ -1,329 +1,118 @@
 // C:\Users\wasab\OneDrive\デスクトップ\TKR\static\js\app.js
-import { initDatUpload, fetchAndRenderDat } from './dat.js';
-import { initMasterEditView } from './masteredit.js';
-import { initConfigView, loadConfigAndWholesalers } from 
 
-'./config.js'; 
-import { initUsageUpload, fetchAndRenderUsage } from './usage.js';
-import { initInventoryAdjustment } from './inventory_adjustment.js';
+// ▼▼▼【ここから修正】ビューのインポートを削除し、UI/Manager/共通機能をインポート ▼▼▼
 import { initSearchModal } from './search_modal.js';
-import { loadMasterData } 
-from './master_data.js';
-import { initInOut, resetInOutView } from './inout.js';
-import { initDeadStockView } from './deadstock.js';
-import { initPrecomp, resetPrecompView } from './precomp.js';
-import { 
-initReorderView, fetchAndRenderReorder } from 
-'./reorder.js';
-import { initBackorderView } from './backorder.js';
-// ▼▼▼【ここに追加】▼▼▼
-import { initValuationView } from './valuation.js';
-import { initPricingView } from './pricing.js';
-// ▲▲▲【追加ここまで】▲▲▲
+import { loadMasterData } from './master_data.js';
+import { initUI, showLoading, hideLoading, showNotification } from './common_ui.js';
+import { initViewManager, setActiveView } from './view_manager.js';
+// ▲▲▲【修正ここまで】▲▲▲
 
-let loadingOverlay, loadingMessage, notificationBox;
-// ▼▼▼【ここに追加】valuationViewBtn, pricingViewBtn を追加 ▼▼▼
-let views, datViewBtn, usageViewBtn, inventoryAdjustmentViewBtn, masterEditViewBtn, configViewBtn, inoutViewBtn, reprocessBtn, deadStockViewBtn, precompViewBtn, reorderViewBtn, backorderViewBtn, valuationViewBtn, pricingViewBtn;
-// ▲▲▲【追加ここまで】▲▲▲
-const initializedViews = {
-    
 
-dat: false,
-    usage: false,
-    inventoryAdjustment: false,
-    masterEdit: false,
-    config: false,
-   
- inout: 
-false,
-    deadstock: false,
-    precomp: false,
-    reorder: false,
-    backorder: false,
-  
-  // ▼▼▼【ここに追加】▼▼▼
- 
-   valuation: false,
-    pricing: false,
-    // ▲▲▲【追加ここまで】▲▲▲
-};
-window.showLoading = (message = '処理中...') => {
-    
-if 
-(!loadingOverlay) loadingOverlay = document.getElementById('loading-overlay');
-    if (!loadingMessage) loadingMessage = document.getElementById('loading-message');
-    if (loadingMessage) loadingMessage.textContent = message;
-    if (loadingOverlay) loadingOverlay.classList.remove('hidden');
-};
-window.hideLoading = () => {
- 
-   
-if (!loadingOverlay) loadingOverlay = document.getElementById('loading-overlay');
-    if (loadingOverlay) loadingOverlay.classList.add('hidden');
-};
-window.showNotification = (message, type = 'success') => {
-    if 
-(!notificationBox) notificationBox = document.getElementById('notification-box');
-    if 
-(notificationBox) {
-        notificationBox.textContent = message;
-        notificationBox.className = 'notification-box';
-        notificationBox.classList.add(type);
-        notificationBox.classList.add('show');
-        setTimeout(() => 
-{
-       
-     notificationBox.classList.remove('show');
-        }, 3000);
-    }
-};
+// ▼▼▼【削除】グローバル/モジュール変数を common_ui.js, view_manager.js に移管 ▼▼▼
+// let loadingOverlay, loadingMessage, notificationBox;
+// let views, datViewBtn, ... , pricingViewBtn;
+// const initializedViews = { ... };
+// ▲▲▲【削除ここまで】▲▲▲
 
-function 
-setActiveView(targetId) {
-    if (!views) views = 
-document.querySelectorAll('.view');
-    
-    views.forEach(view => {
-        view.classList.remove('active');
-    
-});
+// ▼▼▼【ここから修正】グローバル関数を window オブジェクトに登録 ▼▼▼
+window.showLoading = showLoading;
+window.hideLoading = hideLoading;
+window.showNotification = showNotification;
+// ▲▲▲【修正ここまで】▲▲▲
 
-    switch (targetId) {
-        
-case 'dat-upload-view':
-            
-if (!initializedViews.dat) {
-           
-     console.log("Initializing DAT view...");
-                initDatUpload();
-                initializedViews.dat = 
-true;
-            }
-            fetchAndRenderDat();
-            break;
-case 'usage-upload-view':
-        
-    if (!initializedViews.usage) {
-           
-     console.log("Initializing USAGE view...");
-                initUsageUpload();
-                initializedViews.usage = true;
-            }
-            fetchAndRenderUsage();
-            break;
-case 'inventory-adjustment-view':
-    
-        if (!initializedViews.inventoryAdjustment) {
-           
-   
-  console.log("Initializing Inventory Adjustment view...");
-                initInventoryAdjustment();
-                initializedViews.inventoryAdjustment = true;
-            }
-            // ▼▼▼【ここを削除】yjCode がない状態でのイベント発火は、'show' イベントリスナー側で処理する
-            // document.dispatchEvent(new 
-// CustomEvent('loadInventoryAdjustment', 
-// { detail: {} }));
-            // ▲▲▲【削除ここまで】▲▲▲
-            break;
-        case 'master-edit-view':
-            if (!initializedViews.masterEdit) {
-    
- 
-           console.log("Initializing Master Edit view...");
-                initMasterEditView();
-                initializedViews.masterEdit = true;
-            }
-    
-   
-     break;
-        case 'config-view':
-            if (!initializedViews.config) 
-{
-     
-           console.log("Initializing Config view...");
-                initConfigView();
-                initializedViews.config = true;
-            }
- 
-       
-    loadConfigAndWholesalers();
-            break;
-        case 'inout-view':
-          
-  if (!initializedViews.inout) {
-     
-           console.log("Initializing In/Out view...");
-                initInOut();
-initializedViews.inout = true;
-            }
-        
-    resetInOutView();
-            break;
-        case 'deadstock-view':
-      
-      if (!initializedViews.deadstock) {
-     
-           
-console.log("Initializing DeadStock view...");
-                initDeadStockView();
-                initializedViews.deadstock = true;
-            }
-        
-    break;
-        case 'precomp-view':
-   
-         if (!initializedViews.precomp) {
-      
-       
-   console.log("Initializing Precomp view...");
-                initPrecomp();
-                initializedViews.precomp = true;
-            }
-         
-   resetPrecompView();
-            break;
-case 'reorder-view':
-            if (!initializedViews.reorder) {
-      
-   
-       console.log("Initializing Reorder view...");
-                initReorderView(); 
-                initializedViews.reorder = true;
-            }
-         
- 
-  fetchAndRenderReorder(); 
-            break;
-        case 'backorder-view': 
-            if (!initializedViews.backorder) {
-    
- 
-           console.log("Initializing Backorder view...");
-                initBackorderView(); 
-                initializedViews.backorder = true;
-            }
-     
-   
-    break;
-        // ▼▼▼【ここに追加】▼▼▼
-        case 'valuation-view':
-      
-     
- if (!initializedViews.valuation) {
-                
-console.log("Initializing Valuation view...");
-                initValuationView();
-                initializedViews.valuation = true;
-}
-            break;
-        case 'pricing-view':
-            
-if (!initializedViews.pricing) {
-                console.log("Initializing Pricing view...");
-                initPricingView();
-                initializedViews.pricing = true;
-            }
- 
-           // pricing-viewは表示時に 'show' イベントを発火させる
-            
-break;
-        // ▲▲▲【追加ここまで】▲▲▲
-   
- }
-
-    const targetView = document.getElementById(targetId);
-    if (targetView) {
-        targetView.classList.add('active');
-        targetView.dispatchEvent(new 
-CustomEvent('show'));
-    }
-}
+// ▼▼▼【削除】showLoading, hideLoading, showNotification, setActiveView を common_ui.js, view_manager.js に移管 ▼▼▼
+/*
+window.showLoading = (message = '処理中...') => { ... };
+window.hideLoading = () => { ... };
+window.showNotification = (message, type = 'success') => { ... };
+function setActiveView(targetId) { ... }
+*/
+// ▲▲▲【削除ここまで】▲▲▲
 
 async function 
 handleReprocessAll() {
     if (!confirm('全ての取引データを、最新のマスター情報に基づいて再計算します。\nこの処理はデータ量に応じて時間がかかります。\n実行しますか？')) {
         return;
-    }
+}
 
     window.showLoading('全取引データを再計算中... (時間がかかる場合があります)');
     try 
 {
  
        const response = await fetch('/api/reprocess/all', {
-            
+       
+     
 method: 
 'POST', 
         });
         const result = await response.json();
         if (!response.ok) {
-      
+    
+  
    
    throw new Error(result.message || `サーバーエラー (HTTP ${response.status})`);
         }
 
         window.showNotification(result.message || '全取引データの再計算が完了しました。', 
 'success');
-    } catch (error) {
+} catch (error) {
  
        console.error('Reprocessing failed:', error);
         window.showNotification(`再計算エラー: ${error.message}`, 'error');
     } finally {
     
-    window.hideLoading();
+    
+window.hideLoading();
     }
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
     console.log('TKR App Initialized.');
 
-    loadingOverlay = document.getElementById('loading-overlay');
-   
- loadingMessage = document.getElementById('loading-message');
-    notificationBox = 
-document.getElementById('notification-box');
-    views = document.querySelectorAll('.view');
-    datViewBtn = document.getElementById('datViewBtn');
-   
- usageViewBtn = document.getElementById('usageViewBtn');
-    inventoryAdjustmentViewBtn = document.getElementById('inventoryAdjustmentViewBtn');
-  
-  masterEditViewBtn = document.getElementById('masterEditViewBtn');
-    configViewBtn = document.getElementById('configViewBtn'); 
-  
-  inoutViewBtn = document.getElementById('inOutViewBtn');
-    reprocessBtn = document.getElementById('reprocessBtn');
-   
- deadStockViewBtn = document.getElementById('deadStockViewBtn');
-    precompViewBtn = document.getElementById('precompViewBtn');
-  
-  reorderViewBtn = document.getElementById('reorderViewBtn');
-    backorderViewBtn = document.getElementById('backorderViewBtn');
-    // ▼▼▼【ここに追加】▼▼▼
-    valuationViewBtn = 
-document.getElementById('valuationViewBtn');
-    pricingViewBtn = document.getElementById('pricingViewBtn');
-    // ▲▲▲【追加ここまで】▲▲▲
+    // ▼▼▼【ここから修正】UIとViewManagerを初期化 ▼▼▼
+    initUI();
+    initViewManager();
+    // ▲▲▲【修正ここまで】▲▲▲
+
+    // ▼▼▼【ここから修正】ボタンのDOM取得をローカル変数に変更 ▼▼▼
+    const datViewBtn = document.getElementById('datViewBtn');
+    const usageViewBtn = document.getElementById('usageViewBtn');
+    const inventoryAdjustmentViewBtn = document.getElementById('inventoryAdjustmentViewBtn');
+    const masterEditViewBtn = document.getElementById('masterEditViewBtn');
+    const configViewBtn = document.getElementById('configViewBtn'); 
+    const inoutViewBtn = document.getElementById('inOutViewBtn');
+    const reprocessBtn = document.getElementById('reprocessBtn');
+    const deadStockViewBtn = document.getElementById('deadStockViewBtn');
+    const precompViewBtn = document.getElementById('precompViewBtn');
+    const reorderViewBtn = document.getElementById('reorderViewBtn');
+    const backorderViewBtn = document.getElementById('backorderViewBtn');
+    const valuationViewBtn = document.getElementById('valuationViewBtn');
+    const pricingViewBtn = document.getElementById('pricingViewBtn');
+    // ▲▲▲【修正ここまで】▲▲▲
  
     await loadMasterData();
-initSearchModal();
+    initSearchModal();
+
     if (datViewBtn) {
         datViewBtn.addEventListener('click', () => 
 setActiveView('dat-upload-view'));
     }
-    if (usageViewBtn) {
+ 
+   if (usageViewBtn) {
    
      usageViewBtn.addEventListener('click', () => setActiveView('usage-upload-view'));
     }
     if (inventoryAdjustmentViewBtn) {
  
-       inventoryAdjustmentViewBtn.addEventListener('click', 
+   
+    inventoryAdjustmentViewBtn.addEventListener('click', 
 () => setActiveView('inventory-adjustment-view'));
     }
     if (masterEditViewBtn) 
     {
      
-   masterEditViewBtn.addEventListener('click', () => 
+   masterEditViewBtn.addEventListener('click', 
+() => 
 setActiveView('master-edit-view'));
     }
     if (configViewBtn) {
@@ -331,13 +120,15 @@ setActiveView('master-edit-view'));
     }
  
    if 
-(inoutViewBtn) {
+(inoutViewBtn) 
+{
         inoutViewBtn.addEventListener('click', () => setActiveView('inout-view'));
     }
     if (reprocessBtn) {
    
   
-   reprocessBtn.addEventListener('click', handleReprocessAll);
+   reprocessBtn.addEventListener('click', 
+handleReprocessAll);
     }
     if (deadStockViewBtn) {
         deadStockViewBtn.addEventListener('click', () => setActiveView('deadstock-view'));
@@ -345,28 +136,29 @@ setActiveView('master-edit-view'));
  
 
    if (precompViewBtn) {
-        precompViewBtn.addEventListener('click', () => setActiveView('precomp-view'));
+  
+      precompViewBtn.addEventListener('click', () => setActiveView('precomp-view'));
     }
     if (reorderViewBtn) {
  
   
-     reorderViewBtn.addEventListener('click', () => setActiveView('reorder-view'));
+     reorderViewBtn.addEventListener('click', () => 
+setActiveView('reorder-view'));
     }
     if (backorderViewBtn) { 
       
   backorderViewBtn.addEventListener('click', () => setActiveView('backorder-view'));
     }
-    // ▼▼▼【ここに追加】▼▼▼
-    if (valuationViewBtn) {
+    
+  if (valuationViewBtn) {
        
  valuationViewBtn.addEventListener('click', () => setActiveView('valuation-view'));
     }
  
    if (pricingViewBtn) {
-        pricingViewBtn.addEventListener('click', () => setActiveView('pricing-view'));
+     
+   pricingViewBtn.addEventListener('click', () => setActiveView('pricing-view'));
     }
-    // ▲▲▲【追加ここまで】▲▲▲
-
     
-setActiveView('dat-upload-view');
+    setActiveView('dat-upload-view');
 });
