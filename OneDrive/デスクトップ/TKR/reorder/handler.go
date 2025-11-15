@@ -159,7 +159,9 @@ func PlaceOrderHandler(conn *sqlx.DB) http.HandlerFunc {
 		}
 		defer tx.Rollback()
 
-		today := time.Now().Format("20060102")
+		// ▼▼▼【ここを修正】日付フォーマットを YYYYMMDDHHMMSS に変更 ▼▼▼
+		today := time.Now().Format("20060102150405") // YYYYMMDDHHMMSS
+		// ▲▲▲【修正ここまで】▲▲▲
 		for i := range payload {
 			if payload[i].OrderDate == "" {
 				payload[i].OrderDate = today

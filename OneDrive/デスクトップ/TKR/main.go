@@ -279,8 +279,7 @@ func main() {
 
 	mux.HandleFunc("/api/clients", func(w http.ResponseWriter, r *http.Request) {
 		clients, err := database.GetAllClients(dbConn)
-		if err !=
-			nil {
+		if err != nil {
 			http.Error(w, "Failed to get clients", http.StatusInternalServerError)
 			return
 		}
@@ -320,7 +319,8 @@ func main() {
 	mux.HandleFunc("/api/orders/place", reorder.PlaceOrderHandler(dbConn))
 	mux.HandleFunc("/api/backorders", backorder.GetBackordersHandler(dbConn))
 	mux.HandleFunc("/api/backorders/delete", backorder.DeleteBackorderHandler(dbConn))
-	mux.HandleFunc("/api/backorders/bulk_delete", backorder.BulkDeleteBackordersHandler(dbConn))
+	mux.HandleFunc("/api/backorders/bulk_delete_by_id", backorder.BulkDeleteBackordersByIDHandler(dbConn))
+	mux.HandleFunc("/api/backorders/bulk_delete_by_date", backorder.BulkDeleteBackordersByDateHandler(dbConn))
 
 	// ▼▼▼【ここから修正】在庫評価API (CSV対応) ▼▼▼
 	mux.HandleFunc("/api/valuation", valuation.GetValuationHandler(dbConn))

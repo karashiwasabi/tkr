@@ -4,8 +4,11 @@ package model
 // Backorder は backorders テーブルのレコードを表します。
 // (WASABI: model/types.go を TKR 用に修正)
 type Backorder struct {
-	ID                int     `db:"id" json:"id"`
-	OrderDate         string  `db:"order_date" json:"orderDate"`
+	ID        int    `db:"id" json:"id"`
+	OrderDate string `db:"order_date" json:"orderDate"`
+	// ▼▼▼【ここに追加】▼▼▼
+	JanCode string `db:"jan_code" json:"janCode,omitempty"`
+	// ▲▲▲【追加ここまで】▲▲▲
 	YjCode            string  `db:"yj_code" json:"yjCode"`
 	ProductName       string  `db:"product_name" json:"productName"`
 	PackageForm       string  `db:"package_form" json:"packageForm"`

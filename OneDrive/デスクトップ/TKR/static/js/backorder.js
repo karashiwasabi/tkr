@@ -5,18 +5,21 @@ import { wholesalerMap } from './master_data.js';
 let view, outputContainer, searchKanaInput, searchWholesalerInput, searchBtn;
 let allBackorders = []; // APIから取得した全発注残をキャッシュ
 
-/**
- * 包装仕様（簡易版）を生成します。
- * [cite_start](WASABI: backorder.js [cite: 38] のロジックをTKR用に移植)
- */
+// ▼▼▼【削除】formatSimplePackageSpec は不要になったため削除 ▼▼▼
+/*
 function formatSimplePackageSpec(bo) {
-    // TKRのboモデルには `janPackInnerQty` と `yjUnitName` がある
-    if (bo.janPackInnerQty > 0) {
-        return `${bo.packageForm || ''} ${bo.janPackInnerQty}${bo.yjUnitName || ''}`;
-    }
-    // フォールバック
-    return `${bo.packageForm || ''} ${bo.yjPackUnitQty || 0}${bo.yjUnitName || ''}`;
+    // ...
 }
+*/
+// ▲▲▲【削除ここまで】▲▲▲
+
+// ▼▼▼【削除】formatOrderDateTime は不要になったため削除 ▼▼▼
+/*
+function formatOrderDateTime(dateTimeStr) {
+    // ...
+}
+*/
+// ▲▲▲【削除ここまで】▲▲▲
 
 /**
  * 絞り込みと描画を実行します。
@@ -28,12 +31,15 @@ function filterAndRender() {
     const wholesalerFilter = searchWholesalerInput.value.trim().toLowerCase();
 
     const filteredData = allBackorders.filter(bo => {
+        // ▼▼▼【修正】検索対象を JAN, YJ, 製品名 に変更 ▼▼▼
         const nameMatch = !kanaFilter || 
-                          (bo.productName && bo.productName.toLowerCase().includes(kanaFilter)) ||
-                          (bo.yjCode && bo.yjCode.toLowerCase().includes(kanaFilter));
+                        (bo.productName && bo.productName.toLowerCase().includes(kanaFilter)) ||
+                        (bo.yjCode && bo.yjCode.toLowerCase().includes(kanaFilter)) ||
+                        (bo.janCode && bo.janCode.toLowerCase().includes(kanaFilter));
+        // ▲▲▲【修正ここまで】▲▲▲
         
         const wholesalerMatch = !wholesalerFilter ||
-                                (bo.wholesalerCode && bo.wholesalerCode.toLowerCase().includes(wholesalerFilter));
+                        (bo.wholesalerCode && bo.wholesalerCode.toLowerCase().includes(wholesalerFilter));
 
         return nameMatch && wholesalerMatch;
     });
@@ -43,13 +49,22 @@ function filterAndRender() {
 
 /**
  * 発注残リストのテーブルHTMLを描画します。
- * [cite_start](WASABI: backorder.js [cite: 39] を TKR 用に修正)
  */
 function renderBackorders(data) {
     if (!data || data.length === 0) {
         outputContainer.innerHTML = "<p>対象の発注残はありません。</p>";
         return;
     }
+
+    // 1. データを order_date (YYYYMMDDHHMMSS) ごとにグループ化
+    const groups = new Map();
+    data.forEach(bo => {
+        const key = bo.orderDate; // YYYYMMDDHHMMSS
+        if (!groups.has(key)) {
+            groups.set(key, []);
+        }
+        groups.get(key).push(bo);
+    });
 
     let html = `
         <div class="backorder-controls">
@@ -59,59 +74,76 @@ function renderBackorders(data) {
             <thead>
                 <tr>
                     <th class="col-bo-check"><input type="checkbox" id="bo-select-all-checkbox"></th>
-                    <th class="col-bo-date">発注日</th>
-                    <th class="col-bo-yj">YJコード</th>
+                    <th class="col-bo-jan">JANコード</th>
                     <th class="col-bo-name">製品名</th>
-                    <th class="col-bo-spec">包装仕様</th>
-                    <th class="col-bo-order">発注数量(YJ)</th>
                     <th class="col-bo-remain">残数量(YJ)</th>
+                    <th class="col-bo-wholesaler">卸</th>
                     <th class="col-bo-action">操作</th>
                 </tr>
             </thead>
-            <tbody>
     `;
-    data.forEach(bo => {
-        const pkgSpec = formatSimplePackageSpec(bo);
-        const wholesalerName = wholesalerMap.get(bo.wholesalerCode) || bo.wholesalerCode || '---';
+    
+    // 2. グループごとにテーブルを描画 (tbody でグループ化)
+    groups.forEach((items, orderDateKey) => {
+        const totalItems = items.length;
 
+        // ▼▼▼【ここから修正】グループヘッダーをご要望の形式に変更 ▼▼▼
         html += `
-            <tr data-id="${bo.id}" data-yj-code="${bo.yjCode}">
-                <td class="center col-bo-check"><input type="checkbox" class="bo-select-checkbox"></td>
-                <td class="col-bo-date">${bo.orderDate}</td>
-                <td class="col-bo-yj">${bo.yjCode}</td>
-                <td class="left col-bo-name">${bo.productName}</td>
-                <td class="left col-bo-spec">${pkgSpec} [${wholesalerName}]</td>
-                <td class="right col-bo-order">${bo.orderQuantity.toFixed(2)}</td>
-                <td class="right col-bo-remain">${bo.remainingQuantity.toFixed(2)}</td>
-                <td class="center col-bo-action">
-                    <button class="btn delete-backorder-btn">削除</button>
-                    <button class="btn adjust-inventory-btn" data-yj-code="${bo.yjCode}">棚卸調整</button>
-                </td>
-            </tr>
+            <tbody class="backorder-group">
+                <tr class="group-header">
+                    <td colspan="3">
+                        <strong>${orderDateKey}</strong> (${totalItems}品目)
+                    </td>
+                    <td colspan="3" class="right">
+                        <button class="btn delete-backorder-group-btn" data-order-date="${orderDateKey}">
+                            この発注(${totalItems}品目)を一括削除
+                        </button>
+                    </td>
+                </tr>
         `;
+        // ▲▲▲【修正ここまで】▲▲▲
+
+        // グループ内の品目
+        items.forEach(bo => {
+            // ▼▼▼【ここから修正】列をご要望の形式に変更 ▼▼▼
+            const wholesalerName = wholesalerMap.get(bo.wholesalerCode) || bo.wholesalerCode || '---';
+            html += `
+                <tr data-id="${bo.id}" data-yj-code="${bo.yjCode}" data-jan-code="${bo.janCode}">
+                    <td class="center col-bo-check"><input type="checkbox" class="bo-select-checkbox"></td>
+                    <td class="col-bo-jan">${bo.janCode || '(JANなし)'}</td>
+                    <td class="left col-bo-name">${bo.productName}</td>
+                    <td class="right col-bo-remain">${bo.remainingQuantity.toFixed(2)}</td>
+                    <td class="left col-bo-wholesaler">${wholesalerName}</td>
+                    <td class="center col-bo-action">
+                        <button class="btn delete-backorder-btn">削除</button>
+                        <button class="btn adjust-inventory-btn" data-yj-code="${bo.yjCode}">棚卸調整</button>
+                    </td>
+                </tr>
+            `;
+            // ▲▲▲【修正ここまで】▲▲▲
+        });
+
+        html += `</tbody>`;
     });
-    html += `</tbody></table>`;
+
+    html += `</table>`;
     outputContainer.innerHTML = html;
 }
 
 /**
  * APIから発注残リストを取得し、キャッシュと描画を行います。
- * [cite_start](WASABI: backorder.js [cite: 67] を TKR 用に修正)
+ * (WASABI: backorder.js を TKR 用に修正)
  */
 async function loadAndRenderBackorders() {
     outputContainer.innerHTML = '<p>読み込み中...</p>';
     try {
-        // TKRには /api/backorders はまだないので、/api/reorder/list (仮) を使用
-        // → WASABIの /api/backorders を移植する
         const res = await fetch('/api/backorders');
         if (!res.ok) throw new Error('発注残リストの読み込みに失敗しました。');
         allBackorders = await res.json();
         
-        // 絞り込み検索欄の値をリセット
         searchKanaInput.value = '';
         searchWholesalerInput.value = '';
 
-        // 絞り込まずに全件描画
         renderBackorders(allBackorders);
     } catch (err) {
         outputContainer.innerHTML = `<p class="status-error">${err.message}</p>`;
@@ -120,7 +152,7 @@ async function loadAndRenderBackorders() {
 
 /**
  * 発注残ビューのイベントハンドラ
- * [cite_start](WASABI: backorder.js [cite: 70] を TKR 用に修正)
+ * (WASABI: backorder.js を TKR 用に修正)
  */
 async function handleBackorderEvents(e) {
     const target = e.target;
@@ -128,9 +160,16 @@ async function handleBackorderEvents(e) {
     // 個別削除ボタン
     if (target.classList.contains('delete-backorder-btn')) {
         const row = target.closest('tr');
-        if (!confirm(`「${row.cells[3].textContent}」の発注残（発注日: ${row.cells[1].textContent}）を削除しますか？`)) {
+        // ▼▼▼【修正】グループヘッダーから YYYYMMDDHHMMSS を取得 ▼▼▼
+        const groupHeader = row.closest('tbody.backorder-group')?.querySelector('tr.group-header');
+        const orderDateStr = groupHeader ? groupHeader.querySelector('.delete-backorder-group-btn').dataset.orderDate : '不明';
+        // ▲▲▲【修正ここまで】▲▲▲
+
+        // ▼▼▼【修正】確認メッセージの品名列インデックスを 2 に変更 ▼▼▼
+        if (!confirm(`「${row.cells[2].textContent}」の発注残（発注: ${orderDateStr}）を削除しますか？`)) {
             return;
         }
+        // ▲▲▲【修正ここまで】▲▲▲
         const payload = {
             id: parseInt(row.dataset.id, 10),
         };
@@ -177,7 +216,7 @@ async function handleBackorderEvents(e) {
         });
         window.showLoading();
         try {
-            const res = await fetch('/api/backorders/bulk_delete', {
+            const res = await fetch('/api/backorders/bulk_delete_by_id', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload),
@@ -192,6 +231,41 @@ async function handleBackorderEvents(e) {
             window.hideLoading();
         }
     }
+
+    // 発注書（グループ）単位での一括削除ボタン
+    if (target.classList.contains('delete-backorder-group-btn')) {
+        const orderDate = target.dataset.orderDate;
+        if (!orderDate) return;
+
+        // ▼▼▼【修正】フォーマット済みのきれいな日付ではなく、YYYYMMDDHHMMSS をそのまま表示 ▼▼▼
+        if (!confirm(`発注 [${orderDate}] の発注残をすべて削除します。よろしいですか？`)) {
+            return;
+        }
+        // ▲▲▲【修正ここまで】▲▲▲
+
+        const payload = {
+            orderDate: orderDate,
+        };
+        
+        window.showLoading();
+        try {
+            const res = await fetch('/api/backorders/bulk_delete_by_date', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+            });
+            const resData = await res.json();
+            if (!res.ok) throw new Error(resData.message || 'グループ削除に失敗しました。');
+            
+            window.showNotification(resData.message, 'success');
+            loadAndRenderBackorders(); // リストを再読み込み
+        } catch (err) {
+            window.showNotification(err.message, 'error');
+        } finally {
+            window.hideLoading();
+        }
+    }
+
 
     // 棚卸調整ボタン
     if (target.classList.contains('adjust-inventory-btn')) {
