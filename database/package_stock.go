@@ -1,0 +1,76 @@
+// C:\Users\wasab\OneDrive\デスクトップ\TKR\database\package_stock.go
+package database
+
+import (
+	"fmt"
+	"strconv"
+	"strings"
+	"tkr/model"
+
+	// ▼▼▼【追加】units パッケージをインポート ▼▼▼
+	"github.com/jmoiron/sqlx"
+)
+
+func UpsertPackageStockInTx(tx *sqlx.Tx, packageKey string, yjCode string, quantityYj float64, inventoryDate string) error {
+	const q = `
+		INSERT INTO package_stock (package_key, yj_code, stock_quantity_yj, last_inventory_date)
+		VALUES (?, ?, ?, ?)
+		ON CONFLICT(package_key) DO UPDATE SET
+			stock_quantity_yj = excluded.stock_quantity_yj,
+			last_inventory_date = excluded.last_inventory_date,
+			yj_code = excluded.yj_code
+	`
+	_, err := tx.Exec(q, packageKey, yjCode, quantityYj, inventoryDate)
+	if err != nil {
+		// ▼▼▼【修正】[source]タグを文字列の外に移動し、改行を削除 ▼▼▼
+		return fmt.Errorf("failed to upsert package_stock for key %s: %w", packageKey, err)
+	}
+	return nil
+}
+
+// ▼▼▼【修正】[source]タグを文字列の外に移動 ▼▼▼
+func GetPackageStockByYjCode(dbtx DBTX, yjCode string) (map[string]model.PackageStock, error) {
+	var stocks []model.PackageStock
+	const q = `
+		SELECT package_key, yj_code, stock_quantity_yj, last_inventory_date
+		FROM package_stock
+		WHERE yj_code = ?`
+	err := dbtx.Select(&stocks, q, yjCode)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get package_stock by yj_code %s: %w", yjCode, err)
+	}
+
+	stockMap := make(map[string]model.PackageStock)
+	for _, s := range stocks {
+		stockMap[s.PackageKey] = s
+	}
+	return stockMap, nil
+}
+
+// ▲▲▲【修正ここまで】▲▲▲
+
+type ParsedPackageKey struct {
+	YjCode          string
+	PackageForm     string
+	JanPackInnerQty float64
+	YjUnitName      string
+}
+
+func ParsePackageKey(key string) (*ParsedPackageKey, error) {
+	parts := strings.Split(key, "|")
+	if len(parts) != 4 {
+		return nil, fmt.Errorf("invalid package key format: %s", key)
+	}
+
+	innerQty, err := strconv.ParseFloat(parts[2], 64)
+	if err != nil {
+		return nil, fmt.Errorf("invalid JanPackInnerQty in package key (%s): %w", parts[2], err)
+	}
+
+	return &ParsedPackageKey{
+		YjCode:          parts[0],
+		PackageForm:     parts[1],
+		JanPackInnerQty: innerQty,
+		YjUnitName:      parts[3],
+	}, nil
+}

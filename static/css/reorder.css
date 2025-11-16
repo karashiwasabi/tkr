@@ -1,0 +1,106 @@
+/* C:\Users\wasab\OneDrive\デスクトップ\TKR\static\css\reorder.css */
+
+/*
+   注: このビューの .filter-container, .form-group, .btn, .data-table,
+   .agg-yj-header, .modal-overlay, .modal-content 等の基本スタイルは、
+   styles.css, table.css, modal.css, search_form_group.css, inout.css
+   から提供されます。
+*/
+
+/* 既存の発注残を表示するエリア */
+.existing-backorders-info {
+    background-color: #fffbdd; /* 薄い黄色 */
+    border: 1px solid #e6db55;
+    padding: 5px 10px;
+    margin: -1px 0 0 0; /* ヘッダーのborderと重なるように */
+    font-size: 10px;
+}
+.existing-backorders-info ul {
+    margin: 0;
+    padding-left: 15px;
+}
+.existing-backorders-info li {
+    color: #555;
+}
+
+
+/* 発注候補テーブル */
+#order-candidates-output .data-table {
+    margin-bottom: 10px; /* YJグループ間のマージン */
+}
+
+/* 発注候補テーブルの列幅 */
+#order-candidates-output .data-table th:nth-child(1) { width: 25%; } /* 製品名 */
+#order-candidates-output .data-table th:nth-child(2) { width: 15%; } /* メーカー */
+#order-candidates-output .data-table th:nth-child(3) { width: 15%; } /* 包装仕様 */
+#order-candidates-output .data-table th:nth-child(4) { width: 20%; } /* 卸業者 */
+#order-candidates-output .data-table th:nth-child(5) { width: 10%; } /* 発注単位 */
+#order-candidates-output .data-table th:nth-child(6) { width: 5%; }  /* 発注数 */
+#order-candidates-output .data-table th:nth-child(7) { width: 10%; } /* 操作 */
+
+
+/* 発注操作ボタンのセル */
+.order-actions-cell .order-action-buttons {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 3px;
+    justify-content: center; /* TKRの .center に合わせる */
+}
+
+.order-actions-cell .btn {
+    padding: 1px 4px;
+    font-size: 9px;
+    min-width: 30px; /* ボタン幅を確保 */
+    white-space: nowrap;
+}
+
+/* 発注不可ボタン */
+.set-unorderable-btn {
+    background-color: #fbeeee;
+    border-color: #dc3545;
+    color: #dc3545;
+}
+.set-unorderable-btn:hover {
+    background-color: #dc3545;
+    color: #fff;
+}
+
+/* 除外・変更ボタン */
+.remove-order-item-btn,
+.change-to-orderable-btn {
+    background-color: #fff3cd;
+    border-color: #e6b800;
+    color: #856404;
+}
+.remove-order-item-btn:hover,
+.change-to-orderable-btn:hover {
+    background-color: #e6b800;
+    color: #333;
+}
+
+/* 棚卸調整ボタン */
+.go-to-inv-adj-btn {
+    background-color: #e6f7ff;
+    border-color: #17a2b8;
+    color: #17a2b8;
+}
+.go-to-inv-adj-btn:hover {
+    background-color: #17a2b8;
+    color: #fff;
+}
+
+
+/* 連続スキャンモーダル関連 */
+#continuous-order-modal .form-group label {
+    font-size: 10px;
+    font-weight: bold;
+}
+#continuous-order-modal input[type="text"] {
+    width: 100%;
+    padding: 3px;
+    border: 1px solid #ccc;
+    font-size: inherit;
+    box-sizing: border-box;
+}
+
+/* (スキャン済みリストのスタイル .scanned-item などは styles.css で定義) */

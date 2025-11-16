@@ -1,0 +1,98 @@
+{{ define "common_search_modal" }}
+<div id="tkr-search-modal-overlay" class="modal-overlay hidden">
+    <div class="modal-content" id="tkr-search-modal-content">
+       <h2>品目検索</h2>
+        <div class="filter-container">
+            <fieldset>
+                <legend>検索条件</legend>
+                
+                <div class="search-grid-top">
+     
+
+                    <div class="form-group">
+                        <label for="modal-search-gs1">GS1バーコードスキャン:</label>
+                         <form id="modal-search-gs1-form">
+                            
+<input type="text" id="modal-search-gs1" autocomplete="off" placeholder="GS1-128スキャン...">
+ 
+                        </form>
+                    </div>
+                </div>
+                <div class="search-grid-bottom">
+                  
+  <div class="form-group">
+   
+                        <label>内外注区分:</label>
+                       <div class="radio-group" id="modal-search-usage-class">
+            
+        
+                            <label><input type="radio" name="modal_usage_class" value="内"> 内</label>
+                            <label><input type="radio" name="modal_usage_class" value="外"> 外</label>
+                            
+<label><input type="radio" name="modal_usage_class" value="歯"> 歯</label>
+                            <label><input type="radio" name="modal_usage_class" value="注"> 注</label>
+                        
+                            <label><input type="radio" name="modal_usage_class" value="機"> 機</label>
+                            <label><input type="radio" name="modal_usage_class" value="他"> 他</label>
+                         </div>
+               
+     </div>
+                    
+                    <div class="form-group">
+                         <label for="modal-search-kana">カナ名 (前方一致):</label>
+                         <input type="text" 
+id="modal-search-kana" autocomplete="off">
+                    </div>
+                    <div class="form-group">
+                         <label for="modal-search-generic">一般名 (部分一致):</label>
+   
+                          <input type="text" 
+id="modal-search-generic" autocomplete="off">
+                    </div>
+                    <div class="form-group">
+                         <label for="modal-search-shelf">棚番 (部分一致):</label>
+       
+                        
+<input type="text" id="modal-search-shelf" autocomplete="off">
+                    </div>
+                    </div>
+                 <div class="form-actions">
+                    <button id="product-search-btn" class="btn">この条件で検索</button>
+   
+              
+   </div>
+            </fieldset>
+        </div>
+        <div id="search-results-container" class="table-container">
+            <table id="search-results-table" class="data-table">
+                <thead>
+                    <tr>
+       
+          
+              <th class="col-modal-product">製品名</th>
+                        <th class="col-modal-maker">メーカー</th>
+                        <th class="col-modal-spec">包装仕様</th>
+                        <th class="col-modal-yj">YJコード</th>
+       
+   
+                     <th class="col-modal-jan">JANコード</th>
+                        <th class="col-modal-action">選択</th>
+                    </tr>
+                </thead>
+                 
+<tbody>
+    
+                    <tr>
+                        <td colspan="6" class="center">検索ボタンを押してください。</td>
+                    </tr>
+                 </tbody>
+            </table>
+ 
+       </div>
+ 
+        <div class="form-actions">
+            <button type="button" id="closeSearchModalBtn" class="btn">閉じる</button>
+        </div>
+    </div>
+</div>
+{{ end }}

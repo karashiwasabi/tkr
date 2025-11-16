@@ -1,0 +1,3078 @@
+----- C:\Users\wasab\OneDrive\デスクトップ\TKR\config\config.go -----
+// C:\Users\wasab\OneDrive\デスクトップ\TKR\config\config.go (全体)
+package config
+
+import (
+	"encoding/json"
+	"os"
+	"sync"
+)
+
+type Config struct {
+	UsageFolderPath string `json:"usageFolderPath"`
+}
+
+var (
+	cfg Config
+	mu  sync.RWMutex
+)
+
+const configFilePath = "./tkr_config.json"
+
+func LoadConfig() (Config, error) {
+	mu.RLock()
+	defer mu.RUnlock()
+
+	file, err := os.ReadFile(configFilePath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return Config{}, nil
+		}
+		return Config{}, err
+	}
+
+	var tempCfg Config
+	if err := json.Unmarshal(file, &tempCfg); err != nil {
+		return Config{}, err
+	}
+	cfg = tempCfg
+	return cfg, nil
+}
+
+func SaveConfig(newCfg Config) error {
+	mu.Lock()
+	defer mu.Unlock()
+
+	file, err := json.MarshalIndent(newCfg, "", "  ")
+	if err != nil {
+		return err
+	}
+
+	if err := os.WriteFile(configFilePath, file, 0644); err != nil {
+		return err
+	}
+	cfg = newCfg
+	return nil
+}
+
+func GetConfig() Config {
+	mu.RLock()
+	defer mu.RUnlock()
+	return cfg
+}
+
+
+----- C:\Users\wasab\OneDrive\デスクトップ\TKR\dat\handler.go -----
+package dat
+
+import (
+	"encoding/json"
+	"fmt"
+	"log"
+	"mime/multipart"
+	"net/http"
+	"strings"
+	"tkr/database"
+	"tkr/mastermanager"
+	"tkr/model"
+	"tkr/parsers"
+
+	"github.com/jmoiron/sqlx"
+)
+
+// UploadDatHandler handles DAT file uploads, checks/creates masters, and inserts transaction records.
+func UploadDatHandler(db *sqlx.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		log.Println("Received DAT upload request...")
+
+		err := r.ParseMultipartForm(32 << 20) // 32MB limit
+		if err != nil {
+			http.Error(w, "File upload error: "+err.Error(), http.StatusBadRequest)
+			return
+		}
+		defer r.MultipartForm.RemoveAll()
+
+		var processedFiles []string
+		// ▼▼▼ 全ファイルを通して成功した TransactionRecord を格納するスライス ▼▼▼
+		var successfullyInsertedTransactions []model.TransactionRecord
+		// ▲▲▲ 追加 ▲▲▲
+		var allResults []map[string]interface{} // Results for each processed file
+
+		for _, fileHeader := range r.MultipartForm.File["file"] {
+			log.Printf("Processing file: %s", fileHeader.Filename)
+			processedFiles = append(processedFiles, fileHeader.Filename)
+			fileResult := map[string]interface{}{"filename": fileHeader.Filename}
+			// ▼▼▼ このファイルで成功した TransactionRecord を一時的に格納 ▼▼▼
+			var currentFileTransactions []model.TransactionRecord
+			// ▲▲▲ 追加 ▲▲▲
+
+			file, openErr := fileHeader.Open()
+			if openErr != nil {
+				log.Printf("Failed to open uploaded file %s: %v", fileHeader.Filename, openErr)
+				fileResult["error"] = fmt.Sprintf("Failed to open file: %v", openErr)
+				allResults = append(allResults, fileResult)
+				continue
+			}
+
+			parsedRecords, parseErr := parsers.ParseDat(file)
+			file.Close()
+			if parseErr != nil {
+				log.Printf("Failed to parse DAT file %s: %v", fileHeader.Filename, parseErr)
+				fileResult["error"] = fmt.Sprintf("Failed to parse DAT file: %v", parseErr)
+				allResults = append(allResults, fileResult)
+				continue
+			}
+			log.Printf("Parsed %d records from %s", len(parsedRecords), fileHeader.Filename)
+			fileResult["records_parsed"] = len(parsedRecords)
+
+			tx, txErr := db.Beginx()
+			if txErr != nil {
+				log.Printf("Failed to start transaction for %s: %v", fileHeader.Filename, txErr)
+				fileResult["error"] = fmt.Sprintf("Failed to start transaction: %v", txErr)
+				allResults = append(allResults, fileResult)
+				continue
+			}
+
+			var insertedCount int = 0
+			var transactionErrors []string
+
+			for _, rec := range parsedRecords {
+				key := rec.JanCode
+				if key == "" || key == "0000000000000" {
+					key = fmt.Sprintf("9999999999999%s", rec.ProductName)
+				}
+				key = strings.TrimSpace(key)
+
+				master, mmErr := mastermanager.FindOrCreateMaster(tx, key, rec.ProductName)
+				if mmErr != nil {
+					errMsg := fmt.Sprintf("Master processing failed for key %s (DAT JAN: %s): %v", key, rec.JanCode, mmErr)
+					log.Println(errMsg)
+					transactionErrors = append(transactionErrors, errMsg)
+					tx.Rollback()
+					goto nextFileLoop
+				}
+
+				transaction := MapDatToTransaction(rec, master)
+
+				insertErr := database.InsertTransactionRecord(tx, transaction)
+				if insertErr != nil {
+					errMsg := fmt.Sprintf("Transaction insert failed: %v", insertErr)
+					log.Println(errMsg)
+					transactionErrors = append(transactionErrors, errMsg)
+					tx.Rollback()
+					goto nextFileLoop
+				}
+				// ▼▼▼ 成功した TransactionRecord を一時リストに追加 ▼▼▼
+				currentFileTransactions = append(currentFileTransactions, transaction)
+				// ▲▲▲ 追加 ▲▲▲
+				insertedCount++
+			} // End record loop
+
+			if commitErr := tx.Commit(); commitErr != nil {
+				log.Printf("Failed to commit transaction for %s: %v", fileHeader.Filename, commitErr)
+				errorMsg := fmt.Sprintf("Failed to commit transaction: %v", commitErr)
+				if len(transactionErrors) > 0 {
+					errorMsg += fmt.Sprintf(". Errors during processing: %s", strings.Join(transactionErrors, "; "))
+				}
+				fileResult["error"] = errorMsg
+			} else {
+				log.Printf("Successfully inserted %d transaction records from %s", insertedCount, fileHeader.Filename)
+				fileResult["success"] = true
+				fileResult["records_inserted"] = insertedCount
+				// ▼▼▼ 成功した場合、ファイルの結果を全体のリストに追加 ▼▼▼
+				successfullyInsertedTransactions = append(successfullyInsertedTransactions, currentFileTransactions...)
+				// ▲▲▲ 追加 ▲▲▲
+			}
+
+		nextFileLoop:
+			if len(transactionErrors) > 0 {
+				if _, ok := fileResult["error"]; !ok {
+					fileResult["error"] = fmt.Sprintf("Errors during transaction processing prevented commit: %s", strings.Join(transactionErrors, "; "))
+				}
+			}
+			allResults = append(allResults, fileResult)
+
+		} // End file loop
+
+		// --- Final response ---
+		w.Header().Set("Content-Type", "application/json")
+		// ▼▼▼ レスポンスに成功したトランザクションリストを含める ▼▼▼
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"message":      fmt.Sprintf("Processed %d DAT file(s). See results for details.", len(processedFiles)),
+			"results":      allResults,                       // 各ファイルごとの処理結果サマリー
+			"transactions": successfullyInsertedTransactions, // 成功した全トランザクションデータ
+		})
+		// ▲▲▲ 変更 ▲▲▲
+		log.Println("Finished DAT upload request.")
+	}
+}
+
+// MapDatToTransaction (変更なし)
+func MapDatToTransaction(dat model.DatRecord, master *model.ProductMaster) model.TransactionRecord {
+	// ... (前回のコードのまま) ...
+	var yjQuantity float64
+	if master.JanPackInnerQty > 0 {
+		yjQuantity = dat.DatQuantity * master.JanPackInnerQty
+	} else {
+		yjQuantity = dat.DatQuantity
+		if dat.DatQuantity > 0 {
+			log.Printf("WARN: JanPackInnerQty is 0 for ProductCode %s (%s). Using DatQuantity as YjQuantity.", master.ProductCode, master.ProductName) //
+		}
+	}
+
+	packageSpec := strings.TrimSpace(fmt.Sprintf("%s %v%s", master.PackageForm, master.YjPackUnitQty, master.YjUnitName))
+	if master.JanPackInnerQty > 0 && master.JanPackUnitQty > 0 {
+		janUnitName := "TODO" // 仮
+		packageSpec += fmt.Sprintf(" (%v%s×%v%s)", master.JanPackInnerQty, master.YjUnitName, master.JanPackUnitQty, janUnitName)
+	}
+
+	return model.TransactionRecord{
+		TransactionDate:     dat.Date,
+		ClientCode:          dat.ClientCode,
+		ReceiptNumber:       dat.ReceiptNumber,
+		LineNumber:          dat.LineNumber,
+		Flag:                dat.Flag,
+		JanCode:             master.ProductCode, //
+		YjCode:              master.YjCode,
+		ProductName:         master.ProductName,
+		KanaName:            master.KanaName,
+		UsageClassification: master.UsageClassification,
+		PackageForm:         master.PackageForm,
+		PackageSpec:         packageSpec,
+		MakerName:           master.MakerName,
+		DatQuantity:         dat.DatQuantity,
+		JanPackInnerQty:     master.JanPackInnerQty,
+		JanQuantity:         0,
+		JanPackUnitQty:      master.JanPackUnitQty,
+		JanUnitName:         "", //
+		JanUnitCode:         fmt.Sprintf("%d", master.JanUnitCode),
+		YjQuantity:          yjQuantity,
+		YjPackUnitQty:       master.YjPackUnitQty,
+		YjUnitName:          master.YjUnitName,
+		UnitPrice:           dat.UnitPrice, //
+		PurchasePrice:       master.PurchasePrice,
+		SupplierWholesale:   master.SupplierWholesale,
+		Subtotal:            dat.Subtotal,
+		TaxAmount:           0,
+		TaxRate:             0,
+		ExpiryDate:          dat.ExpiryDate, //
+		LotNumber:           dat.LotNumber,
+		FlagPoison:          master.FlagPoison,
+		FlagDeleterious:     master.FlagDeleterious,
+		FlagNarcotic:        master.FlagNarcotic,
+		FlagPsychotropic:    master.FlagPsychotropic,
+		FlagStimulant:       master.FlagStimulant,
+		FlagStimulantRaw:    master.FlagStimulantRaw,
+		ProcessFlagMA:       "",
+	}
+}
+
+// OpenFileHeader (変更なし)
+func OpenFileHeader(fh *multipart.FileHeader) (multipart.File, error) {
+	return fh.Open()
+}
+
+
+----- C:\Users\wasab\OneDrive\デスクトップ\TKR\database\clients.go -----
+// C:\Users\wasab\OneDrive\デスクトップ\TKR\database\clients.go (全体)
+package database
+
+import (
+	"database/sql"
+	"fmt"
+	"tkr/model"
+
+	"github.com/jmoiron/sqlx"
+)
+
+func CreateClientInTx(tx *sqlx.Tx, code, name string) error {
+	const q = `INSERT INTO client_master (client_code, client_name) VALUES (?, ?)`
+	_, err := tx.Exec(q, code, name)
+	if err != nil {
+		return fmt.Errorf("CreateClientInTx failed: %w", err)
+	}
+	return nil
+}
+
+func CheckClientExistsByName(tx *sqlx.Tx, name string) (bool, error) {
+	var exists int
+	const q = `SELECT 1 FROM client_master WHERE client_name = ? LIMIT 1`
+	err := tx.QueryRow(q, name).Scan(&exists)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return false, nil
+		}
+		return false, fmt.Errorf("CheckClientExistsByName failed: %w", err)
+	}
+	return true, nil
+}
+
+func GetAllClients(db *sqlx.DB) ([]model.Client, error) {
+	var clients []model.Client
+	err := db.Select(&clients, "SELECT client_code, client_name FROM client_master ORDER BY client_code")
+	if err != nil {
+		return nil, fmt.Errorf("failed to get all clients: %w", err)
+	}
+	return clients, nil
+}
+
+
+----- C:\Users\wasab\OneDrive\デスクトップ\TKR\database\jcshms_query.go -----
+package database
+
+import (
+	"database/sql"
+	"fmt"
+
+	// sqlx は Get で必要なので残す
+	"tkr/model"
+)
+
+// ▼▼▼ 重複していた DBTX インターフェース定義を削除 ▼▼▼
+/*
+type DBTX interface {
+	Get(dest interface{}, query string, args ...interface{}) error
+	Select(dest interface{}, query string, args ...interface{}) error
+}
+*/
+// ▲▲▲ 削除 ▲▲▲
+
+// GetJcshmsInfoByJan は JAN コードをキーに jcshms と jancode テーブルを結合して検索します。
+// 引数の dbtx DBTX は product_master_query.go で定義されたインターフェース型を使う
+func GetJcshmsInfoByJan(dbtx DBTX, janCode string) (*model.JcshmsInfo, error) {
+	var info model.JcshmsInfo
+	query := `
+		SELECT
+			j.JC000, j.JC009, j.JC018, j.JC019, j.JC022, j.JC024, j.JC030, j.JC013, j.JC037, j.JC039,
+			j.JC044, j.JC049, j.JC050, j.JC122, j.JC124,
+			j.JC061, j.JC062, j.JC063, j.JC064, j.JC065, j.JC066,
+			ja.JA006, ja.JA007, ja.JA008
+		FROM jcshms AS j
+		LEFT JOIN jancode AS ja ON j.JC000 = ja.JA001
+		WHERE j.JC000 = ?`
+
+	err := dbtx.Get(&info, query, janCode) // product_master_query.go で定義された DBTX.Get を使う
+
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("GetJcshmsInfoByJan failed for jan %s: %w", janCode, err)
+	}
+
+	return &info, nil
+}
+
+
+----- C:\Users\wasab\OneDrive\デスクトップ\TKR\database\product_master_query.go -----
+package database
+
+import (
+	"database/sql"
+	"fmt"
+	"strings"
+	"tkr/model"
+)
+
+// DBTX インターフェース (変更なし)
+type DBTX interface {
+	Get(dest interface{}, query string, args ...interface{}) error
+	Select(dest interface{}, query string, args ...interface{}) error
+	NamedExec(query string, arg interface{}) (sql.Result, error)
+}
+
+// GetFilteredProductMasters は指定されたフィルター条件で product_master を検索します。
+func GetFilteredProductMasters(dbtx DBTX, usageClass, productName, kanaName, genericName, shelfNumber string) ([]model.ProductMaster, error) {
+
+	var masters []model.ProductMaster
+
+	query := `SELECT * FROM product_master`
+	mustConditions := []string{}
+	args := []interface{}{}
+
+	// 内外注区分 (必須条件として扱う)
+	if usageClass != "" {
+		mustConditions = append(mustConditions, "usage_classification = ?")
+		args = append(args, usageClass)
+	} else {
+		return []model.ProductMaster{}, nil
+	}
+
+	// 製品名は 0文字より大きい場合、条件に追加 (部分一致)
+	if len(productName) > 0 {
+		mustConditions = append(mustConditions, "product_name LIKE ?")
+		args = append(args, "%"+productName+"%")
+	}
+
+	// カナ名は 0文字より大きい場合、条件に追加 (前方一致)
+	if len(kanaName) > 0 {
+		mustConditions = append(mustConditions, "kana_name LIKE ?")
+		args = append(args, kanaName+"%") // 前方一致
+	}
+
+	// 一般名は 0文字より大きい場合、条件に追加 (部分一致)
+	if len(genericName) > 0 {
+		mustConditions = append(mustConditions, "generic_name LIKE ?")
+		args = append(args, "%"+genericName+"%")
+	}
+
+	// 棚番は 0文字より大きい場合、条件に追加 (完全一致)
+	if len(shelfNumber) > 0 {
+		mustConditions = append(mustConditions, "shelf_number = ?") // 完全一致
+		args = append(args, shelfNumber)
+	}
+
+	// WHERE 句の組み立てロジック
+	// ▼▼▼【修正】条件の数をチェック（usageClassのみは除く）するロジックを削除 ▼▼▼
+	/*
+		if len(mustConditions) <= 1 {
+			// usageClass 以外の検索条件が指定されなかった場合
+			return []model.ProductMaster{}, nil
+		}
+	*/
+	// ▲▲▲【修正ここまで】▲▲▲
+
+	// 最終 WHERE 句の結合
+	if len(mustConditions) > 0 {
+		query += " WHERE " + strings.Join(mustConditions, " AND ")
+	} else {
+		// (ここには到達しないはずだが念のため)
+		return []model.ProductMaster{}, fmt.Errorf("usage class filter is required")
+	}
+
+	query += " ORDER BY kana_name" // カナ名順
+
+	err := dbtx.Select(&masters, query, args...)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return []model.ProductMaster{}, nil // 見つからなくてもエラーではない
+		}
+		return nil, fmt.Errorf("failed to select filtered product masters: %w", err)
+	}
+
+	if masters == nil {
+		masters = []model.ProductMaster{}
+	}
+
+	return masters, nil
+}
+
+// GetProductMasterByCode は product_code をキーにレコードを取得します。(変更なし)
+func GetProductMasterByCode(dbtx DBTX, code string) (*model.ProductMaster, error) {
+	var master model.ProductMaster
+	query := `SELECT * FROM product_master WHERE product_code = ?`
+	err := dbtx.Get(&master, query, code)
+	if err != nil {
+		// sql.ErrNoRows も含め、エラーとして返す
+		return nil, fmt.Errorf("failed to get product master by code %s: %w", code, err)
+	}
+	return &master, nil
+}
+
+
+----- C:\Users\wasab\OneDrive\デスクトップ\TKR\database\sequence.go -----
+// C:\Users\wasab\OneDrive\デスクトップ\TKR\database\sequence.go (全体)
+package database
+
+import (
+	"database/sql"
+	"fmt"
+	"strconv"
+	"strings"
+
+	"github.com/jmoiron/sqlx"
+)
+
+func NextSequenceInTx(tx *sqlx.Tx, name, prefix string, padding int) (string, error) {
+	var lastNo int
+	err := tx.Get(&lastNo, "SELECT last_no FROM code_sequences WHERE name = ?", name)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return "", fmt.Errorf("sequence '%s' not found", name)
+		}
+		return "", fmt.Errorf("failed to get sequence '%s': %w", name, err)
+	}
+
+	newNo := lastNo + 1
+	_, err = tx.Exec("UPDATE code_sequences SET last_no = ? WHERE name = ?", newNo, name)
+	if err != nil {
+		return "", fmt.Errorf("failed to update sequence '%s': %w", name, err)
+	}
+
+	format := fmt.Sprintf("%s%%0%dd", prefix, padding)
+	return fmt.Sprintf(format, newNo), nil
+}
+
+func InitializeSequenceFromMaxClientCode(tx *sqlx.Tx) error {
+	var maxCode sql.NullString
+	err := tx.Get(&maxCode, "SELECT client_code FROM client_master ORDER BY client_code DESC LIMIT 1")
+	if err != nil {
+		if err == sql.ErrNoRows {
+			_, err = tx.Exec("UPDATE code_sequences SET last_no = 0 WHERE name = 'CL'")
+			return err
+		}
+		return err
+	}
+	if maxCode.Valid && strings.HasPrefix(maxCode.String, "CL") {
+		numPart := strings.TrimPrefix(maxCode.String, "CL")
+		maxNum, _ := strconv.Atoi(numPart)
+		_, err = tx.Exec("UPDATE code_sequences SET last_no = ? WHERE name = 'CL'", maxNum)
+		return err
+	}
+	return nil
+}
+
+func InitializeSequenceFromMaxYjCode(tx *sqlx.Tx) error {
+	var maxYj sql.NullString
+	err := tx.Get(&maxYj, "SELECT yj_code FROM product_master WHERE yj_code LIKE 'MA2Y%' ORDER BY yj_code DESC LIMIT 1")
+	if err != nil {
+		if err == sql.ErrNoRows {
+			_, err = tx.Exec("UPDATE code_sequences SET last_no = 0 WHERE name = 'MA2Y'")
+			return err
+		}
+		return err
+	}
+	if maxYj.Valid && strings.HasPrefix(maxYj.String, "MA2Y") {
+		numPart := strings.TrimPrefix(maxYj.String, "MA2Y")
+		maxNum, _ := strconv.Atoi(numPart)
+		_, err = tx.Exec("UPDATE code_sequences SET last_no = ? WHERE name = 'MA2Y'", maxNum)
+		return err
+	}
+	return nil
+}
+
+
+----- C:\Users\wasab\OneDrive\デスクトップ\TKR\database\transaction_records_query.go -----
+// C:\Users\wasab\OneDrive\デスクトップ\TKR\database\transaction_records_query.go (全体)
+package database
+
+import (
+	"fmt"
+	"tkr/model"
+
+	"github.com/jmoiron/sqlx"
+)
+
+const insertTransactionQuery = `
+INSERT INTO transaction_records (
+    transaction_date, client_code, receipt_number, line_number, flag,
+    jan_code, yj_code, product_name, kana_name, usage_classification, package_form, package_spec, maker_name,
+    dat_quantity, jan_pack_inner_qty, jan_quantity, jan_pack_unit_qty, jan_unit_name, jan_unit_code,
+    yj_quantity, yj_pack_unit_qty, yj_unit_name, unit_price, purchase_price, supplier_wholesale,
+    subtotal, tax_amount, tax_rate, expiry_date, lot_number, flag_poison,
+    flag_deleterious, flag_narcotic, flag_psychotropic, flag_stimulant,
+    flag_stimulant_raw, process_flag_ma
+) VALUES (
+    :transaction_date, :client_code, :receipt_number, :line_number, :flag,
+    :jan_code, :yj_code, :product_name, :kana_name, :usage_classification, :package_form, :package_spec, :maker_name,
+    :dat_quantity, :jan_pack_inner_qty, :jan_quantity, :jan_pack_unit_qty, :jan_unit_name, :jan_unit_code,
+    :yj_quantity, :yj_pack_unit_qty, :yj_unit_name, :unit_price, :purchase_price, :supplier_wholesale,
+    :subtotal, :tax_amount, :tax_rate, :expiry_date, :lot_number, :flag_poison,
+    :flag_deleterious, :flag_narcotic, :flag_psychotropic, :flag_stimulant,
+    :flag_stimulant_raw, :process_flag_ma
+)`
+
+func InsertTransactionRecord(tx *sqlx.Tx, record model.TransactionRecord) error {
+
+	_, err := tx.NamedExec(insertTransactionQuery, record)
+	if err != nil {
+		return fmt.Errorf("failed to insert transaction record: %w", err)
+	}
+	return nil
+}
+
+func DeleteUsageTransactionsInDateRange(tx *sqlx.Tx, minDate, maxDate string) error {
+	const q = `DELETE FROM transaction_records WHERE flag = 3 AND transaction_date BETWEEN ? AND ?`
+	_, err := tx.Exec(q, minDate, maxDate)
+	if err != nil {
+		return fmt.Errorf("failed to delete usage transactions: %w", err)
+	}
+	return nil
+}
+
+func GetTransactionsByProductCodes(db *sqlx.DB, productCodes []string) (map[string][]model.TransactionRecord, error) {
+	transactionsMap := make(map[string][]model.TransactionRecord)
+	if len(productCodes) == 0 {
+		return transactionsMap, nil
+	}
+
+	const batchSize = 500
+	for i := 0; i < len(productCodes); i += batchSize {
+		end := i + batchSize
+		if end > len(productCodes) {
+			end = len(productCodes)
+		}
+		batch := productCodes[i:end]
+
+		if len(batch) > 0 {
+			query, args, err := sqlx.In(`
+				SELECT * FROM transaction_records 
+				WHERE jan_code IN (?) 
+				ORDER BY transaction_date, id`, batch)
+			if err != nil {
+				return nil, fmt.Errorf("failed to create IN query: %w", err)
+			}
+			query = db.Rebind(query)
+
+			var transactions []model.TransactionRecord
+			err = db.Select(&transactions, query, args...)
+			if err != nil {
+				return nil, fmt.Errorf("failed to select transactions: %w", err)
+			}
+
+			for _, t := range transactions {
+				transactionsMap[t.JanCode] = append(transactionsMap[t.JanCode], t)
+			}
+		}
+	}
+	return transactionsMap, nil
+}
+
+
+----- C:\Users\wasab\OneDrive\デスクトップ\TKR\database\transaction.go -----
+package database
+
+// model パッケージをインポート
+
+// TODO: 必要に応じて DeleteTransactionByReceiptNumber などの関数もここに追加していきます。
+
+
+----- C:\Users\wasab\OneDrive\デスクトップ\TKR\database\wholesalers.go -----
+// C:\Users\wasab\OneDrive\デスクトップ\TKR\database\wholesalers.go (全体)
+package database
+
+import (
+	"fmt"
+	"tkr/model"
+
+	"github.com/jmoiron/sqlx"
+)
+
+func GetAllWholesalers(db *sqlx.DB) ([]model.Wholesaler, error) {
+	var wholesalers []model.Wholesaler
+	err := db.Select(&wholesalers, "SELECT wholesaler_code, wholesaler_name FROM wholesalers ORDER BY wholesaler_code")
+	if err != nil {
+		return nil, fmt.Errorf("failed to get all wholesalers: %w", err)
+	}
+	return wholesalers, nil
+}
+
+func CreateWholesaler(db *sqlx.DB, code, name string) error {
+	const q = `INSERT INTO wholesalers (wholesaler_code, wholesaler_name) VALUES (?, ?)`
+	_, err := db.Exec(q, code, name)
+	if err != nil {
+		return fmt.Errorf("CreateWholesaler failed: %w", err)
+	}
+	return nil
+}
+
+func DeleteWholesaler(db *sqlx.DB, code string) error {
+	const q = `DELETE FROM wholesalers WHERE wholesaler_code = ?`
+	_, err := db.Exec(q, code)
+	if err != nil {
+		return fmt.Errorf("failed to delete wholesaler with code %s: %w", code, err)
+	}
+	return nil
+}
+
+
+----- C:\Users\wasab\OneDrive\デスクトップ\TKR\loader\loader.go -----
+package loader
+
+import (
+	"encoding/csv"
+	"fmt"
+	"io"
+	"log"
+	"os"
+	"strconv"
+	"strings"
+
+	"github.com/jmoiron/sqlx" // sqlx をインポート
+	"golang.org/x/text/encoding/japanese"
+	"golang.org/x/text/transform"
+)
+
+// 各テーブルのカラムのデータ型情報 (CSVからの変換用)
+// キーは CSV の列インデックス (0始まり)
+var tableSchemas = map[string]map[int]string{
+	"jcshms": { // JCSHMS.CSV
+		44:  "real",    // JC044 (列インデックス 44)
+		49:  "real",    // JC049
+		50:  "real",    // JC050
+		61:  "integer", // JC061
+		62:  "integer", // JC062
+		63:  "integer", // JC063
+		64:  "integer", // JC064
+		65:  "integer", // JC065
+		66:  "integer", // JC066
+		124: "real",    // JC124
+	},
+	"jancode": { // JANCODE.CSV
+		6: "real", // JA006 (列インデックス 6)
+		8: "real", // JA008
+	},
+}
+
+// InitDatabase はデータベーススキーマを適用し、マスターCSVをロードします。
+func InitDatabase(db *sqlx.DB) error {
+	log.Println("Applying database schema...")
+	if err := applySchema(db); err != nil {
+		return fmt.Errorf("failed to apply schema.sql: %w", err)
+	}
+	log.Println("Schema applied successfully.")
+
+	// CSVファイルのパス (SOUフォルダは TKR フォルダ直下に配置する想定)
+	jcshmsPath := "SOU/JCSHMS.CSV"
+	jancodePath := "SOU/JANCODE.CSV"
+	taniPath := "SOU/TANI.CSV" // TANI.CSV も追加
+
+	// ファイル存在チェック (任意ですが、エラーメッセージが分かりやすくなります)
+	if _, err := os.Stat(jcshmsPath); os.IsNotExist(err) {
+		log.Printf("WARN: %s not found, skipping.", jcshmsPath)
+	} else {
+		log.Printf("Loading %s...", jcshmsPath)
+		// JCSHMS は 125 列, ヘッダーなし
+		if err := LoadCSV(db, jcshmsPath, "jcshms", 125, false); err != nil {
+			return fmt.Errorf("failed to load %s: %w", jcshmsPath, err)
+		}
+		log.Printf("Loaded %s successfully.", jcshmsPath)
+	}
+
+	if _, err := os.Stat(jancodePath); os.IsNotExist(err) {
+		log.Printf("WARN: %s not found, skipping.", jancodePath)
+	} else {
+		log.Printf("Loading %s...", jancodePath)
+		// JANCODE は 30 列, ヘッダーあり(スキップ)
+		if err := LoadCSV(db, jancodePath, "jancode", 30, true); err != nil {
+			return fmt.Errorf("failed to load %s: %w", jancodePath, err)
+		}
+		log.Printf("Loaded %s successfully.", jancodePath)
+	}
+
+	// TANI.CSV のロード処理も追加（必要に応じて）
+	if _, err := os.Stat(taniPath); os.IsNotExist(err) {
+		log.Printf("WARN: %s not found, skipping TANI units loading.", taniPath)
+	} else {
+		// TANI.CSV は units パッケージ側でロードするかもしれません。
+		// ここでロードする場合は、適切なテーブル定義と LoadCSV 呼び出しを追加します。
+		log.Printf("Note: TANI.CSV exists but loading logic is not implemented here yet.")
+	}
+
+	return nil
+}
+
+// applySchema は schema.sql ファイルを読み込んで実行します。
+func applySchema(db *sqlx.DB) error {
+	schemaBytes, err := os.ReadFile("schema.sql")
+	if err != nil {
+		return fmt.Errorf("could not read schema.sql: %w", err)
+	}
+	// sqlx.DB でも Exec をそのまま使えます
+	_, err = db.Exec(string(schemaBytes))
+	if err != nil {
+		return fmt.Errorf("failed to execute schema: %w", err)
+	}
+	return nil
+}
+
+// LoadCSV は指定されたCSVファイルを読み込み、指定テーブルにデータを挿入（または置換）します。
+// ▼▼▼【ここを修正】 名前付き返り値 `(err error)` を使用 ▼▼▼
+func LoadCSV(db *sqlx.DB, filepath, tablename string, expectedColumns int, skipHeader bool) (err error) {
+	f, err := os.Open(filepath)
+	if err != nil {
+		return fmt.Errorf("could not open file %s: %w", filepath, err)
+	}
+	defer f.Close()
+
+	// Shift-JISデコーダーを設定
+	r := csv.NewReader(transform.NewReader(f, japanese.ShiftJIS.NewDecoder()))
+	r.LazyQuotes = true    // ダブルクォートが不完全でも許容
+	r.FieldsPerRecord = -1 // 可変長カラムを許容 (後でチェック)
+
+	// ヘッダー行をスキップする場合
+	if skipHeader {
+		if _, err := r.Read(); err != nil && err != io.EOF {
+			return fmt.Errorf("failed to skip header in %s: %w", filepath, err)
+		}
+	}
+
+	// sqlx.Tx を使ってトランザクションを開始
+	tx, err := db.Beginx()
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+
+	// ▼▼▼【ここを修正】 defer ロジックを linter に優しい形に変更 ▼▼▼
+	defer func() {
+		if p := recover(); p != nil {
+			// パニックが発生した場合
+			tx.Rollback()
+			panic(p) // パニックを再スロー
+		} else if err != nil {
+			// 関数がエラーを返そうとしている場合 (err が nil でない)
+			log.Printf("Rolling back transaction for %s due to error: %v", tablename, err)
+			tx.Rollback() // ロールバック
+		} else {
+			// 関数がエラーなしで終了しようとしている場合 (err が nil)
+			err = tx.Commit() // コミットし、結果を名前付き返り値 err に代入
+			if err != nil {
+				log.Printf("Error committing transaction for %s: %v", tablename, err)
+			}
+		}
+	}()
+	// ▲▲▲【修正ここまで】▲▲▲
+
+	// INSERT OR REPLACE 文を準備
+	placeholders := strings.Repeat("?,", expectedColumns-1) + "?"
+	query := fmt.Sprintf("INSERT OR REPLACE INTO %s VALUES (%s)", tablename, placeholders)
+	// sqlx.Tx でも Prepare をそのまま使えます
+	stmt, err := tx.Prepare(query)
+	if err != nil {
+		return fmt.Errorf("failed to prepare statement for %s: %w", tablename, err) // err を返す
+	}
+	defer stmt.Close()
+
+	// テーブルスキーマ情報を取得 (型変換用)
+	schema := tableSchemas[tablename]
+	rowCount := 0
+
+	for {
+		row, readErr := r.Read()
+		if readErr == io.EOF {
+			break
+		}
+		if readErr != nil {
+			log.Printf("WARN: Error reading row in %s (skipping): %v", filepath, readErr)
+			continue // エラー行はスキップして処理を続行
+		}
+
+		// カラム数が期待値と異なる場合はスキップ
+		if len(row) < expectedColumns {
+			// log.Printf("WARN: Skipping row in %s due to insufficient columns (expected %d, got %d): %v", filepath, expectedColumns, len(row), row)
+			continue
+		}
+		// カラム数が多すぎる場合は、期待される数に切り詰める
+		if len(row) > expectedColumns {
+			row = row[:expectedColumns]
+		}
+
+		// SQLステートメントに渡す引数スライスを作成
+		args := make([]interface{}, expectedColumns)
+		for i := 0; i < expectedColumns; i++ {
+			val := strings.TrimSpace(row[i]) // 前後の空白を除去
+
+			// スキーマ情報に基づいて型変換を試みる
+			if colType, ok := schema[i]; ok {
+				switch colType {
+				case "real":
+					num, parseErr := strconv.ParseFloat(val, 64)
+					if parseErr != nil {
+						args[i] = 0.0 // パース失敗時は 0.0
+					} else {
+						args[i] = num
+					}
+				case "integer":
+					num, parseErr := strconv.ParseInt(val, 10, 64)
+					if parseErr != nil {
+						args[i] = 0 // パース失敗時は 0
+					} else {
+						args[i] = num
+					}
+				default: // "text" or unknown type
+					args[i] = val
+				}
+			} else {
+				// スキーマ情報がない場合は文字列として扱う
+				args[i] = val
+			}
+		}
+
+		// 準備されたステートメントを実行
+		if _, execErr := stmt.Exec(args...); execErr != nil {
+			log.Printf("WARN: Failed to insert row into %s (skipping): %v | Data: %v", tablename, execErr, args)
+			err = fmt.Errorf("failed to execute statement for %s: %w", tablename, execErr) // err に代入
+			return err                                                                     // エラーを返す (defer が Rollback を実行する)
+		}
+		rowCount++
+	}
+
+	log.Printf("Inserted or replaced %d rows into %s", rowCount, tablename)
+
+	// 成功時は err = nil のまま defer が実行され、Commit される
+	return nil
+}
+
+
+----- C:\Users\wasab\OneDrive\デスクトップ\TKR\masteredit\handler.go -----
+// C:\Users\wasab\OneDrive\デスクトップ\TKR\masteredit\handler.go (全体)
+package masteredit
+
+import (
+	"encoding/json"
+	"log"
+	"net/http"
+	"tkr/database"
+	"tkr/mastermanager"
+	"tkr/model"
+
+	"github.com/jmoiron/sqlx"
+)
+
+func ListMastersHandler(db *sqlx.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+
+		queryParams := r.URL.Query()
+		usageClass := queryParams.Get("usage_class")
+		productName := queryParams.Get("product_name")
+		kanaName := queryParams.Get("kana_name")
+		genericName := queryParams.Get("generic_name")
+
+		shelfNumber := queryParams.Get("shelf_number")
+
+		masters, err := database.GetFilteredProductMasters(db, usageClass, productName, kanaName, genericName, shelfNumber)
+
+		if err != nil {
+			log.Printf("Error fetching filtered product masters: %v", err)
+			http.Error(w, "Failed to retrieve product masters", http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(masters); err != nil {
+			log.Printf("Error encoding product masters to JSON: %v", err)
+		}
+	}
+}
+
+func UpdateMasterHandler(db *sqlx.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		var input model.ProductMasterInput
+
+		if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+			log.Printf("UpdateMasterHandler: Invalid request body: %v", err)
+			http.Error(w, "Invalid request body", http.StatusBadRequest)
+			return
+		}
+
+		if input.ProductCode == "" {
+			log.Println("UpdateMasterHandler: Product Code (JAN) cannot be empty.")
+			http.Error(w, "Product Code (JAN) cannot be empty.", http.StatusBadRequest)
+			return
+		}
+
+		tx, err := db.Beginx()
+		if err != nil {
+			log.Printf("UpdateMasterHandler: Failed to start transaction: %v", err)
+			http.Error(w, "Failed to start transaction", http.StatusInternalServerError)
+			return
+		}
+		defer tx.Rollback()
+
+		if _, err := mastermanager.UpsertProductMasterSqlx(tx, input); err != nil {
+			log.Printf("UpdateMasterHandler: Failed to upsert product master (JAN: %s): %v", input.ProductCode, err)
+			http.Error(w, "Failed to upsert product master", http.StatusInternalServerError)
+			return
+		}
+
+		if err := tx.Commit(); err != nil {
+			log.Printf("UpdateMasterHandler: Failed to commit transaction (JAN: %s): %v", input.ProductCode, err)
+			http.Error(w, "Failed to commit transaction", http.StatusInternalServerError)
+			return
+		}
+
+		log.Printf("UpdateMasterHandler: Successfully saved master (JAN: %s)", input.ProductCode)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"message": "Saved successfully."})
+	}
+}
+
+
+----- C:\Users\wasab\OneDrive\デスクトップ\TKR\mastermanager\manager.go -----
+// C:\Users\wasab\OneDrive\デスクトップ\TKR\mastermanager/manager.go
+package mastermanager
+
+import (
+	"database/sql"
+	"fmt"
+	"log"
+	"regexp" // ★ Import regexp
+	"strconv"
+	"strings"
+	"tkr/database"
+	"tkr/model"
+
+	"github.com/jmoiron/sqlx"
+)
+
+// ★ Add regex for YJ Code check
+var yjCodeRegex = regexp.MustCompile(`^[0-9]{12}$`)
+
+// FindOrCreateMaster は、指定されたキー(JANコードまたはYJコード)に対応する製品マスターを探し、
+// なければ JCSHMS または仮マスターとして作成する共通関数です。
+// ※ productName は仮マスター作成時のみ使用されます。
+// ▼▼▼【ここから修正】キーの判定と検索ロジックを変更 ▼▼▼
+func FindOrCreateMaster(tx *sqlx.Tx, productCodeOrKey string, productName string) (*model.ProductMaster, error) {
+
+	var existingMaster model.ProductMaster
+	var err error
+	isYJKey := yjCodeRegex.MatchString(productCodeOrKey) // YJコード形式かチェック
+
+	// 1. まずDBで product_master を検索
+	if isYJKey {
+		// YJコード形式なら yj_code カラムで検索
+		query := "SELECT * FROM product_master WHERE yj_code = ?"
+		err = tx.Get(&existingMaster, query, productCodeOrKey)
+		log.Printf("Searching master by YJ Code: %s", productCodeOrKey)
+	} else {
+		// YJコード形式でなければ product_code カラム (JAN or 合成キー) で検索
+		query := "SELECT * FROM product_master WHERE product_code = ?"
+		err = tx.Get(&existingMaster, query, productCodeOrKey)
+		log.Printf("Searching master by Product Code (JAN/Synth): %s", productCodeOrKey)
+	}
+
+	// 見つかった場合
+	if err == nil {
+		log.Printf("Found existing master in DB (Code: %s, YJ: %s)", existingMaster.ProductCode, existingMaster.YjCode)
+		return &existingMaster, nil
+	}
+	// DBエラー (見つからない以外)
+	if err != sql.ErrNoRows {
+		return nil, fmt.Errorf("failed to query product_master for key %s: %w", productCodeOrKey, err)
+	}
+
+	// --- DB には見つからなかった場合の処理 ---
+	log.Printf("Product master not found in DB for key: %s. Attempting to create...", productCodeOrKey)
+
+	// 有効なJANコードかチェック (13桁数字で "999..." で始まらない)
+	isValidJan := len(productCodeOrKey) == 13 && strings.IndexFunc(productCodeOrKey, func(r rune) bool { return r < '0' || r > '9' }) == -1 && !strings.HasPrefix(productCodeOrKey, "999")
+
+	// 2. JCSHMS から作成を試みる (有効なJANの場合のみ)
+	// (注: isYJKey が true の場合はここは実行されない)
+	if isValidJan {
+		jcshmsInfo, jcshmsErr := database.GetJcshmsInfoByJan(tx, productCodeOrKey)
+		if jcshmsErr != nil && jcshmsErr != sql.ErrNoRows {
+			return nil, fmt.Errorf("failed to query jcshms/jancode for JAN %s: %w", productCodeOrKey, jcshmsErr)
+		}
+
+		if jcshmsInfo != nil {
+			log.Printf("Found info in JCSHMS for JAN: %s. Creating master...", productCodeOrKey)
+			input := JcshmsToProductMasterInput(jcshmsInfo)
+
+			// JCSHMS由来でもYJコードがない場合がある (JCSHMSデータの問題)
+			if input.YjCode == "" {
+				newYj, seqErr := database.NextSequenceInTx(tx, "MA2Y", "MA2Y", 8)
+				if seqErr != nil {
+					return nil, fmt.Errorf("failed to get next MA2Y sequence for JCSHMS master (JAN: %s): %w", productCodeOrKey, seqErr)
+				}
+				input.YjCode = newYj
+				log.Printf("Generated new YJ code %s for JAN %s from JCSHMS (original was empty)", newYj, productCodeOrKey)
+			}
+
+			newMaster, upsertErr := UpsertProductMasterSqlx(tx, input)
+			if upsertErr != nil {
+				return nil, fmt.Errorf("failed to upsert master from JCSHMS for JAN %s: %w", productCodeOrKey, upsertErr)
+			}
+			log.Printf("Successfully created master from JCSHMS for JAN: %s (YJ: %s)", productCodeOrKey, newMaster.YjCode)
+			return newMaster, nil
+		}
+	}
+
+	// 3. JCSHMS にもない場合、またはYJコードだった場合は仮マスターを作成
+	log.Printf("Info not found in JCSHMS for key: %s (or it was a YJ key). Creating provisional master...", productCodeOrKey)
+
+	// 新しいYJコードを採番 (既存マスター検索で見つからなかったので重複しないはず)
+	newYj, seqErr := database.NextSequenceInTx(tx, "MA2Y", "MA2Y", 8)
+	if seqErr != nil {
+		return nil, fmt.Errorf("failed to get next MA2Y sequence for provisional master (Key: %s): %w", productCodeOrKey, seqErr)
+	}
+
+	// 仮マスターの ProductCode を決定
+	provisionalProductCode := productCodeOrKey // デフォルトは渡されたキー
+	if isYJKey {
+		// もしキーがYJコードだったら、ProductCode は合成キーにする (JAN不明のため)
+		provisionalProductCode = fmt.Sprintf("9999999999999%s", newYj) // YJベースの合成キー
+		log.Printf("Original key was YJ (%s), using synthetic Product Code: %s", productCodeOrKey, provisionalProductCode)
+	} else if !isValidJan && len(productCodeOrKey) > 0 {
+		// JAN形式でもなくYJ形式でもないキーの場合も合成キー
+		provisionalProductCode = fmt.Sprintf("9999999999999%s", newYj) // YJベースの合成キー
+		log.Printf("Original key (%s) is neither JAN nor YJ, using synthetic Product Code: %s", productCodeOrKey, provisionalProductCode)
+	}
+	// else: isValidJan だけど JCSHMS になかった場合は、その JAN を ProductCode として使う
+
+	provisionalInput := model.ProductMasterInput{
+		ProductCode:         provisionalProductCode, // JAN または 合成キー
+		YjCode:              newYj,                  // 採番した YJ
+		ProductName:         productName,
+		Origin:              "PROVISIONAL",
+		UsageClassification: "他",
+	}
+	// もし元のキーが YJ だったら、それを UserNotes にでも入れておく？ (オプション)
+	// if isYJKey { provisionalInput.UserNotes = fmt.Sprintf("Original Key (YJ): %s", productCodeOrKey) }
+
+	newMaster, upsertErr := UpsertProductMasterSqlx(tx, provisionalInput)
+	if upsertErr != nil {
+		return nil, fmt.Errorf("failed to upsert provisional master (OrigKey: %s): %w", productCodeOrKey, upsertErr)
+	}
+	log.Printf("Successfully created provisional master (OrigKey: %s, ProductCode: %s, YJ: %s)", productCodeOrKey, newMaster.ProductCode, newMaster.YjCode)
+	return newMaster, nil
+}
+
+// ▲▲▲【修正ここまで】▲▲▲
+
+// JcshmsToProductMasterInput (変更なし)
+func JcshmsToProductMasterInput(jcshms *model.JcshmsInfo) model.ProductMasterInput {
+	var unitNhiPrice float64
+	if jcshms.NhiPriceFactor > 0 {
+		unitNhiPrice = jcshms.NhiPrice * jcshms.NhiPriceFactor
+	} else if jcshms.YjPackUnitQty > 0 {
+		unitNhiPrice = jcshms.PackageNhiPrice / jcshms.YjPackUnitQty
+	} else {
+		unitNhiPrice = jcshms.NhiPrice
+	}
+	janUnitCodeInt, _ := strconv.Atoi(jcshms.JanUnitCode.String)
+
+	return model.ProductMasterInput{
+		ProductCode: jcshms.ProductCode,
+		YjCode:      jcshms.YjCode,
+		Gs1Code:     jcshms.Gs1Code,
+		ProductName: strings.TrimSpace(jcshms.ProductName),
+		KanaName:    strings.TrimSpace(jcshms.KanaName),
+
+		KanaNameShort: strings.TrimSpace(jcshms.KanaNameShort),
+		GenericName:   strings.TrimSpace(jcshms.GenericName),
+
+		MakerName:           strings.TrimSpace(jcshms.MakerName),
+		Specification:       "",
+		UsageClassification: strings.TrimSpace(jcshms.UsageClassification),
+		PackageForm:         strings.TrimSpace(jcshms.PackageForm),
+		YjUnitName:          strings.TrimSpace(jcshms.YjUnitName),
+		YjPackUnitQty:       jcshms.YjPackUnitQty,
+		JanPackInnerQty:     jcshms.JanPackInnerQty.Float64,
+		JanUnitCode:         janUnitCodeInt,
+		JanPackUnitQty:      jcshms.JanPackUnitQty.Float64,
+		Origin:              "JCSHMS",
+		NhiPrice:            unitNhiPrice,
+		PurchasePrice:       0,
+		FlagPoison:          jcshms.FlagPoison,
+		FlagDeleterious:     jcshms.FlagDeleterious,
+		FlagNarcotic:        jcshms.FlagNarcotic,
+		FlagPsychotropic:    jcshms.FlagPsychotropic,
+		FlagStimulant:       jcshms.FlagStimulant,
+		FlagStimulantRaw:    jcshms.FlagStimulantRaw,
+		IsOrderStopped:      0,
+		SupplierWholesale:   "",
+		GroupCode:           "",
+		ShelfNumber:         "",
+		Category:            "",
+		UserNotes:           "",
+	}
+}
+
+// UpsertProductMasterSqlx (変更なし)
+func UpsertProductMasterSqlx(tx *sqlx.Tx, input model.ProductMasterInput) (*model.ProductMaster, error) {
+
+	query := `
+		INSERT INTO product_master (
+			product_code, yj_code, gs1_code, product_name, kana_name, kana_name_short, generic_name,
+			maker_name, specification, usage_classification, package_form, yj_unit_name, yj_pack_unit_qty,
+			jan_pack_inner_qty, jan_unit_code, jan_pack_unit_qty, origin,
+			nhi_price, purchase_price,
+			flag_poison, flag_deleterious, flag_narcotic, flag_psychotropic, flag_stimulant, flag_stimulant_raw,
+			is_order_stopped, supplier_wholesale,
+			group_code, shelf_number, category, user_notes
+		) VALUES (
+			:product_code, :yj_code, :gs1_code, :product_name, :kana_name, :kana_name_short, :generic_name,
+			:maker_name, :specification, :usage_classification, :package_form, :yj_unit_name, :yj_pack_unit_qty,
+			:jan_pack_inner_qty, :jan_unit_code, :jan_pack_unit_qty, :origin,
+			:nhi_price, :purchase_price,
+			:flag_poison, :flag_deleterious, :flag_narcotic, :flag_psychotropic, :flag_stimulant, :flag_stimulant_raw,
+			:is_order_stopped, :supplier_wholesale,
+			:group_code, :shelf_number, :category, :user_notes
+		)
+		ON CONFLICT(product_code) DO UPDATE SET
+			yj_code=excluded.yj_code, gs1_code=excluded.gs1_code, product_name=excluded.product_name, kana_name=excluded.kana_name,
+			kana_name_short=excluded.kana_name_short, generic_name=excluded.generic_name,
+			maker_name=excluded.maker_name, specification=excluded.specification, usage_classification=excluded.usage_classification,
+			package_form=excluded.package_form, yj_unit_name=excluded.yj_unit_name, yj_pack_unit_qty=excluded.yj_pack_unit_qty,
+			jan_pack_inner_qty=excluded.jan_pack_inner_qty, jan_unit_code=excluded.jan_unit_code, jan_pack_unit_qty=excluded.jan_pack_unit_qty,
+			origin=excluded.origin, nhi_price=excluded.nhi_price, purchase_price=excluded.purchase_price,
+			flag_poison=excluded.flag_poison, flag_deleterious=excluded.flag_deleterious, flag_narcotic=excluded.flag_narcotic,
+			flag_psychotropic=excluded.flag_psychotropic, flag_stimulant=excluded.flag_stimulant, flag_stimulant_raw=excluded.flag_stimulant_raw,
+			is_order_stopped=excluded.is_order_stopped, supplier_wholesale=excluded.supplier_wholesale,
+			group_code=excluded.group_code, shelf_number=excluded.shelf_number, category=excluded.category, user_notes=excluded.user_notes
+	`
+
+	_, err := tx.NamedExec(query, input)
+	if err != nil {
+		return nil, fmt.Errorf("NamedExec for upsert failed: %w", err)
+	}
+
+	var insertedMaster model.ProductMaster
+
+	err = tx.Get(&insertedMaster, "SELECT * FROM product_master WHERE product_code = ?", input.ProductCode)
+
+	if err != nil {
+		// UPSERTは成功したが再取得に失敗した場合でも、エラーを返すように変更
+		// (呼び出し元で Rollback されるように)
+		log.Printf("ERROR: Upsert successful but failed to re-fetch master for %s: %v", input.ProductCode, err)
+		return nil, fmt.Errorf("failed to re-fetch master after upsert for %s: %w", input.ProductCode, err)
+	}
+
+	return &insertedMaster, nil
+}
+
+
+----- C:\Users\wasab\OneDrive\デスクトップ\TKR\model\types.go -----
+// C:\Users\wasab\OneDrive\デスクトップ\TKR\model\types.go (全体)
+package model
+
+import "database/sql"
+
+type JcshmsInfo struct {
+	ProductCode string `db:"JC000" json:"productCode"`
+	YjCode      string `db:"JC009" json:"yjCode"`
+	ProductName string `db:"JC018" json:"productName"`
+
+	KanaNameShort string `db:"JC019" json:"kanaNameShort"`
+
+	KanaName string `db:"JC022" json:"kanaName"`
+
+	GenericName string `db:"JC024" json:"genericName"`
+
+	MakerName           string  `db:"JC030" json:"makerName"`
+	UsageClassification string  `db:"JC013" json:"usageClassification"`
+	PackageForm         string  `db:"JC037" json:"packageForm"`
+	YjUnitName          string  `db:"JC039" json:"yjUnitName"`
+	YjPackUnitQty       float64 `db:"JC044" json:"yjPackUnitQty"`
+	NhiPrice            float64 `db:"JC049" json:"nhiPrice"`
+	PackageNhiPrice     float64 `db:"JC050" json:"packageNhiPrice"`
+	Gs1Code             string  `db:"JC122" json:"gs1Code"`
+	NhiPriceFactor      float64 `db:"JC124" json:"nhiPriceFactor"`
+
+	JanPackInnerQty sql.NullFloat64 `db:"JA006" json:"janPackInnerQty"`
+	JanUnitCode     sql.NullString  `db:"JA007" json:"janUnitCode"`
+	JanPackUnitQty  sql.NullFloat64 `db:"JA008" json:"janPackUnitQty"`
+
+	FlagPoison       int `db:"JC061" json:"flagPoison"`
+	FlagDeleterious  int `db:"JC062" json:"flagDeleterious"`
+	FlagNarcotic     int `db:"JC063" json:"flagNarcotic"`
+	FlagPsychotropic int `db:"JC064" json:"flagPsychotropic"`
+	FlagStimulant    int `db:"JC065" json:"flagStimulant"`
+	FlagStimulantRaw int `db:"JC066" json:"flagStimulantRaw"`
+}
+
+type ProductMaster struct {
+	ProductCode string `db:"product_code" json:"productCode"`
+	YjCode      string `db:"yj_code" json:"yjCode"`
+	Gs1Code     string `db:"gs1_code" json:"gs1Code"`
+	ProductName string `db:"product_name" json:"productName"`
+	KanaName    string `db:"kana_name" json:"kanaName"`
+
+	KanaNameShort string `db:"kana_name_short" json:"kanaNameShort"`
+	GenericName   string `db:"generic_name" json:"genericName"`
+
+	MakerName           string  `db:"maker_name" json:"makerName"`
+	Specification       string  `db:"specification" json:"specification"`
+	UsageClassification string  `db:"usage_classification" json:"usageClassification"`
+	PackageForm         string  `db:"package_form" json:"packageForm"`
+	YjUnitName          string  `db:"yj_unit_name" json:"yjUnitName"`
+	YjPackUnitQty       float64 `db:"yj_pack_unit_qty" json:"yjPackUnitQty"`
+	JanPackInnerQty     float64 `db:"jan_pack_inner_qty" json:"janPackInnerQty"`
+	JanUnitCode         int     `db:"jan_unit_code" json:"janUnitCode"`
+	JanPackUnitQty      float64 `db:"jan_pack_unit_qty" json:"janPackUnitQty"`
+	Origin              string  `db:"origin" json:"origin"`
+	NhiPrice            float64 `db:"nhi_price" json:"nhiPrice"`
+	PurchasePrice       float64 `db:"purchase_price" json:"purchasePrice"`
+	FlagPoison          int     `db:"flag_poison" json:"flagPoison"`
+	FlagDeleterious     int     `db:"flag_deleterious" json:"flagDeleterious"`
+	FlagNarcotic        int     `db:"flag_narcotic" json:"flagNarcotic"`
+	FlagPsychotropic    int     `db:"flag_psychotropic" json:"flagPsychotropic"`
+	FlagStimulant       int     `db:"flag_stimulant" json:"flagStimulant"`
+	FlagStimulantRaw    int     `db:"flag_stimulant_raw" json:"flagStimulantRaw"`
+	IsOrderStopped      int     `db:"is_order_stopped" json:"isOrderStopped"`
+	SupplierWholesale   string  `db:"supplier_wholesale" json:"supplierWholesale"`
+	GroupCode           string  `db:"group_code" json:"groupCode"`
+	ShelfNumber         string  `db:"shelf_number" json:"shelfNumber"`
+	Category            string  `db:"category" json:"category"`
+	UserNotes           string  `db:"user_notes" json:"userNotes"`
+}
+
+type ProductMasterInput struct {
+	ProductCode string `db:"product_code" json:"productCode"`
+	YjCode      string `db:"yj_code" json:"yjCode"`
+	Gs1Code     string `db:"gs1_code" json:"gs1Code"`
+	ProductName string `db:"product_name" json:"productName"`
+	KanaName    string `db:"kana_name" json:"kanaName"`
+
+	KanaNameShort string `db:"kana_name_short" json:"kanaNameShort"`
+	GenericName   string `db:"generic_name" json:"genericName"`
+
+	MakerName           string  `db:"maker_name" json:"makerName"`
+	Specification       string  `db:"specification" json:"specification"`
+	UsageClassification string  `db:"usage_classification" json:"usageClassification"`
+	PackageForm         string  `db:"package_form" json:"packageForm"`
+	YjUnitName          string  `db:"yj_unit_name" json:"yjUnitName"`
+	YjPackUnitQty       float64 `db:"yj_pack_unit_qty" json:"yjPackUnitQty"`
+	JanPackInnerQty     float64 `db:"jan_pack_inner_qty" json:"janPackInnerQty"`
+	JanUnitCode         int     `db:"jan_unit_code" json:"janUnitCode"`
+	JanPackUnitQty      float64 `db:"jan_pack_unit_qty" json:"janPackUnitQty"`
+	Origin              string  `db:"origin" json:"origin"`
+	NhiPrice            float64 `db:"nhi_price" json:"nhiPrice"`
+	PurchasePrice       float64 `db:"purchase_price" json:"purchasePrice"`
+	FlagPoison          int     `db:"flag_poison" json:"flagPoison"`
+	FlagDeleterious     int     `db:"flag_deleterious" json:"flagDeleterious"`
+	FlagNarcotic        int     `db:"flag_narcotic" json:"flagNarcotic"`
+	FlagPsychotropic    int     `db:"flag_psychotropic" json:"flagPsychotropic"`
+	FlagStimulant       int     `db:"flag_stimulant" json:"flagStimulant"`
+	FlagStimulantRaw    int     `db:"flag_stimulant_raw" json:"flagStimulantRaw"`
+	IsOrderStopped      int     `db:"is_order_stopped" json:"isOrderStopped"`
+	SupplierWholesale   string  `db:"supplier_wholesale" json:"supplierWholesale"`
+	GroupCode           string  `db:"group_code" json:"groupCode"`
+	ShelfNumber         string  `db:"shelf_number" json:"shelfNumber"`
+	Category            string  `db:"category" json:"category"`
+	UserNotes           string  `db:"user_notes" json:"userNotes"`
+}
+
+type DatRecord struct {
+	ClientCode    string
+	Flag          int
+	Date          string
+	ReceiptNumber string
+	LineNumber    string
+	JanCode       string
+	ProductName   string
+	DatQuantity   float64
+	UnitPrice     float64
+	Subtotal      float64
+	ExpiryDate    string
+	LotNumber     string
+}
+
+type TransactionRecord struct {
+	ID                  int     `db:"id" json:"id"`
+	TransactionDate     string  `db:"transaction_date" json:"transactionDate"`
+	ClientCode          string  `db:"client_code" json:"clientCode"`
+	ReceiptNumber       string  `db:"receipt_number" json:"receiptNumber"`
+	LineNumber          string  `db:"line_number" json:"lineNumber"`
+	Flag                int     `db:"flag" json:"flag"`
+	JanCode             string  `db:"jan_code" json:"janCode"`
+	YjCode              string  `db:"yj_code" json:"yjCode"`
+	ProductName         string  `db:"product_name" json:"productName"`
+	KanaName            string  `db:"kana_name" json:"kanaName"`
+	UsageClassification string  `db:"usage_classification" json:"usageClassification"`
+	PackageForm         string  `db:"package_form" json:"packageForm"`
+	PackageSpec         string  `db:"package_spec" json:"packageSpec"`
+	MakerName           string  `db:"maker_name" json:"makerName"`
+	DatQuantity         float64 `db:"dat_quantity" json:"datQuantity"`
+	JanPackInnerQty     float64 `db:"jan_pack_inner_qty" json:"janPackInnerQty"`
+	JanQuantity         float64 `db:"jan_quantity" json:"janQuantity"`
+	JanPackUnitQty      float64 `db:"jan_pack_unit_qty" json:"janPackUnitQty"`
+	JanUnitName         string  `db:"jan_unit_name" json:"janUnitName"`
+	JanUnitCode         string  `db:"jan_unit_code" json:"janUnitCode"`
+	YjQuantity          float64 `db:"yj_quantity" json:"yjQuantity"`
+	YjPackUnitQty       float64 `db:"yj_pack_unit_qty" json:"yjPackUnitQty"`
+	YjUnitName          string  `db:"yj_unit_name" json:"yjUnitName"`
+	UnitPrice           float64 `db:"unit_price" json:"unitPrice"`
+	PurchasePrice       float64 `db:"purchase_price" json:"purchasePrice"`
+	SupplierWholesale   string  `db:"supplier_wholesale" json:"supplierWholesale"`
+	Subtotal            float64 `db:"subtotal" json:"subtotal"`
+	TaxAmount           float64 `db:"tax_amount" json:"taxAmount"`
+	TaxRate             float64 `db:"tax_rate" json:"taxRate"`
+	ExpiryDate          string  `db:"expiry_date" json:"expiryDate"`
+	LotNumber           string  `db:"lot_number" json:"lotNumber"`
+	FlagPoison          int     `db:"flag_poison" json:"flagPoison"`
+	FlagDeleterious     int     `db:"flag_deleterious" json:"flagDeleterious"`
+	FlagNarcotic        int     `db:"flag_narcotic" json:"flagNarcotic"`
+	FlagPsychotropic    int     `db:"flag_psychotropic" json:"flagPsychotropic"`
+	FlagStimulant       int     `db:"flag_stimulant" json:"flagStimulant"`
+	FlagStimulantRaw    int     `db:"flag_stimulant_raw" json:"flagStimulantRaw"`
+	ProcessFlagMA       string  `db:"process_flag_ma" json:"processFlagMA"`
+}
+
+// ▼▼▼【ここから追加】未定義だった型を追加 ▼▼▼
+
+type Client struct {
+	ClientCode string `db:"client_code" json:"clientCode"`
+	ClientName string `db:"client_name" json:"clientName"`
+}
+
+type Wholesaler struct {
+	WholesalerCode string `db:"wholesaler_code" json:"wholesalerCode"`
+	WholesalerName string `db:"wholesaler_name" json:"wholesalerName"`
+}
+
+// usage_parser.go で使用
+type UnifiedInputRecord struct {
+	Date        string
+	YjCode      string
+	JanCode     string
+	ProductName string
+	YjQuantity  float64
+	YjUnitName  string
+}
+
+// ▲▲▲【追加ここまで】▲▲▲
+
+
+----- C:\Users\wasab\OneDrive\デスクトップ\TKR\parsers\dat_parser.go -----
+package parsers
+
+import (
+	"bufio"
+	"fmt"
+	"io"
+	"strconv"
+	"strings"
+	"tkr/model" // model パッケージをインポート
+
+	"golang.org/x/text/encoding/japanese"
+	"golang.org/x/text/transform"
+)
+
+// ParseDat は、固定長のDATファイルからレコードを抽出し、DatRecord のスライスを返します。
+func ParseDat(r io.Reader) ([]model.DatRecord, error) {
+	// ShiftJIS から UTF-8 へのデコーダーを用意
+	decoder := japanese.ShiftJIS.NewDecoder()
+	utf8Reader := transform.NewReader(r, decoder)
+	scanner := bufio.NewScanner(utf8Reader)
+
+	var records []model.DatRecord
+	var currentWholesale string
+
+	for scanner.Scan() {
+		line := scanner.Text() // UTF-8 に変換された行
+		if len(line) == 0 {
+			continue
+		}
+
+		// rune スライスに変換してバイト位置ではなく文字位置でアクセス
+		runes := []rune(line)
+
+		// TrimSpaceAndGet は、指定範囲の文字列を取得し、前後の空白を除去するヘルパー
+		trimSpaceAndGet := func(start, end int) string {
+			if start >= len(runes) {
+				return ""
+			}
+			if end > len(runes) {
+				end = len(runes)
+			}
+			return strings.TrimSpace(string(runes[start:end]))
+		}
+
+		// parseFloat は文字列を float64 に変換 (エラー時は 0.0)
+		parseFloat := func(s string) float64 {
+			f, _ := strconv.ParseFloat(strings.TrimSpace(s), 64)
+			return f
+		}
+		// parseInt は文字列を int に変換 (エラー時は 0)
+		parseInt := func(s string) int {
+			i, _ := strconv.Atoi(strings.TrimSpace(s))
+			return i
+		}
+
+		switch trimSpaceAndGet(0, 1) {
+		case "S":
+			// Sレコードから卸コードを取得 (文字位置 3 から 13 未満)
+			currentWholesale = trimSpaceAndGet(3, 13)
+		case "D":
+			// Dレコードをパース
+			flag := parseInt(trimSpaceAndGet(3, 4))
+			date := trimSpaceAndGet(4, 12)
+			receiptNumber := trimSpaceAndGet(12, 22)
+			lineNumber := trimSpaceAndGet(22, 24)
+			janCode := trimSpaceAndGet(25, 38)
+			productName := trimSpaceAndGet(38, 78) // UTF-8になっているはず
+			datQuantity := parseFloat(trimSpaceAndGet(78, 83))
+			unitPrice := parseFloat(trimSpaceAndGet(83, 92))
+			subtotal := parseFloat(trimSpaceAndGet(92, 101))
+			// 期限とロット (文字位置)
+			expiryDate := trimSpaceAndGet(109, 115) // YYMMDD or YYYYMM
+			lotNumber := trimSpaceAndGet(115, 121)
+
+			rec := model.DatRecord{
+				ClientCode:    currentWholesale,
+				Flag:          flag,
+				Date:          date,
+				ReceiptNumber: receiptNumber,
+				LineNumber:    lineNumber,
+				JanCode:       janCode,
+				ProductName:   productName,
+				DatQuantity:   datQuantity,
+				UnitPrice:     unitPrice,
+				Subtotal:      subtotal,
+				ExpiryDate:    expiryDate,
+				LotNumber:     lotNumber,
+			}
+			records = append(records, rec)
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, fmt.Errorf("error reading DAT file: %w", err)
+	}
+	return records, nil
+}
+
+
+----- C:\Users\wasab\OneDrive\デスクトップ\TKR\parsers\usage_parser.go -----
+// C:\Users\wasab\OneDrive\デスクトップ\TKR\parsers\usage_parser.go (全体)
+package parsers
+
+import (
+	"encoding/csv"
+	"fmt"
+	"io"
+	"strconv"
+	"tkr/model"
+
+	"golang.org/x/text/encoding/japanese"
+	"golang.org/x/text/transform"
+)
+
+func ParseUsage(r io.Reader) ([]model.UnifiedInputRecord, error) {
+	reader := csv.NewReader(transform.NewReader(r, japanese.ShiftJIS.NewDecoder()))
+	reader.FieldsPerRecord = -1
+
+	var records []model.UnifiedInputRecord
+	for {
+		rec, err := reader.Read()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, fmt.Errorf("csv read error: %w", err)
+		}
+
+		if len(rec) < 6 {
+			continue
+		}
+
+		yjQty, _ := strconv.ParseFloat(rec[4], 64)
+
+		unifiedRec := model.UnifiedInputRecord{
+			Date:        rec[0],
+			YjCode:      rec[1],
+			JanCode:     rec[2],
+			ProductName: rec[3],
+			YjQuantity:  yjQty,
+			YjUnitName:  rec[5],
+		}
+		records = append(records, unifiedRec)
+	}
+	return records, nil
+}
+
+
+----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\css\masteredit.css -----
+/* C:\Users\wasab\OneDrive\デスクトップ\TKR\static\css\masteredit.css (全体) */
+/* TKR/static/css/masteredit.css */
+
+/* フィルターコンテナのスタイル */
+#master-edit-view .filter-container {
+    background-color: #eef;
+/* */ }
+
+
+
+/* マスター一覧テーブルの編集ボタン */
+#masterListTable .edit-master-btn {
+    padding: 1px 4px;
+/* */ font-size: 9px;
+}
+
+
+/* ▼▼▼【ここから修正】編集フォームのスタイル (モーダル用に変更) ▼▼▼ */
+
+/* モーダルオーバーレイ */
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.6);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 900;
+}
+
+/* モーダル本体 */
+.modal-content {
+    background-color: #fcfcfc;
+    border: 1px solid #ddd;
+    padding: 15px;
+    border-radius: 5px;
+    width: 90%;
+    max-width: 1000px;
+    max-height: 90vh;
+    overflow-y: auto;
+    z-index: 901;
+}
+
+/* フォームコンテナ (旧 #masterEditFormContainer) */
+.modal-content h2 {
+    margin-top: 0;
+    font-size: 1.2em;
+    border-bottom: 1px solid #ccc;
+    padding-bottom: 5px;
+/* */ }
+
+.modal-content .form-row {
+    display: flex;
+    flex-wrap: wrap;
+    margin-bottom: 8px;
+    gap: 10px;
+/* */ }
+
+.modal-content .form-group {
+    display: flex;
+    flex-direction: column;
+    flex-basis: 150px; 
+    flex-grow: 1;
+/* */ }
+
+.modal-content .form-group label {
+    font-weight: bold;
+    margin-bottom: 3px;
+    font-size: 10px;
+/* */ }
+
+.modal-content .form-group input[type="text"],
+.modal-content .form-group input[type="number"] {
+    width: 100%;
+/* */     padding: 3px;
+    border: 1px solid #ccc;
+    border-radius: 3px;
+    font-size: inherit; 
+/* */     font-family: inherit;
+    box-sizing: border-box; 
+/* */ }
+
+.modal-content .form-group input.readonly-field {
+    background-color: #eee;
+    color: #555;
+    border-color: #ddd;
+/* */ }
+
+.modal-content .readonly-group {
+    background-color: #f7f7f7;
+    border: 1px dashed #ddd;
+    padding: 5px;
+    gap: 5px;
+}
+.modal-content .readonly-group .form-group label {
+    font-weight: normal;
+}
+
+
+.modal-content .form-actions {
+    margin-top: 15px;
+    padding-top: 10px;
+    border-top: 1px dashed #ccc;
+    text-align: right;
+/* */ }
+
+.modal-content .form-actions .btn {
+    margin-left: 10px;
+}
+/* ▲▲▲【修正ここまで】▲▲▲ */
+
+----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\css\styles.css -----
+/* TKR/static/css/styles.css (Table styles removed) */
+
+/* ========================================================================== */
+/* 1. Page Layout & Print Settings */
+/* ========================================================================== */
+
+@page {
+  size: A4 landscape;
+  margin: 10mm;
+}
+
+html, body {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  background: #eee;
+}
+
+body {
+  font-family: "MS Gothic", "ＭＳ ゴシック", sans-serif; /* WASABI font */
+  font-size: 10.4px; /* WASABI base size */
+  overflow-y: auto;
+  overflow-x: hidden;
+  box-sizing: border-box;
+  width: 297mm; /* A4 width landscape */
+  min-height: 210mm; /* A4 height landscape */
+  height: auto;
+  padding: 10mm; /* Page padding */
+  margin: 10mm auto; /* Center page */
+  background: #fff; /* Paper color */
+  box-shadow: 0 0 5px rgba(0,0,0,0.1); /* Subtle shadow */
+  border: 1px solid #ccc; /* Page border */
+}
+
+/* ========================================================================== */
+/* 7. Common Components */
+/* ========================================================================== */
+
+.btn {
+  padding: 2px 2px; /* Reduced padding */
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: inherit; /* Inherit body font size */
+  line-height: 1.3;   /* Stabilize height */
+  background-color: #f8f9fa;
+  color: #333;
+  transition: background-color 0.2s ease;
+}
+.btn:hover {
+  background-color: #e2e6ea;
+}
+
+#loading-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.6);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+  color: white;
+  font-size: 1.2em;
+}
+
+#loading-overlay.hidden {
+  display: none;
+}
+
+.spinner {
+  border: 4px solid rgba(255, 255, 255, 0.3);
+  border-radius: 50%;
+  border-top: 4px solid #fff;
+  width: 40px;
+  height: 40px;
+  animation: spin 1s linear infinite;
+  margin-bottom: 15px;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.notification-box {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 15px 25px;
+  border-radius: 5px;
+  color: white;
+  font-size: 1em;
+  z-index: 1001;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.3s ease, visibility 0.3s ease;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+}
+
+.notification-box.show {
+  opacity: 1;
+  visibility: visible;
+}
+
+.notification-box.success { background-color: #28a745; }
+.notification-box.error   { background-color: #dc3545; }
+.notification-box.warning { background-color: #ffc107; color: #333; }
+.notification-box.info    { background-color: #17a2b8; }
+
+/* 各ビューの基本設定 */
+.view {
+  display: none; /* デフォルトでは非表示 */
+}
+.view.active {
+  display: block; /* .active クラスで表示 */
+}
+
+
+/* General Helper Classes */
+.hidden { display: none !important; }
+.center { text-align: center; }
+.left   { text-align: left; }
+.right  { text-align: right; }
+
+
+/* ========================================================================== */
+/* 8. Print Styles (Keep basic page settings) */
+/* ========================================================================== */
+
+@media print {
+  html { background: transparent !important; }
+  body {
+    width: auto !important;
+    min-height: auto !important;
+    margin: 0 !important;
+    border: none !important;
+    box-shadow: none !important;
+    background: transparent !important;
+    overflow: visible !important;
+    padding: 0 !important;
+  }
+  /* Add .no-print class styles here if needed later */
+  .btn, #loading-overlay, #notification-box, #datUploadBtn, #uploadResultContainer h3, #uploadResultContainer ul {
+      display: none !important; /* Hide buttons and messages when printing */
+  }
+  .data-table {
+      font-size: 9px !important; /* Slightly smaller font for printing */
+      margin-bottom: 5mm !important;
+  }
+   .data-table th, .data-table td {
+      padding: 1px 2px !important; /* Reduce padding for printing */
+  }
+
+}
+
+----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\css\table.css -----
+/* TKR/static/css/table.css */
+
+/* ========================================================================== */
+/* Data Table Styles */
+/* ========================================================================== */
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 0;
+  font-size: inherit;
+  table-layout: fixed;
+  box-sizing: border-box;
+}
+
+.data-table th,
+.data-table td {
+  border: 1px solid #ccc;
+  padding: 2px 2px;
+  /* text-align: left; */ /* ← デフォルト指定は削除 */
+  vertical-align: middle;
+  min-height: 20px;
+  height: 20px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  box-sizing: border-box;
+}
+
+/* ▼▼▼ ヘッダーは全て中央揃え ▼▼▼ */
+.data-table th {
+  background-color: #f2f2f2;
+  font-weight: bold;
+  text-align: center; /* ヘッダーは中央揃え */
+}
+/* ▲▲▲ 修正 ▲▲▲ */
+
+/* Zebra striping every two data rows */
+.data-table tbody tr:nth-child(4n-1),
+.data-table tbody tr:nth-child(4n) {
+  background-color: #f9f9f9;
+}
+
+
+/* ▼▼▼ 列ごとの幅指定 (ヘッダーに適用) ▼▼▼ */
+/* width指定は th にのみ適用し、td は追従させる */
+.data-table th.col-action     { width: 5%; }
+.data-table th.col-date       { width: 7%; }
+.data-table th.col-yj         { width: 10%; }
+/* 製品名は構成要素のクラスで幅を指定 */
+.data-table th.col-package    { width: 10%; }
+.data-table th.col-maker      { width: 10%; }
+.data-table th.col-count      { width: 4%; }
+.data-table th.col-yjqty      { width: 8%; }
+.data-table th.col-yjpackqty  { width: 8%; }
+.data-table th.col-yjunit     { width: 8%; }
+.data-table th.col-unitprice  { width: 6%; }
+.data-table th.col-expiry     { width: 8%; }
+.data-table th.col-wholesaler { width: 8%; }
+.data-table th.col-line       { width: 8%; }
+/* ヘッダー2行目のクラスにも幅を指定 */
+.data-table th.col-flag       { width: 7%; }
+.data-table th.col-jan        { width: 10%; }
+.data-table th.col-form       { width: 4%; }
+.data-table th.col-janqty     { width: 8%; }
+.data-table th.col-janpackqty { width: 8%; }
+.data-table th.col-janunit    { width: 8%; }
+.data-table th.col-amount     { width: 6%; }
+.data-table th.col-lot        { width: 8%; }
+.data-table th.col-receipt    { width: 8%; }
+.data-table th.col-ma         { width: 8%; }
+/* ▲▲▲ 幅指定ここまで ▲▲▲ */
+
+
+/* ▼▼▼ データセル (td) の文字揃え ▼▼▼ */
+/* デフォルトは左揃え (指定なし) */
+.data-table td.col-action     { text-align: center; }
+.data-table td.col-date       { text-align: center; }
+.data-table td.col-flag       { text-align: center; }
+/* .data-table td.col-yj         { text-align: left; } (デフォルト) */
+/* .data-table td.col-jan        { text-align: left; } (デフォルト) */
+/* .data-table td.col-package    { text-align: left; } (デフォルト) */
+/* .data-table td.col-maker      { text-align: left; } (デフォルト) */
+/* .data-table td.col-product   { text-align: left; } (デフォルト) */
+.data-table td.col-count      { text-align: right; }
+.data-table td.col-form       { text-align: center; }
+.data-table td.col-yjqty      { text-align: right; }
+.data-table td.col-janqty     { text-align: right; }
+.data-table td.col-yjpackqty  { text-align: right; }
+.data-table td.col-janpackqty { text-align: right; }
+/* .data-table td.col-yjunit     { text-align: left; } (デフォルト) */
+/* .data-table td.col-janunit    { text-align: left; } (デフォルト) */
+.data-table td.col-unitprice  { text-align: right; }
+.data-table td.col-amount     { text-align: right; }
+.data-table td.col-expiry     { text-align: center; }
+.data-table td.col-lot        { text-align: center; } 
+.data-table td.col-wholesaler { text-align: center; }
+.data-table td.col-receipt    { text-align: center; }
+.data-table td.col-line       { text-align: center; }
+.data-table td.col-ma         { text-align: center; }
+/* ▲▲▲ 文字揃えここまで ▲▲▲ */
+
+
+/* ステータス色 */
+.status-success { color: green; }
+.status-error   { color: red; }
+
+----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\css\usage.css -----
+/* C:\Users\wasab\OneDrive\デスクトップ\TKR\static\css\usage.css */
+
+#usage-view h2 {
+    margin-top: 15px;
+    margin-bottom: 5px;
+    font-size: 1.1em;
+    border-bottom: 1px solid #eee;
+    padding-bottom: 3px;
+}
+
+.usage-settings-container,
+.usage-import-container {
+    background-color: #f8f8f8;
+    border: 1px solid #ddd;
+    padding: 10px;
+    margin-bottom: 15px;
+    border-radius: 4px;
+}
+
+.usage-settings-container .form-group {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 5px;
+}
+
+.usage-settings-container label {
+    font-weight: bold;
+    min-width: 150px;
+}
+
+.usage-settings-container input[type="text"] {
+    flex-grow: 1;
+    padding: 3px;
+    border: 1px solid #ccc;
+    border-radius: 3px;
+    font-size: inherit;
+    font-family: inherit;
+}
+
+.description {
+    font-size: 0.9em;
+    color: #666;
+    margin-top: 5px;
+    margin-bottom: 0;
+}
+
+#usageImportResultContainer {
+    font-size: 0.9em;
+    margin-top: 10px;
+    padding: 8px;
+    border: 1px dashed #ccc;
+    background-color: #fff;
+    min-height: 20px;
+}
+
+#usageDataTableContainer .data-table th,
+#usageDataTableContainer .data-table td {
+    padding: 3px 5px; /* Adjust padding for usage table */
+    height: auto; /* Allow height to adjust */
+    white-space: normal; /* Allow wrapping */
+    text-overflow: clip; /* Clip instead of ellipsis */
+}
+
+#usageDataTableContainer .data-table th:nth-child(1), /* 取込日時 */
+#usageDataTableContainer .data-table td:nth-child(1) {
+    width: 15%;
+    text-align: center;
+}
+
+#usageDataTableContainer .data-table th:nth-child(2), /* ファイル名 */
+#usageDataTableContainer .data-table td:nth-child(2) {
+    width: 30%;
+    text-align: left;
+}
+
+#usageDataTableContainer .data-table th:nth-child(3), /* ステータス */
+#usageDataTableContainer .data-table td:nth-child(3) {
+    width: 10%;
+    text-align: center;
+}
+#usageDataTableContainer .data-table th:nth-child(4), /* 処理件数 */
+#usageDataTableContainer .data-table td:nth-child(4) {
+    width: 10%;
+    text-align: right;
+}
+
+#usageDataTableContainer .data-table th:nth-child(5), /* エラー詳細 */
+#usageDataTableContainer .data-table td:nth-child(5) {
+    width: 35%;
+    text-align: left;
+    font-size: 0.9em;
+    color: #e60000; /* Error details in red */
+}
+
+----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\index.html -----
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>TKR アプリケーション</title>
+    <link rel="stylesheet" href="/static/css/styles.css">
+    <link rel="stylesheet" href="/static/css/table.css">
+    <link rel="stylesheet" href="/static/css/masteredit.css">
+    <link rel="stylesheet" href="/static/css/usage.css"> </head>
+<body>
+    <header id="main-header">
+        <button id="datViewBtn" class="btn">DAT取込</button>
+        <button id="masterEditViewBtn" class="btn">マスタ編集</button>
+        <button id="usageViewBtn" class="btn">処方取込</button> </header>
+
+    <main>
+        <div id="dat-upload-view" class="view active"> <h1>ファイルアップロード</h1>
+            <div style="margin-bottom: 20px;">
+
+
+            <button id="datUploadBtn" class="btn">DATファイル選択</button>
+                <input type="file" id="datFileInput" accept=".dat,.DAT,.csv,.CSV" multiple style="display: none;">
+            </div>
+            <div id="uploadResultContainer" style="margin-top: 20px; border-top: 1px solid #ccc; padding-top: 10px;">
+                <p>ここにアップロード結果が表示されます。</p>
+            </div>
+
+
+         <div id="dataTableContainer" style="margin-top: 20px;">
+
+                <h2>データ表示エリア</h2>
+                <table id="mainDataTable" class="data-table">
+                    <thead>
+                        </thead>
+
+
+          <tbody>
+
+                        </tbody>
+                </table>
+            </div>
+        </div>
+        <div id="master-edit-view" class="view"> <h1>マスタ編集</h1>
+            <div class="filter-container">
+
+
+     <div class="filter-group usage-filter-group" style="width: 100%;
+ margin-bottom: 5px;">
+                    <label style="min-width: 60px;">区分:</label>
+                    <input type="radio" id="usage-in" name="usage_class" value="内" checked> <label for="usage-in">内服</label>
+                    <input type="radio" id="usage-out" name="usage_class" value="外"> <label for="usage-out">外用</label>
+
+       <input type="radio" id="usage-injection"
+ name="usage_class"
+value="注"> <label for="usage-injection">注射</label>
+
+                    <input type="radio" id="usage-dental" name="usage_class" value="歯"> <label for="usage-dental">歯科</label>
+                    <input type="radio" id="usage-other" name="usage_class" value="他"> <label for="usage-other">他</label>
+                    </div>
+
+   <div class="filter-group">
+
+
+            <label for="master-search-prod-name" style="min-width: 60px;">製品名:</label>
+                    <input type="text" id="master-search-prod-name" style="width: 200px;">
+                </div>
+                 <div class="filter-group">
+
+
+     <label for="master-search-kana-name" style="min-width: 60px;">カナ名:</label>
+
+
+                <input type="text" id="master-search-kana-name" style="width: 200px;" placeholder="前方一致"> </div>
+                 <div class="filter-group">
+                    <label for="master-search-generic-name" style="min-width: 60px;">一般名:</label>
+                    <input type="text" id="master-search-generic-name" style="width: 200px;">
+
+              </div>
+              <div class="filter-group">
+
+                <label for="master-search-shelf-number" style="min-width: 60px;">棚番:</label>
+                <input type="text" id="master-search-shelf-number" style="width: 100px;" placeholder="完全一致">
+              </div>
+
+   <button id="masterSearchBtn" class="btn">検索</button>
+            </div>
+
+            <div id="masterListContainer">
+
+                <h2>マスター一覧</h2>
+                <table id="masterListTable" class="data-table">
+
+                   <thead>
+
+
+          </thead>
+                    <tbody>
+
+                        <tr><td colspan="9">検索条件を指定して「検索」ボタンを押してください。</td></tr>
+
+         </tbody>
+
+         </table>
+
+          </div>
+
+
+            <div id="masterEditFormContainer" class="hidden" style="margin-top: 20px;
+ border-top: 1px solid #ccc; padding-top: 10px;">
+
+            </div>
+            </div>
+
+
+        <div id="usage-view" class="view"> <h1>処方取込</h1>
+            <div class="usage-settings-container">
+                <h2>設定</h2>
+                <div class="form-group">
+                    <label for="usageFolderPath">処方ファイル取込フォルダ:</label>
+                    <input type="text" id="usageFolderPath" name="usageFolderPath" style="width: 400px;">
+                    <button id="saveUsageConfigBtn" class="btn">保存</button>
+                </div>
+                <p class="description">指定したフォルダ内の処方ファイル（CSV形式, Shift-JIS）を定期的に自動で取り込みます。</p>
+            </div>
+
+            <div class="usage-import-container">
+                <h2>手動取込</h2>
+                <button id="manualImportUsageBtn" class="btn">今すぐ取り込む</button>
+                <p class="description">設定したフォルダ内のファイルを直ちに取り込みます。</p>
+                <div id="usageImportResultContainer" style="margin-top: 10px;"></div>
+            </div>
+
+            <div id="usageDataTableContainer" style="margin-top: 20px;">
+                <h2>取り込み結果</h2>
+                <table id="usageDataTable" class="data-table">
+                    <thead>
+                        <tr>
+                            <th>取込日時</th>
+                            <th>ファイル名</th>
+                            <th>ステータス</th>
+                            <th>処理件数</th>
+                            <th>エラー詳細</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr><td colspan="5">まだ取り込みは実行されていません。</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+      </main>
+
+    <div id="loading-overlay" class="hidden">
+        <div class="spinner"></div>
+        <div id="loading-message">処理中...</div>
+    </div>
+    <div id="notification-box"></div>
+
+ <div id="masterEditModalOverlay" class="modal-overlay hidden">
+        <div class="modal-content">
+
+            <h2>マスター編集</h2>
+            <form id="masterEditForm">
+
+                 <input type="hidden" id="edit-product-code" name="productCode">
+                 <input type="hidden" id="edit-origin" name="origin">
+
+
+                 <div class="form-row">
+                    <div
+ class="form-group" style="width: 20%;">
+                        <label for="edit-yj-code">YJコード (編集可)</label>
+                        <input type="text" id="edit-yj-code" name="yjCode">
+                    </div>
+                    <div class="form-group" style="width: 20%;">
+
+                        <label>JANコード (編集不可)</label>
+                        <input type="text" id="view-product-code" readonly class="readonly-field">
+                    </div>
+                    <div class="form-group" style="width: 20%;">
+
+                        <label for="edit-gs1-code">GS1コード</label>
+                        <input type="text" id="edit-gs1-code" name="gs1Code" class="readonly-field">
+                    </div>
+                    <div class="form-group" style="width: 20%;">
+
+                        <label for="edit-usage-classification">区分</label>
+                        <input type="text" id="edit-usage-classification" name="usageClassification" class="readonly-field">
+                    </div>
+                </div>
+
+
+                 <div class="form-row">
+
+                    <div class="form-group" style="width: 49%;">
+                        <label for="edit-product-name">製品名</label>
+                        <input type="text" id="edit-product-name" name="productName" class="readonly-field">
+                    </div>
+
+                    <div class="form-group" style="width: 49%;">
+                        <label for="edit-kana-name">カナ名</label>
+                        <input type="text" id="edit-kana-name" name="kanaName" class="readonly-field">
+                    </div>
+
+                 </div>
+
+
+                 <div class="form-row">
+                    <div class="form-group" style="width: 49%;">
+                        <label for="edit-generic-name">一般名</label>
+                        <input type="text" id="edit-generic-name" name="genericName" class="readonly-field">
+
+                    </div>
+                     <div class="form-group" style="width: 49%;">
+                        <label for="edit-kana-name-short">カナ名短縮</label>
+                        <input type="text" id="edit-kana-name-short" name="kanaNameShort" class="readonly-field">
+
+                    </div>
+                </div>
+
+                 <div class="form-row">
+                    <div class="form-group" style="width: 49%;">
+                        <label for="edit-maker-name">メーカー名</label>
+
+                        <input type="text" id="edit-maker-name" name="makerName" class="readonly-field">
+                    </div>
+                    <div class="form-group" style="width: 49%;">
+                        <label for="edit-specification">規格</label>
+
+                        <input type="text" id="edit-specification" name="specification" class="readonly-field">
+                    </div>
+                </div>
+
+
+                <div class="form-row">
+
+                     <div class="form-group" style="width: 20%;">
+
+                        <label for="edit-shelf-number">棚番 (編集可)</label>
+                        <input type="text" id="edit-shelf-number" name="shelfNumber">
+                    </div>
+                    <div class="form-group" style="width: 20%;">
+
+                        <label for="edit-purchase-price">納入価 (編集可)</label>
+                        <input type="number" step="0.01" id="edit-purchase-price" name="purchasePrice">
+                    </div>
+                    <div class="form-group" style="width: 30%;">
+
+                        <label for="edit-supplier-wholesale">卸 (編集可)</label>
+                        <input type="text" id="edit-supplier-wholesale" name="supplierWholesale">
+                    </div>
+                </div>
+                <div class="form-row">
+
+
+                    <div class="form-group" style="width: 20%;">
+                        <label for="edit-group-code">グループコード (編集可)</label>
+                        <input type="text" id="edit-group-code" name="groupCode">
+                    </div>
+
+                    <div class="form-group" style="width: 20%;">
+                        <label for="edit-category">分類 (編集可)</label>
+                        <input type="text" id="edit-category" name="category">
+                    </div>
+
+                    <div class="form-group" style="width: 30%;">
+                        <label for="edit-user-notes">メモ (編集可)</label>
+                        <input type="text" id="edit-user-notes" name="userNotes">
+                    </div>
+
+                 </div>
+
+
+                <div class="form-row readonly-group">
+
+                     <div class="form-group" style="width: 20%;">
+                        <label for="edit-package-form">包装形態</label>
+                        <input type="text" id="edit-package-form" name="packageForm" class="readonly-field">
+
+                    </div>
+                     <div class="form-group" style="width: 15%;">
+                        <label for="edit-yj-pack-unit-qty">YJ包装単位数</label>
+                        <input type="text" id="edit-yj-pack-unit-qty" name="yjPackUnitQty" class="readonly-field">
+
+                    </div>
+                     <div class="form-group" style="width: 15%;">
+                        <label for="edit-yj-unit-name">YJ包装単位</label>
+                        <input type="text" id="edit-yj-unit-name" name="yjUnitName" class="readonly-field">
+
+                    </div>
+                    <div class="form-group" style="width: 15%;">
+                        <label for="edit-jan-pack-inner-qty">JAN内訳</label>
+                        <input type="text" id="edit-jan-pack-inner-qty" name="janPackInnerQty" class="readonly-field">
+
+                    </div>
+                    <div class="form-group" style="width: 15%;">
+                        <label for="edit-jan-pack-unit-qty">JAN包装数</label>
+                        <input type="text" id="edit-jan-pack-unit-qty" name="janPackUnitQty" class="readonly-field">
+
+                    </div>
+                    <div class="form-group" style="width: 15%;">
+                        <label for="edit-jan-unit-code">JAN単位Code</label>
+                        <input type="text" id="edit-jan-unit-code" name="janUnitCode" class="readonly-field">
+
+                    </div>
+                </div>
+                <div class="form-row readonly-group">
+
+                     <div class="form-group" style="width: 15%;">
+                        <label for="edit-nhi-price">薬価</label>
+
+                        <input type="text" id="edit-nhi-price" name="nhiPrice" class="readonly-field">
+                    </div>
+                     <div class="form-group" style="width: 10%;">
+                        <label for="edit-flag-poison">毒</label>
+
+                        <input type="text" id="edit-flag-poison" name="flagPoison" class="readonly-field">
+                    </div>
+                     <div class="form-group" style="width: 10%;">
+                        <label for="edit-flag-deleterious">劇</label>
+
+                        <input type="text" id="edit-flag-deleterious" name="flagDeleterious" class="readonly-field">
+                    </div>
+                     <div class="form-group" style="width: 10%;">
+                        <label for="edit-flag-narcotic">麻</label>
+                        <input type="text"
+ id="edit-flag-narcotic" name="flagNarcotic" class="readonly-field">
+                    </div>
+                     <div class="form-group" style="width: 10%;">
+                        <label for="edit-flag-psychotropic">向</label>
+                        <input type="text" id="edit-flag-psychotropic" name="flagPsychotropic" class="readonly-field">
+
+                    </div>
+                     <div class="form-group" style="width: 10%;">
+                        <label for="edit-flag-stimulant">覚</label>
+                        <input type="text" id="edit-flag-stimulant" name="flagStimulant" class="readonly-field">
+
+                    </div>
+                     <div class="form-group" style="width: 10%;">
+                        <label for="edit-flag-stimulant-raw">覚原</label>
+                        <input type="text" id="edit-flag-stimulant-raw" name="flagStimulantRaw" class="readonly-field">
+
+                    </div>
+                    <div class="form-group" style="width: 10%;">
+                        <label for="edit-is-order-stopped">発注不可</label>
+                        <input type="text" id="edit-is-order-stopped" name="isOrderStopped" class="readonly-field">
+
+                    </div>
+                </div>
+
+
+                <div class="form-actions">
+                    <button type="button" id="saveMasterBtn" class="btn">保存</button>
+                    <button type="button" id="cancelEditMasterBtn" class="btn">キャンセル</button>
+
+                 </div>
+            </form>
+        </div>
+    </div>
+    <script type="module" src="/static/js/app.js"></script>
+
+</body>
+</html>
+
+----- C:\Users\wasab\OneDrive\デスクトップ\TKR\usage\handler.go -----
+// C:\Users\wasab\OneDrive\デスクトップ\TKR\usage\handler.go
+package usage
+
+import (
+	"database/sql"
+	"encoding/json"
+	"fmt"
+	"log"
+	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
+	"sync"
+	"time"
+	"tkr/config"
+	"tkr/database"
+	"tkr/mastermanager"
+	"tkr/model"
+	"tkr/parsers"
+
+	"github.com/jmoiron/sqlx"
+)
+
+var (
+	importMutex sync.Mutex
+)
+
+// GetUsageConfigHandler retrieves the current usage import configuration.
+func GetUsageConfigHandler(db *sqlx.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		cfg := config.GetConfig()
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(cfg)
+	}
+}
+
+// SaveUsageConfigHandler saves the usage import configuration.
+func SaveUsageConfigHandler(db *sqlx.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var newCfg config.Config
+		if err := json.NewDecoder(r.Body).Decode(&newCfg); err != nil {
+			http.Error(w, "Invalid request body", http.StatusBadRequest)
+			return
+		}
+
+		// Basic validation: Check if path exists and is a directory (optional but recommended)
+		if newCfg.UsageFolderPath != "" {
+			info, err := os.Stat(newCfg.UsageFolderPath)
+			if err != nil {
+				if os.IsNotExist(err) {
+					http.Error(w, fmt.Sprintf("フォルダが見つかりません: %s", newCfg.UsageFolderPath), http.StatusBadRequest)
+					return
+				}
+				log.Printf("Error checking folder path '%s': %v", newCfg.UsageFolderPath, err)
+				http.Error(w, "フォルダパスの確認中にエラーが発生しました", http.StatusInternalServerError)
+				return
+			}
+			if !info.IsDir() {
+				http.Error(w, fmt.Sprintf("指定されたパスはフォルダではありません: %s", newCfg.UsageFolderPath), http.StatusBadRequest)
+				return
+			}
+		}
+
+		if err := config.SaveConfig(newCfg); err != nil {
+			log.Printf("Error saving config: %v", err)
+			http.Error(w, "設定の保存に失敗しました", http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"message": "設定を保存しました。"})
+	}
+}
+
+// ImportUsageHandler manually triggers the import of usage files from the configured folder.
+func ImportUsageHandler(db *sqlx.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		// Prevent concurrent imports
+		if !importMutex.TryLock() {
+			http.Error(w, "他の取り込み処理が実行中です。しばらく待ってから再試行してください。", http.StatusConflict)
+			return
+		}
+		defer importMutex.Unlock()
+
+		cfg := config.GetConfig()
+		folderPath := cfg.UsageFolderPath
+		if folderPath == "" {
+			http.Error(w, "処方ファイル取込フォルダが設定されていません。", http.StatusBadRequest)
+			return
+		}
+
+		log.Printf("Starting manual usage import from: %s", folderPath)
+
+		files, err := os.ReadDir(folderPath)
+		if err != nil {
+			log.Printf("Error reading usage directory '%s': %v", folderPath, err)
+			http.Error(w, fmt.Sprintf("フォルダの読み取りに失敗しました: %s", folderPath), http.StatusInternalServerError)
+			return
+		}
+
+		var importResults []map[string]interface{}
+		var overallSuccess = true
+		var processedFileCount int
+
+		for _, file := range files {
+			if file.IsDir() || !strings.HasSuffix(strings.ToLower(file.Name()), ".csv") {
+				continue // Skip directories and non-CSV files
+			}
+
+			processedFileCount++
+			filePath := filepath.Join(folderPath, file.Name())
+			log.Printf("Processing usage file: %s", filePath)
+			fileResult := map[string]interface{}{
+				"fileName":       file.Name(),
+				"timestamp":      time.Now().Format(time.RFC3339),
+				"success":        false,
+				"processedCount": 0,
+				"error":          "",
+			}
+
+			err := processSingleUsageFile(db, filePath)
+			if err != nil {
+				log.Printf("Error processing file %s: %v", file.Name(), err)
+				fileResult["error"] = err.Error()
+				overallSuccess = false
+			} else {
+				fileResult["success"] = true
+				// TODO: Add processed count if needed by modifying processSingleUsageFile
+			}
+			importResults = append(importResults, fileResult)
+
+			// Optionally move or delete processed file here
+			// os.Rename(filePath, filePath+".processed") or os.Remove(filePath)
+		}
+
+		log.Printf("Finished manual usage import. Processed %d CSV files.", processedFileCount)
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"message": fmt.Sprintf("%d 件のCSVファイルを処理しました。", processedFileCount),
+			"success": overallSuccess, // Overall success flag
+			"history": importResults,  // Results for each file
+		})
+	}
+}
+
+// processSingleUsageFile handles the parsing and DB insertion for one usage file.
+func processSingleUsageFile(db *sqlx.DB, filePath string) error {
+	file, err := os.Open(filePath)
+	if err != nil {
+		return fmt.Errorf("ファイルを開けません: %w", err)
+	}
+	defer file.Close()
+
+	parsedRecords, err := parsers.ParseUsage(file)
+	if err != nil {
+		return fmt.Errorf("ファイルのパースに失敗しました: %w", err)
+	}
+
+	if len(parsedRecords) == 0 {
+		log.Printf("ファイル %s に有効なレコードがありません。", filepath.Base(filePath))
+		return nil // Not an error, just empty
+	}
+
+	// Determine date range for deletion
+	minDate, maxDate := parsedRecords[0].Date, parsedRecords[0].Date
+	for _, rec := range parsedRecords {
+		if rec.Date < minDate {
+			minDate = rec.Date
+		}
+		if rec.Date > maxDate {
+			maxDate = rec.Date
+		}
+	}
+
+	tx, err := db.Beginx()
+	if err != nil {
+		return fmt.Errorf("トランザクションの開始に失敗しました: %w", err)
+	}
+	defer tx.Rollback() // Rollback on any error
+
+	// Delete existing records in the date range
+	if err := database.DeleteUsageTransactionsInDateRange(tx, minDate, maxDate); err != nil {
+		return fmt.Errorf("既存レコードの削除に失敗しました (%s - %s): %w", minDate, maxDate, err)
+	}
+
+	// Assume a default client or derive from filename if needed. WASABI derived from filename.
+	// For simplicity, let's try finding/creating a default client "CL0000" / "処方取込"
+	defaultClientCode := "CL0000"
+	defaultClientName := "処方取込"
+	clientExists, err := database.CheckClientExistsByName(tx, defaultClientName)
+	if err != nil {
+		return fmt.Errorf("得意先 '%s' の存在確認に失敗しました: %w", defaultClientName, err)
+	}
+	if !clientExists {
+		// Get next CL code if "CL0000" doesn't exist either
+		var actualClientCode string
+		err = tx.Get(&actualClientCode, "SELECT client_code FROM client_master WHERE client_code=?", defaultClientCode)
+		if err != nil {
+			if err == sql.ErrNoRows {
+				// CL0000 doesn't exist, generate new one
+				newCode, seqErr := database.NextSequenceInTx(tx, "CL", "CL", 4)
+				if seqErr != nil {
+					return fmt.Errorf("新規得意先コードの採番に失敗しました: %w", seqErr)
+				}
+				actualClientCode = newCode
+				if err := database.CreateClientInTx(tx, actualClientCode, defaultClientName); err != nil {
+					return fmt.Errorf("新規得意先 '%s' (%s) の作成に失敗しました: %w", defaultClientName, actualClientCode, err)
+				}
+			} else {
+				return fmt.Errorf("得意先 '%s' の確認中にエラー: %w", defaultClientCode, err)
+			}
+		} else {
+			actualClientCode = defaultClientCode // CL0000 exists, use it
+		}
+		defaultClientCode = actualClientCode
+	} else {
+		// Client exists by name, get its code
+		err = tx.Get(&defaultClientCode, "SELECT client_code FROM client_master WHERE client_name=?", defaultClientName)
+		if err != nil {
+			return fmt.Errorf("得意先コード '%s' の取得に失敗しました: %w", defaultClientName, err)
+		}
+	}
+
+	// Insert new records
+	for i, rec := range parsedRecords {
+		// Find or create master using YJ code primarily, then JAN code
+		masterKey := rec.YjCode
+		if masterKey == "" {
+			masterKey = rec.JanCode
+		}
+		// Skip if both are empty? Or create provisional based on product name?
+		if masterKey == "" {
+			log.Printf("WARN: Skipping usage record %d in %s - YJ and JAN codes are empty. Product: %s", i+1, filepath.Base(filePath), rec.ProductName)
+			continue
+		}
+
+		master, err := mastermanager.FindOrCreateMaster(tx, masterKey, rec.ProductName)
+		if err != nil {
+			// Log error and continue with next record? Or fail the whole file? Let's fail the file for now.
+			return fmt.Errorf("レコード %d のマスター処理に失敗しました (Key: %s, Name: %s): %w", i+1, masterKey, rec.ProductName, err)
+		}
+
+		// Map to TransactionRecord
+		transaction := model.TransactionRecord{
+			TransactionDate:     rec.Date,
+			ClientCode:          defaultClientCode,      // Use the determined client code
+			ReceiptNumber:       "",                     // Usage doesn't have receipt number
+			LineNumber:          fmt.Sprintf("%d", i+1), // Use line number
+			Flag:                3,                      // 3 for Usage
+			JanCode:             master.ProductCode,     // Use code from master
+			YjCode:              master.YjCode,
+			ProductName:         master.ProductName,
+			KanaName:            master.KanaName,
+			UsageClassification: master.UsageClassification,
+			PackageForm:         master.PackageForm,
+			// PackageSpec needs calculation like in DAT handler
+			PackageSpec:       fmt.Sprintf("%s %v%s", master.PackageForm, master.YjPackUnitQty, master.YjUnitName), // Basic spec
+			MakerName:         master.MakerName,
+			DatQuantity:       0, // Not from DAT
+			JanPackInnerQty:   master.JanPackInnerQty,
+			JanQuantity:       0, // To be calculated if needed
+			JanPackUnitQty:    master.JanPackUnitQty,
+			JanUnitName:       "", // Determine if needed
+			JanUnitCode:       fmt.Sprintf("%d", master.JanUnitCode),
+			YjQuantity:        rec.YjQuantity, // From usage file
+			YjPackUnitQty:     master.YjPackUnitQty,
+			YjUnitName:        rec.YjUnitName, // Prefer unit name from usage file
+			UnitPrice:         0,              // Usage doesn't have price
+			PurchasePrice:     master.PurchasePrice,
+			SupplierWholesale: master.SupplierWholesale,
+			Subtotal:          0,
+			// Fill flags from master
+			FlagPoison:       master.FlagPoison,
+			FlagDeleterious:  master.FlagDeleterious,
+			FlagNarcotic:     master.FlagNarcotic,
+			FlagPsychotropic: master.FlagPsychotropic,
+			FlagStimulant:    master.FlagStimulant,
+			FlagStimulantRaw: master.FlagStimulantRaw,
+		}
+
+		if err := database.InsertTransactionRecord(tx, transaction); err != nil {
+			return fmt.Errorf("レコード %d の登録に失敗しました (YJ: %s, JAN: %s): %w", i+1, rec.YjCode, rec.JanCode, err)
+		}
+	}
+
+	// Commit transaction
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("トランザクションのコミットに失敗しました: %w", err)
+	}
+
+	return nil
+}
+
+
+----- C:\Users\wasab\OneDrive\デスクトップ\TKR\main.go -----
+// C:\Users\wasab\OneDrive\デスクトップ\TKR\main.go
+package main
+
+import (
+	"encoding/json"
+	"log"
+	"net/http"
+	"os/exec"
+	"runtime"
+	"strings"
+
+	"github.com/jmoiron/sqlx"
+	_ "github.com/mattn/go-sqlite3"
+
+	"tkr/config" // ★ Import config
+	"tkr/dat"
+	"tkr/database"
+	"tkr/loader"
+	"tkr/masteredit"
+	"tkr/usage" // ★ Import usage
+)
+
+func main() {
+	log.Println("Connecting to database...")
+	dbConn, err := sqlx.Open("sqlite3", "./tkr.db?_journal_mode=WAL&_busy_timeout=5000")
+	if err != nil {
+		log.Fatalf("db open error: %v", err)
+	}
+	defer dbConn.Close()
+	log.Println("Database connection successful.")
+
+	// ★ Load config on startup
+	if _, err := config.LoadConfig(); err != nil {
+		log.Printf("WARN: Failed to load config file: %v. Using defaults.", err)
+	}
+
+	if err := loader.InitDatabase(dbConn); err != nil {
+		log.Fatalf("Database initialization failed: %v", err)
+	}
+	log.Println("Database initialization complete.")
+
+	mux := http.NewServeMux()
+
+	mux.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("./static"))))
+
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/" {
+			http.NotFound(w, r)
+			return
+		}
+		http.ServeFile(w, r, "./static/index.html")
+	})
+
+	mux.HandleFunc("/api/jcshms/", func(w http.ResponseWriter, r *http.Request) {
+		janCode := strings.TrimPrefix(r.URL.Path, "/api/jcshms/")
+		if janCode == "" {
+			http.Error(w, "JAN code is required", http.StatusBadRequest)
+			return
+		}
+		log.Printf("API request received for JAN: %s", janCode)
+		info, err := database.GetJcshmsInfoByJan(dbConn, janCode)
+		if err != nil {
+			log.Printf("Error querying database for JAN %s: %v", janCode, err)
+			http.Error(w, "Failed to retrieve JCSHMS info", http.StatusInternalServerError)
+			return
+		}
+		if info == nil {
+			log.Printf("JCSHMS info not found for JAN: %s", janCode)
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(info); err != nil {
+			log.Printf("Error encoding JSON response for JAN %s: %v", janCode, err)
+		}
+		log.Printf("Successfully returned JCSHMS info for JAN: %s", janCode)
+	})
+
+	mux.HandleFunc("/api/dat/upload", dat.UploadDatHandler(dbConn))
+
+	mux.HandleFunc("/api/masters", masteredit.ListMastersHandler(dbConn))
+	mux.HandleFunc("/api/masters/update", masteredit.UpdateMasterHandler(dbConn))
+
+	// ★ Add Usage API routes
+	mux.HandleFunc("/api/usage/config", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			usage.GetUsageConfigHandler(dbConn)(w, r)
+		} else if r.Method == http.MethodPost {
+			usage.SaveUsageConfigHandler(dbConn)(w, r)
+		} else {
+			http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+		}
+	})
+	mux.HandleFunc("/api/usage/import", usage.ImportUsageHandler(dbConn)) // Assumes POST method
+
+	port := ":8080"
+	log.Printf("Server starting on http://localhost%s", port)
+	go openBrowser("http://localhost" + port)
+	if err := http.ListenAndServe(port, mux); err != nil {
+		log.Fatalf("server failed to start: %v", err)
+	}
+}
+
+func openBrowser(url string) {
+	var err error
+	switch runtime.GOOS {
+	case "windows":
+		err = exec.Command("rundll32", "url.dll,FileProtocolHandler", url).Start()
+	case "darwin":
+		err = exec.Command("open", url).Start()
+	default:
+		err = exec.Command("xdg-open", url).Start()
+	}
+	if err != nil {
+		log.Printf("failed to open browser: %v", err)
+	}
+}
+
+
+----- C:\Users\wasab\OneDrive\デスクトップ\TKR\schema.sql -----
+-- C:\Users\wasab\OneDrive\デスクトップ\TKR\schema.sql (全体)
+CREATE TABLE IF NOT EXISTS product_master (
+    product_code TEXT PRIMARY KEY,
+    yj_code TEXT,
+    gs1_code TEXT,
+    product_name TEXT,
+    kana_name TEXT,
+    -- ▼▼▼【ここから追加】▼▼▼
+    kana_name_short TEXT,
+    generic_name TEXT,
+    -- ▲▲▲【追加ここまで】▲▲▲
+    maker_name TEXT,
+    specification TEXT,
+    usage_classification TEXT,
+    package_form TEXT,
+    yj_unit_name TEXT,
+    yj_pack_unit_qty REAL,
+    jan_pack_inner_qty REAL,
+    jan_unit_code INTEGER,
+    jan_pack_unit_qty REAL,
+    origin TEXT,
+    nhi_price REAL,
+    purchase_price REAL,
+    flag_poison INTEGER,
+    flag_deleterious INTEGER,
+    flag_narcotic INTEGER,
+    flag_psychotropic INTEGER,
+    flag_stimulant INTEGER,
+    flag_stimulant_raw INTEGER,
+    is_order_stopped INTEGER DEFAULT 0,
+    supplier_wholesale TEXT,
+    group_code TEXT,
+    shelf_number TEXT,
+    category TEXT,
+    user_notes TEXT
+);
+
+CREATE TABLE IF NOT EXISTS transaction_records (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  transaction_date TEXT,
+  client_code TEXT,
+  receipt_number TEXT,
+  line_number TEXT,
+  flag INTEGER,
+  jan_code TEXT,
+  yj_code TEXT,
+  product_name TEXT,
+  kana_name TEXT,
+  usage_classification TEXT,
+  package_form TEXT,
+  package_spec TEXT,
+  maker_name TEXT,
+  dat_quantity REAL,
+  jan_pack_inner_qty REAL,
+  jan_quantity REAL,
+  jan_pack_unit_qty REAL,
+  jan_unit_name TEXT,
+  jan_unit_code TEXT,
+  yj_quantity REAL,
+  yj_pack_unit_qty REAL,
+  yj_unit_name TEXT,
+  unit_price REAL,
+  purchase_price REAL,
+  supplier_wholesale TEXT,
+  subtotal REAL,
+  tax_amount REAL,
+  tax_rate REAL,
+  expiry_date TEXT,
+  lot_number TEXT,
+  flag_poison INTEGER,
+  flag_deleterious INTEGER,
+  flag_narcotic INTEGER,
+  flag_psychotropic INTEGER,
+  flag_stimulant INTEGER,
+  flag_stimulant_raw INTEGER,
+  process_flag_ma TEXT
+);
+
+CREATE TABLE IF NOT EXISTS jcshms (
+  JC000 TEXT, JC001 TEXT, JC002 TEXT, JC003 TEXT, JC004 TEXT, JC005 TEXT, JC006 TEXT, JC007 TEXT, JC008 TEXT, JC009 TEXT,
+  JC010 TEXT, JC011 TEXT, JC012 TEXT, JC013 TEXT, JC014 TEXT, JC015 TEXT, JC016 TEXT, JC017 TEXT, JC018 TEXT, JC019 TEXT,
+  JC020 TEXT, JC021 TEXT, JC022 TEXT, JC023 TEXT, JC024 TEXT, JC025 TEXT, JC026 TEXT, JC027 TEXT, JC028 TEXT, JC029 TEXT,
+  JC030 TEXT, JC031 TEXT, JC032 TEXT, JC033 TEXT, JC034 TEXT, JC035 TEXT, JC036 TEXT, JC037 TEXT, JC038 TEXT, JC039 TEXT,
+  JC040 TEXT, JC041 TEXT, JC042 TEXT, JC043 TEXT, JC044 REAL, JC045 TEXT, JC046 TEXT, JC047 TEXT, JC048 TEXT, JC049 TEXT,
+  JC050 REAL, JC051 TEXT, JC052 TEXT, JC053 TEXT, JC054 TEXT, JC055 TEXT, JC056 TEXT, JC057 TEXT, JC058 TEXT, JC059 TEXT,
+  JC060 TEXT, JC061 INTEGER, JC062 INTEGER, JC063 INTEGER, JC064 INTEGER, JC065 INTEGER, JC066 INTEGER, JC067 TEXT, JC068 TEXT, JC069 TEXT,
+  JC070 TEXT, JC071 TEXT, JC072 TEXT, JC073 TEXT, JC074 TEXT, JC075 TEXT, JC076 TEXT, JC077 TEXT, JC078 TEXT, JC079 TEXT,
+  JC080 TEXT, JC081 TEXT, JC082 TEXT, JC083 TEXT, JC084 TEXT, JC085 TEXT, JC086 TEXT, JC087 TEXT, JC088 TEXT, JC089 TEXT,
+  JC090 TEXT, JC091 TEXT, JC092 TEXT, JC093 TEXT, JC094 TEXT, JC095 TEXT, JC096 TEXT, JC097 TEXT, JC098 TEXT, JC099 TEXT,
+  JC100 TEXT, JC101 TEXT, JC102 TEXT, JC103 TEXT, JC104 TEXT, JC105 TEXT, JC106 TEXT, JC107 TEXT, JC108 TEXT, JC109 TEXT,
+  JC110 TEXT, JC111 TEXT, JC112 TEXT, JC113 TEXT, JC114 TEXT, JC115 TEXT, JC116 TEXT, JC117 TEXT, JC118 TEXT, JC119 TEXT,
+  JC120 TEXT, JC121 TEXT, JC122 TEXT, JC123 TEXT, JC124 REAL,
+  PRIMARY KEY(JC000)
+);
+
+CREATE TABLE IF NOT EXISTS jancode (
+  JA000 TEXT, JA001 TEXT, JA002 TEXT, JA003 TEXT, JA004 TEXT, JA005 TEXT, JA006 REAL, JA007 TEXT, JA008 REAL, JA009 TEXT,
+  JA010 TEXT, JA011 TEXT, JA012 TEXT, JA013 TEXT, JA014 TEXT, JA015 TEXT, JA016 TEXT, JA017 TEXT, JA018 TEXT, JA019 TEXT,
+  JA020 TEXT, JA021 TEXT, JA022 TEXT, JA023 TEXT, JA024 TEXT, JA025 TEXT, JA026 TEXT, JA027 TEXT, JA028 TEXT, JA029 TEXT,
+  PRIMARY KEY(JA001)
+);
+
+CREATE INDEX IF NOT EXISTS idx_transactions_jan_code ON transaction_records (jan_code);
+CREATE INDEX IF NOT EXISTS idx_transactions_date ON transaction_records (transaction_date);
+CREATE INDEX IF NOT EXISTS idx_transactions_flag ON transaction_records (flag);
+CREATE INDEX IF NOT EXISTS idx_product_master_kana_name ON product_master (kana_name);
+CREATE INDEX IF NOT EXISTS idx_product_master_yj_code ON product_master (yj_code);
+CREATE INDEX IF NOT EXISTS idx_jcshms_yj_code ON jcshms (JC009);
+
+CREATE TABLE IF NOT EXISTS units (
+    code TEXT PRIMARY KEY,
+    name TEXT
+);
+
+CREATE TABLE IF NOT EXISTS medicine_data (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    yj_code TEXT UNIQUE,
+    data TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_medicine_data_yj_code ON medicine_data (yj_code);
+
+CREATE TABLE IF NOT EXISTS price_revisions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    revision_date TEXT NOT NULL,
+    yj_code TEXT NOT NULL,
+    old_price REAL,
+    new_price REAL,
+    UNIQUE(revision_date, yj_code)
+);
+
+CREATE TABLE IF NOT EXISTS price_history (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    yj_code TEXT NOT NULL,
+    price REAL NOT NULL,
+    start_date TEXT NOT NULL,
+    end_date TEXT,
+    UNIQUE(yj_code, start_date)
+);
+
+CREATE INDEX IF NOT EXISTS idx_price_history_yj_code ON price_history (yj_code);
+CREATE INDEX IF NOT EXISTS idx_price_history_start_date ON price_history (start_date);
+CREATE INDEX IF NOT EXISTS idx_price_history_end_date ON price_history (end_date);
+
+CREATE INDEX IF NOT EXISTS idx_product_master_gs1_code ON product_master (gs1_code);
+CREATE INDEX IF NOT EXISTS idx_transactions_receipt_number ON transaction_records (receipt_number);
+
+CREATE INDEX IF NOT EXISTS idx_transactions_flag_date ON transaction_records (flag, transaction_date);
+
+CREATE TABLE IF NOT EXISTS backorders (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  order_date TEXT NOT NULL,
+  yj_code TEXT NOT NULL,
+  product_name TEXT,
+  package_form TEXT NOT NULL,
+  jan_pack_inner_qty REAL NOT NULL,
+  yj_unit_name TEXT NOT NULL,
+  order_quantity REAL NOT NULL,
+  remaining_quantity REAL NOT NULL,
+  wholesaler_code TEXT,
+  yj_pack_unit_qty REAL,
+  jan_pack_unit_qty REAL,
+  jan_unit_code INTEGER
+);
+
+CREATE TABLE IF NOT EXISTS dead_stock_list (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  product_code TEXT NOT NULL,
+  yj_code TEXT,
+  package_form TEXT,
+  jan_pack_inner_qty REAL,
+  yj_unit_name TEXT,
+  stock_quantity_jan REAL NOT NULL,
+  expiry_date TEXT,
+  lot_number TEXT,
+  created_at TEXT NOT NULL,
+  UNIQUE(product_code, expiry_date, lot_number)
+);
+
+CREATE TABLE IF NOT EXISTS precomp_records (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  transaction_date TEXT,
+  client_code TEXT,
+  receipt_number TEXT,
+  line_number TEXT,
+  jan_code TEXT,
+  yj_code TEXT,
+  product_name TEXT,
+  kana_name TEXT,
+  usage_classification TEXT,
+  package_form TEXT,
+  package_spec TEXT,
+  maker_name TEXT,
+  jan_pack_inner_qty REAL,
+  jan_quantity REAL,
+  jan_pack_unit_qty REAL,
+  jan_unit_name TEXT,
+  jan_unit_code TEXT,
+  yj_quantity REAL,
+  yj_pack_unit_qty REAL,
+  yj_unit_name TEXT,
+  purchase_price REAL,
+  supplier_wholesale TEXT,
+  created_at TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'active',
+  UNIQUE(client_code, jan_code)
+);
+
+CREATE TABLE IF NOT EXISTS inventory_history (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    inventory_date TEXT NOT NULL,
+    product_code TEXT NOT NULL,
+    yj_code TEXT,
+    product_name TEXT,
+    yj_quantity REAL NOT NULL,
+    yj_unit_name TEXT,
+    package_spec TEXT,
+    UNIQUE(inventory_date, product_code)
+);
+
+CREATE INDEX IF NOT EXISTS idx_inventory_history_date_code ON inventory_history (inventory_date, product_code);
+CREATE INDEX IF NOT EXISTS idx_inventory_history_code_date ON inventory_history (product_code, inventory_date);
+
+
+CREATE TABLE IF NOT EXISTS client_master (
+  client_code TEXT PRIMARY KEY,
+  client_name TEXT NOT NULL UNIQUE
+);
+
+CREATE TABLE IF NOT EXISTS wholesalers (
+  wholesaler_code TEXT PRIMARY KEY,
+  wholesaler_name TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS code_sequences (
+  name TEXT PRIMARY KEY,
+  last_no INTEGER NOT NULL
+);
+
+INSERT OR IGNORE INTO code_sequences(name, last_no) VALUES ('MA2Y', 0);
+INSERT OR IGNORE INTO code_sequences(name, last_no) VALUES ('CL', 0);
+

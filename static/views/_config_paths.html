@@ -1,0 +1,20 @@
+{{ define "config_paths" }}
+<section class="config-section">
+    <h2>パス設定</h2>
+    <div class="config-form-container">
+        <div class="form-row">
+            <div class="form-group">
+                <label for="config-dat-folder-path">伝票取込フォルダパス (DAT):</label>
+                <input type="text" id="config-dat-folder-path" autocomplete="off">
+            </div>
+            <div class="form-group">
+                <label for="config-usage-folder-path">処方取込フォルダパス (CSV):</label>
+                <input type="text" id="config-usage-folder-path" autocomplete="off">
+            </div>
+        </div>
+        <div class="form-actions">
+            <button id="configSavePathBtn" class="btn">パス保存</button>
+        </div>
+    </div>
+</section>
+{{ end }}

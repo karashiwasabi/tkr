@@ -1,0 +1,31 @@
+/* C:\Users\wasab\OneDrive\デスクトップ\TKR\static\css\masteredit.css */
+
+/* ▼▼▼【削除】masterListTable は使用しなくなったため不要 ▼▼▼ */
+/*
+#masterListTable .edit-master-btn {
+    padding: 1px 4px;
+    font-size: 9px;
+}
+*/
+/* ▲▲▲【削除ここまで】▲▲▲ */
+
+/* ▼▼▼ master_edit_view.html のインラインスタイルをクラス化 ▼▼▼ */
+
+/* 編集モーダル固有のレイアウト */
+#masterEditModalOverlay .readonly-group {
+    background-color: #f7f7f7;
+    border: 1px dashed #ddd;
+    padding: 5px;
+    gap: 5px;
+}
+#masterEditModalOverlay .readonly-group .form-group label {
+    font-weight: normal;
+}
+
+/* flex-basis (幅) 指定 */
+#masterEditModalOverlay .form-group.flex-100 { flex-basis: 100px; }
+#masterEditModalOverlay .form-group.flex-120 { flex-basis: 120px; }
+#masterEditModalOverlay .form-group.flex-150 { flex-basis: 150px; }
+#masterEditModalOverlay .form-group.flex-200 { flex-basis: 200px; }
+#masterEditModalOverlay .form-group.flex-300 { flex-basis: 300px; }
+#masterEditModalOverlay .form-group.flex-full { flex-basis: 100%; }

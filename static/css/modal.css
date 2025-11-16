@@ -1,0 +1,92 @@
+/* C:\Users\wasab\OneDrive\デスクトップ\TKR\static\css\modal.css */
+
+/* モーダルオーバーレイ (背景) */
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.6);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 900;
+}
+
+/* モーダル本体 (白枠) */
+.modal-content {
+    background-color: #fcfcfc;
+    border: 1px solid #ddd;
+    padding: 15px;
+    border-radius: 5px;
+    width: 90%;
+    max-width: 1000px;
+    max-height: 90vh;
+    overflow-y: auto;
+    z-index: 901;
+    display: flex; 
+    flex-direction: column;
+}
+
+/* モーダル内のタイトル */
+.modal-content h2 {
+    margin-top: 0;
+    font-size: 1.2em;
+    border-bottom: 1px solid #ccc;
+    padding-bottom: 5px;
+}
+
+/* モーダル内のフォーム行 */
+.modal-content .form-row {
+    display: flex;
+    flex-wrap: wrap;
+    margin-bottom: 8px;
+    gap: 10px;
+}
+
+/* モーダル内のフォームグループ (ラベル + 入力欄) */
+.modal-content .form-group {
+    display: flex;
+    flex-direction: column;
+    flex-basis: 150px; 
+    flex-grow: 1;
+}
+
+/* モーダル内のラベル */
+.modal-content .form-group label {
+    font-weight: bold;
+    margin-bottom: 3px;
+    font-size: 10px;
+}
+
+/* モーダル内の入力欄 */
+.modal-content .form-group input[type="text"],
+.modal-content .form-group input[type="number"] {
+    width: 100%;
+    padding: 3px;
+    border: 1px solid #ccc;
+    border-radius: 3px;
+    font-size: inherit;
+    font-family: inherit;
+    box-sizing: border-box;
+}
+
+/* モーダル内の読み取り専用フィールド */
+.modal-content .form-group input.readonly-field {
+    background-color: #eee;
+    color: #555;
+    border-color: #ddd;
+}
+
+/* モーダル内のアクションボタン領域 (保存/閉じる) */
+.modal-content .form-actions {
+    margin-top: 15px;
+    padding-top: 10px;
+    border-top: 1px dashed #ccc;
+    text-align: right;
+}
+
+.modal-content .form-actions .btn {
+    margin-left: 10px;
+}

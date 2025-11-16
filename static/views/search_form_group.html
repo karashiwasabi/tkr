@@ -1,0 +1,63 @@
+// C:\Users\wasab\OneDrive\デスクトップ\TKR\static\views\search_form_group.html
+{{ define "generic_search_form" }}
+    {{ $prefix := .Prefix }}
+    {{ $formID := .BarcodeFormID }}
+    {{ $inputID := .BarcodeFormInputID }}
+    {{ $btnID := .SearchButtonID }}
+    {{ $btnText := .SearchButtonText }}
+
+    <div class="search-form-container">
+        
+        <div class="search-barcode-row">
+            <div class="form-group">
+ 
+               <label for="{{ $inputID }}">バーコードスキャン:</label>
+           
+             <form id="{{ $formID }}" class="search-barcode-form">
+                    <input type="text" id="{{ $inputID }}" class="search-barcode-input" autocomplete="off" placeholder="GTIN/JAN, ロット情報含む可">
+                </form>
+          
+  </div>
+        </div>
+
+        <div class="search-filter-row">
+            
+      
+             <div class="form-group">
+                <label>内外注区分:</label>
+                <div class="radio-group"> 
+               
+     <label><input type="radio" name="{{ $prefix }}usage_class" value="内" checked> 内</label>
+                    <label><input type="radio" name="{{ $prefix }}usage_class" value="外"> 外</label>
+                    <label><input type="radio" name="{{ $prefix }}usage_class" value="歯"> 歯</label>
+                    <label><input type="radio" name="{{ $prefix }}usage_class" value="注"> 注</label>
+                    <label><input type="radio" name="{{ $prefix }}usage_class" value="機"> 機</label>
+                    <label><input type="radio" name="{{ $prefix }}usage_class" value="他"> 他</label>
+         
+ 
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label for="{{ $prefix }}search-kana">カナ名 (前方一致):</label>
+                <input type="text" id="{{ $prefix }}search-kana" class="search-filter-input" autocomplete="off">
+            </div>
+
+     
+       <div class="form-group">
+ 
+                 <label for="{{ $prefix }}search-generic">一般名 (部分一致):</label>
+                <input type="text" id="{{ $prefix }}search-generic" class="search-filter-input" autocomplete="off">
+            </div>
+
+            <div class="form-group">
+                <label for="{{ $prefix }}search-shelf">棚番 (部分一致):</label>
+   
+           
+               <input type="text" id="{{ $prefix }}search-shelf" class="search-filter-input" autocomplete="off">
+            </div>
+
+            <button id="{{ $btnID }}" class="btn search-submit-button">{{ $btnText }}</button>
+        </div>
+    </div>
+{{ end }}

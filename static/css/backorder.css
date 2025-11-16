@@ -1,0 +1,62 @@
+/* C:\Users\wasab\OneDrive\デスクトップ\TKR\static\css\backorder.css */
+
+/* 発注残リストの操作エリア */
+.backorder-controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px 16px;
+    align-items: flex-end;
+    margin-bottom: 10px;
+}
+
+/* 一括削除ボタン */
+#bo-bulk-delete-btn {
+    background-color: #dc3545;
+    color: white;
+    margin-right: auto; /* 右側の要素を押し出す */
+}
+#bo-bulk-delete-btn:hover {
+    background-color: #c82333;
+}
+
+/* 発注残テーブル */
+#backorder-table {
+    margin-top: 10px;
+}
+
+/* 列幅 */
+#backorder-table th.col-bo-check   { width: 5%; }
+#backorder-table th.col-bo-date    { width: 10%; }
+#backorder-table th.col-bo-yj      { width: 10%; }
+#backorder-table th.col-bo-name    { width: 25%; }
+#backorder-table th.col-bo-spec    { width: 20%; }
+#backorder-table th.col-bo-order   { width: 8%; }
+#backorder-table th.col-bo-remain  { width: 8%; }
+#backorder-table th.col-bo-action  { width: 14%; } /* 削除/棚卸調整 */
+
+/* 個別削除ボタン */
+#backorder-table .delete-backorder-btn {
+    padding: 1px 4px;
+    font-size: 9px;
+    background-color: #fbeeee;
+    border-color: #dc3545;
+    color: #dc3545;
+    margin-right: 5px;
+}
+#backorder-table .delete-backorder-btn:hover {
+    background-color: #dc3545;
+    color: #fff;
+}
+
+/* 棚卸調整ボタン */
+#backorder-table .adjust-inventory-btn {
+    padding: 1px 4px;
+    font-size: 9px;
+    background-color: #e6f7ff;
+    border-color: #17a2b8;
+    color: #17a2b8;
+}
+#backorder-table .adjust-inventory-btn:hover {
+    background-color: #17a2b8;
+    color: #fff;
+}

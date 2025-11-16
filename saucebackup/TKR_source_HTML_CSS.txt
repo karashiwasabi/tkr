@@ -1,0 +1,2557 @@
+----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\css\backorder.css -----
+/* C:\Users\wasab\OneDrive\デスクトップ\TKR\static\css\backorder.css */
+
+/* 発注残リストの操作エリア */
+.backorder-controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px 16px;
+    align-items: flex-end;
+    margin-bottom: 10px;
+}
+
+/* 一括削除ボタン */
+#bo-bulk-delete-btn {
+    background-color: #dc3545;
+    color: white;
+    margin-right: auto; /* 右側の要素を押し出す */
+}
+#bo-bulk-delete-btn:hover {
+    background-color: #c82333;
+}
+
+/* 発注残テーブル */
+#backorder-table {
+    margin-top: 10px;
+}
+
+/* 列幅 */
+#backorder-table th.col-bo-check   { width: 5%; }
+#backorder-table th.col-bo-date    { width: 10%; }
+#backorder-table th.col-bo-yj      { width: 10%; }
+#backorder-table th.col-bo-name    { width: 25%; }
+#backorder-table th.col-bo-spec    { width: 20%; }
+#backorder-table th.col-bo-order   { width: 8%; }
+#backorder-table th.col-bo-remain  { width: 8%; }
+#backorder-table th.col-bo-action  { width: 14%; } /* 削除/棚卸調整 */
+
+/* 個別削除ボタン */
+#backorder-table .delete-backorder-btn {
+    padding: 1px 4px;
+    font-size: 9px;
+    background-color: #fbeeee;
+    border-color: #dc3545;
+    color: #dc3545;
+    margin-right: 5px;
+}
+#backorder-table .delete-backorder-btn:hover {
+    background-color: #dc3545;
+    color: #fff;
+}
+
+/* 棚卸調整ボタン */
+#backorder-table .adjust-inventory-btn {
+    padding: 1px 4px;
+    font-size: 9px;
+    background-color: #e6f7ff;
+    border-color: #17a2b8;
+    color: #17a2b8;
+}
+#backorder-table .adjust-inventory-btn:hover {
+    background-color: #17a2b8;
+    color: #fff;
+}
+
+----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\css\config.css -----
+/* C:\Users\wasab\OneDrive\デスクトップ\TKR\static\css\config.css */
+
+#config-view h2 {
+    margin-top: 15px;
+    margin-bottom: 5px;
+    font-size: 1.1em;
+    border-bottom: 1px solid #eee;
+    padding-bottom: 3px;
+}
+
+/* 設定セクションの共通スタイル */
+.config-section {
+    background-color: #fdfdfd;
+    border: 1px solid #ddd;
+    padding: 10px 15px;
+    margin-bottom: 15px;
+    border-radius: 4px;
+}
+
+/* フォームコンテナ (パス設定や卸追加) */
+.config-form-container {
+    padding: 5px;
+}
+
+.config-form-container .form-row {
+    display: flex;
+    flex-wrap: wrap;
+    margin-bottom: 8px;
+    gap: 10px;
+    align-items: flex-end; /* ラベルとボタンの高さを揃える */
+}
+
+.config-form-container .form-group {
+    display: flex;
+    flex-direction: column;
+    flex-basis: 250px; 
+    flex-grow: 1;
+}
+
+/* ▼▼▼【ここから追加】インラインスタイルをクラス化 ▼▼▼ */
+.config-form-container .form-group.flex-150 {
+    flex-basis: 150px;
+}
+.config-form-container .form-group.flex-300 {
+    flex-basis: 300px;
+}
+/* ▲▲▲【追加ここまで】▲▲▲ */
+
+
+.config-form-container .form-group label {
+    font-weight: bold;
+    margin-bottom: 3px;
+    font-size: 10px;
+}
+
+.config-form-container .form-group input[type="text"],
+.config-form-container .form-group input[type="number"] {
+    width: 100%;
+    padding: 3px;
+    border: 1px solid #ccc;
+    border-radius: 3px;
+    font-size: inherit;
+    font-family: inherit;
+    box-sizing: border-box;
+}
+
+.config-form-container .form-actions {
+    margin-left: 10px;
+}
+
+/* ▼▼▼【ここから修正】インラインスタイルをIDセレクタに移動 ▼▼▼ */
+#wholesalerListContainer {
+    max-height: 300px;
+    margin-top: 10px;
+    overflow-y: auto; /* ★【追加】コンテナ内スクロールを有効化 */
+}
+#wholesalerListTable th.col-config-code   { width: 25%;
+}
+#wholesalerListTable th.col-config-name   { width: 60%; }
+#wholesalerListTable th.col-config-action { width: 15%;
+}
+/* ▲▲▲【修正ここまで】▲▲▲ */
+
+/* 卸一覧テーブルの削除ボタン */
+#wholesalerListTable .delete-wholesaler-btn {
+    padding: 1px 4px;
+    font-size: 9px;
+    background-color: #fbeeee;
+    border-color: #dc3545;
+    color: #dc3545;
+}
+#wholesalerListTable .delete-wholesaler-btn:hover {
+    background-color: #dc3545;
+    color: #fff;
+}
+
+----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\css\deadstock.css -----
+/* C:\Users\wasab\OneDrive\デスクトップ\TKR\static\css\deadstock.css */
+
+.deadstock-controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px 16px;
+    padding: 10px;
+border: 1px solid #ccc;
+    background-color: #f7f7f7;
+    align-items: flex-end;
+    margin-bottom: 15px;
+}
+
+.deadstock-controls .form-group {
+    display: flex;
+    flex-direction: column;
+gap: 4px;
+}
+.deadstock-controls .form-group label {
+    font-size: 10px;
+    font-weight: bold;
+}
+.deadstock-controls .form-group input {
+    padding: 3px;
+    border: 1px solid #ccc;
+    font-size: inherit;
+    min-width: 150px;
+}
+.deadstock-controls .form-actions {
+    display: flex;
+    gap: 10px;
+    margin-left: auto;
+}
+
+/* ▼▼▼【追加】アップロード専用エリアのスタイル ▼▼▼ */
+.deadstock-upload-area {
+    background-color: #f0f4f8; 
+    border-color: #cce;
+    margin-top: -10px;
+}
+/* ▲▲▲【追加ここまで】▲▲▲ */
+
+/* 不動在庫テーブル */
+#deadstock-table {
+    margin-top: 10px;
+}
+
+/* ▼▼▼【ここから修正】列幅を調整 ▼▼▼ */
+#deadstock-table th.col-ds-action { width: 8%;
+} /* ★ 10% -> 8% */
+#deadstock-table th.col-ds-key { width: 24%; } /* ★ 20% -> 24% */
+#deadstock-table th.col-ds-name { width: 25%;
+} /* 変更なし */
+#deadstock-table th.col-ds-qty { width: 8%; } /* ★ 10% -> 8% */
+#deadstock-table th.col-ds-details { width: 35%;
+} /* 変更なし */
+/* ▲▲▲【修正ここまで】▲▲▲ */
+
+#deadstock-table .lot-details-list {
+    font-size: 0.9em;
+    padding-left: 15px;
+    margin: 0;
+}
+
+/* ▼▼▼【ここから追加】ボタンのスタイル ▼▼▼ */
+#deadstock-table .adjust-inventory-btn {
+    padding: 1px 4px;
+    font-size: 9px;
+    background-color: #e6f7ff;
+    border-color: #17a2b8;
+    color: #17a2b8;
+}
+#deadstock-table .adjust-inventory-btn:hover {
+    background-color: #17a2b8;
+    color: #fff;
+}
+/* ▲▲▲【追加ここまで】▲▲▲ */
+
+----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\css\inout.css -----
+/* C:\Users\wasab\OneDrive\デスクトップ\TKR\static\css\inout.css */
+.inout-view-container {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.inout-header-controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px 16px;
+    padding: 10px;
+    border: 1px solid #ccc;
+    background-color: #f7f7f7;
+    align-items: flex-end;
+}
+
+.inout-header-controls .form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.inout-header-controls .form-group label {
+    font-size: 10px;
+    font-weight: bold;
+}
+.inout-header-controls .form-group input,
+.inout-header-controls .form-group select {
+    padding: 3px;
+    border: 1px solid #ccc;
+    font-size: inherit;
+    min-width: 150px;
+}
+.inout-header-controls .buttons-group {
+    display: flex;
+    gap: 8px;
+    margin-left: auto;
+}
+
+.inout-details-header {
+    text-align: right;
+    margin-bottom: 5px;
+}
+
+----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\css\inventory_adjustment.css -----
+/* C:\Users\wasab\OneDrive\デスクトップ\TKR\static\css\inventory_adjustment.css */
+
+/* ▼▼▼【削除】固有の背景色指定を削除 ▼▼▼ */
+/*
+#inventory-adjustment-view .filter-container {
+    background-color: #f0f8ff; 
+    border: 1px solid #cce;
+}
+*/
+/* ▲▲▲【削除ここまで】▲▲▲ */
+
+/* 共通フォーム内の input/select へのスタイル指定 */
+#inventory-adjustment-view .filter-container .form-group input,
+#inventory-adjustment-view .filter-container .form-group select {
+    font-size: inherit;
+    padding: 3px;
+}
+
+/* 集計・サマリーセクション */
+.summary-section {
+    margin-bottom: 15px;
+}
+
+/* セクションヘッダー (台帳, 予製など) */
+.report-section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid #ccc;
+    padding-bottom: 4px;
+    margin-bottom: 5px;
+}
+.report-section-header h4 {
+    margin: 0;
+    font-size: 1.1em;
+}
+.report-section-header .header-total {
+    font-size: 0.9em;
+    font-weight: bold;
+}
+
+/* YJグループヘッダー */
+.agg-yj-header {
+    background-color: #343a40;
+    color: white;
+    padding: 4px 8px;
+    margin-top: 10px;
+    font-weight: bold;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+.agg-yj-header .product-name {
+    margin-left: 15px;
+    font-weight: normal;
+}
+.agg-yj-header .balance-info {
+    font-size: 0.9em;
+    font-weight: normal;
+    color: #eee;
+}
+
+/* 包装グループヘッダー */
+.agg-pkg-header {
+    background-color: #e9ecef;
+    padding: 4px 8px;
+    border: 1px solid #ccc;
+    border-bottom: none;
+    font-weight: bold;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+.agg-pkg-header .balance-info {
+    font-size: 0.9em;
+    font-weight: normal;
+    color: #333;
+}
+
+/* --- 棚卸調整ビュー全体 --- */
+.adj-header {
+    text-align: center; 
+    margin-bottom: 15px; 
+    font-size: 1.2em;
+}
+
+/* --- 2. 棚卸入力セクション --- */
+.input-section {
+    margin-top: 20px;
+}
+.adj-date-group {
+    display: flex; 
+    gap: 20px; 
+    align-items: flex-end;
+}
+.adj-date-group #inventory-date {
+    padding: 3px;
+}
+.adj-barcode-form {
+    flex-grow: 1; 
+    margin: 0;
+}
+.adj-barcode-form input {
+    ime-mode: disabled; 
+    font-size: 1.1em; 
+    padding: 3px;
+}
+.package-input-group {
+    margin-bottom: 20px;
+}
+.agg-pkg-header.adj-pkg-margin {
+    margin-top: 10px;
+}
+
+/* --- 3. 参考セクション --- */
+.reference-section-header {
+    font-size: 10px; 
+    margin-bottom: 5px;
+}
+.reference-table th.col-ref-product { width: 40%; }
+.reference-table th.col-ref-qty     { width: 15%; }
+.reference-table th.col-ref-expiry  { width: 20%; }
+.reference-table th.col-ref-lot     { width: 25%; }
+
+
+/* 棚卸入力セクション */
+.inventory-input-area {
+    padding: 10px;
+    border: 1px solid #cce;
+    background-color: #f8f9fa;
+    margin-bottom: 15px;
+}
+.inventory-input-area .form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+.inventory-input-area .form-group label {
+    font-size: 10px;
+    font-weight: bold;
+}
+.inventory-input-area .form-group input {
+    font-size: inherit;
+    padding: 3px;
+}
+
+/* ユーザー入力エリア (実在庫入力) */
+.user-input-area {
+    font-size: 12px;
+    padding: 10px;
+    background-color: #fffbdd; /* 薄い黄色 */
+    border: 1px solid #e6db55;
+    border-radius: 3px;
+}
+.user-input-area .form-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+.user-input-area .form-group label {
+    font-weight: bold;
+    min-width: 250px;
+}
+.user-input-area .form-group input[type="number"] {
+    width: 100px;
+    padding: 4px;
+    font-size: 1.1em;
+    font-weight: bold;
+    text-align: right;
+}
+.user-input-area .calculated-previous-day-stock {
+    font-weight: bold;
+    color: #dc3545; /* 赤色 */
+    font-size: 1.2em;
+    min-width: 80px;
+    display: inline-block;
+    text-align: right;
+    padding-right: 5px;
+}
+.user-input-area .info-text {
+    font-size: 10px;
+    color: #555;
+    margin-left: 10px;
+}
+.info-text.stock-info {
+    color: #dc3545;
+}
+.info-text.align-right {
+    margin-left: auto;
+}
+
+
+/* 最終入力テーブル */
+.final-input-tbody .btn {
+    padding: 1px 4px;
+    font-size: 9px;
+    min-width: 20px;
+}
+.final-input-tbody .action-buttons {
+    display: flex; 
+    flex-direction: column; 
+    gap: 4px;
+}
+.final-input-tbody .register-inventory-btn {
+    background-color: #28a745;
+    border-color: #1e7e34;
+    color: white;
+    font-weight: bold;
+}
+.final-input-tbody .delete-deadstock-row-btn {
+    background-color: #fbeeee;
+    border-color: #dc3545;
+    color: #dc3545;
+}
+.final-input-tbody input[type="text"],
+.final-input-tbody input[type="number"] {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 3px;
+    font-size: 10px;
+}
+.final-input-tbody input[type="number"] {
+    text-align: right;
+}
+.lot-input-header {
+    font-size: 10px; 
+    font-weight: bold; 
+    margin-bottom: 4px;
+}
+
+----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\css\masteredit.css -----
+/* C:\Users\wasab\OneDrive\デスクトップ\TKR\static\css\masteredit.css */
+
+/* ▼▼▼【削除】masterListTable は使用しなくなったため不要 ▼▼▼ */
+/*
+#masterListTable .edit-master-btn {
+    padding: 1px 4px;
+    font-size: 9px;
+}
+*/
+/* ▲▲▲【削除ここまで】▲▲▲ */
+
+/* ▼▼▼ master_edit_view.html のインラインスタイルをクラス化 ▼▼▼ */
+
+/* 編集モーダル固有のレイアウト */
+#masterEditModalOverlay .readonly-group {
+    background-color: #f7f7f7;
+    border: 1px dashed #ddd;
+    padding: 5px;
+    gap: 5px;
+}
+#masterEditModalOverlay .readonly-group .form-group label {
+    font-weight: normal;
+}
+
+/* flex-basis (幅) 指定 */
+#masterEditModalOverlay .form-group.flex-100 { flex-basis: 100px; }
+#masterEditModalOverlay .form-group.flex-120 { flex-basis: 120px; }
+#masterEditModalOverlay .form-group.flex-150 { flex-basis: 150px; }
+#masterEditModalOverlay .form-group.flex-200 { flex-basis: 200px; }
+#masterEditModalOverlay .form-group.flex-300 { flex-basis: 300px; }
+#masterEditModalOverlay .form-group.flex-full { flex-basis: 100%; }
+
+----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\css\modal.css -----
+/* C:\Users\wasab\OneDrive\デスクトップ\TKR\static\css\modal.css */
+
+/* モーダルオーバーレイ (背景) */
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.6);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 900;
+}
+
+/* モーダル本体 (白枠) */
+.modal-content {
+    background-color: #fcfcfc;
+    border: 1px solid #ddd;
+    padding: 15px;
+    border-radius: 5px;
+    width: 90%;
+    max-width: 1000px;
+    max-height: 90vh;
+    overflow-y: auto;
+    z-index: 901;
+    display: flex; 
+    flex-direction: column;
+}
+
+/* モーダル内のタイトル */
+.modal-content h2 {
+    margin-top: 0;
+    font-size: 1.2em;
+    border-bottom: 1px solid #ccc;
+    padding-bottom: 5px;
+}
+
+/* モーダル内のフォーム行 */
+.modal-content .form-row {
+    display: flex;
+    flex-wrap: wrap;
+    margin-bottom: 8px;
+    gap: 10px;
+}
+
+/* モーダル内のフォームグループ (ラベル + 入力欄) */
+.modal-content .form-group {
+    display: flex;
+    flex-direction: column;
+    flex-basis: 150px; 
+    flex-grow: 1;
+}
+
+/* モーダル内のラベル */
+.modal-content .form-group label {
+    font-weight: bold;
+    margin-bottom: 3px;
+    font-size: 10px;
+}
+
+/* モーダル内の入力欄 */
+.modal-content .form-group input[type="text"],
+.modal-content .form-group input[type="number"] {
+    width: 100%;
+    padding: 3px;
+    border: 1px solid #ccc;
+    border-radius: 3px;
+    font-size: inherit;
+    font-family: inherit;
+    box-sizing: border-box;
+}
+
+/* モーダル内の読み取り専用フィールド */
+.modal-content .form-group input.readonly-field {
+    background-color: #eee;
+    color: #555;
+    border-color: #ddd;
+}
+
+/* モーダル内のアクションボタン領域 (保存/閉じる) */
+.modal-content .form-actions {
+    margin-top: 15px;
+    padding-top: 10px;
+    border-top: 1px dashed #ccc;
+    text-align: right;
+}
+
+.modal-content .form-actions .btn {
+    margin-left: 10px;
+}
+
+----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\css\pricing.css -----
+/* C:\Users\wasab\OneDrive\デスクトップ\TKR\static\css\pricing.css */
+/* (TKRのstyles.css, table.cssをベースに、pricing.js が必要とするスタイルを追加) */
+
+#pricing-output-container .data-table {
+    font-size: 10px; /* 他のビューと合わせる */
+}
+
+#pricing-output-container .data-table th,
+#pricing-output-container .data-table td {
+    padding: 3px 4px; /* TKRの検索モーダル と同様のパディング */
+    height: auto;
+    min-height: 18px;
+}
+
+/* 決定納入価 */
+#pricing-output-container .manual-price-input {
+    width: 100%;
+    /* ▼▼▼【ここを修正】左右の padding を 3px から 2px に変更 ▼▼▼ */
+    padding: 3px 2px;
+    /* ▲▲▲【修正ここまで】▲▲▲ */
+    font-size: 10px;
+    text-align: right;
+    box-sizing: border-box; 
+}
+
+/* 採用卸 */
+#pricing-output-container .supplier-select {
+    width: 100%;
+    font-size: 10px;
+    padding: 2px;
+    box-sizing: border-box;
+}
+
+/* 見積価格（最安値） */
+#pricing-output-container .data-table td.right[style*="background-color: #d1e7dd"] {
+    background-color: #d1e7dd !important; /* CSSの詳細度を上げる */
+    font-weight: bold;
+}
+
+----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\css\reorder.css -----
+/* C:\Users\wasab\OneDrive\デスクトップ\TKR\static\css\reorder.css */
+
+/*
+   注: このビューの .filter-container, .form-group, .btn, .data-table,
+   .agg-yj-header, .modal-overlay, .modal-content 等の基本スタイルは、
+   styles.css, table.css, modal.css, search_form_group.css, inout.css
+   から提供されます。
+*/
+
+/* 既存の発注残を表示するエリア */
+.existing-backorders-info {
+    background-color: #fffbdd; /* 薄い黄色 */
+    border: 1px solid #e6db55;
+    padding: 5px 10px;
+    margin: -1px 0 0 0; /* ヘッダーのborderと重なるように */
+    font-size: 10px;
+}
+.existing-backorders-info ul {
+    margin: 0;
+    padding-left: 15px;
+}
+.existing-backorders-info li {
+    color: #555;
+}
+
+
+/* 発注候補テーブル */
+#order-candidates-output .data-table {
+    margin-bottom: 10px; /* YJグループ間のマージン */
+}
+
+/* 発注候補テーブルの列幅 */
+#order-candidates-output .data-table th:nth-child(1) { width: 25%; } /* 製品名 */
+#order-candidates-output .data-table th:nth-child(2) { width: 15%; } /* メーカー */
+#order-candidates-output .data-table th:nth-child(3) { width: 15%; } /* 包装仕様 */
+#order-candidates-output .data-table th:nth-child(4) { width: 20%; } /* 卸業者 */
+#order-candidates-output .data-table th:nth-child(5) { width: 10%; } /* 発注単位 */
+#order-candidates-output .data-table th:nth-child(6) { width: 5%; }  /* 発注数 */
+#order-candidates-output .data-table th:nth-child(7) { width: 10%; } /* 操作 */
+
+
+/* 発注操作ボタンのセル */
+.order-actions-cell .order-action-buttons {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 3px;
+    justify-content: center; /* TKRの .center に合わせる */
+}
+
+.order-actions-cell .btn {
+    padding: 1px 4px;
+    font-size: 9px;
+    min-width: 30px; /* ボタン幅を確保 */
+    white-space: nowrap;
+}
+
+/* 発注不可ボタン */
+.set-unorderable-btn {
+    background-color: #fbeeee;
+    border-color: #dc3545;
+    color: #dc3545;
+}
+.set-unorderable-btn:hover {
+    background-color: #dc3545;
+    color: #fff;
+}
+
+/* 除外・変更ボタン */
+.remove-order-item-btn,
+.change-to-orderable-btn {
+    background-color: #fff3cd;
+    border-color: #e6b800;
+    color: #856404;
+}
+.remove-order-item-btn:hover,
+.change-to-orderable-btn:hover {
+    background-color: #e6b800;
+    color: #333;
+}
+
+/* 棚卸調整ボタン */
+.go-to-inv-adj-btn {
+    background-color: #e6f7ff;
+    border-color: #17a2b8;
+    color: #17a2b8;
+}
+.go-to-inv-adj-btn:hover {
+    background-color: #17a2b8;
+    color: #fff;
+}
+
+
+/* 連続スキャンモーダル関連 */
+#continuous-order-modal .form-group label {
+    font-size: 10px;
+    font-weight: bold;
+}
+#continuous-order-modal input[type="text"] {
+    width: 100%;
+    padding: 3px;
+    border: 1px solid #ccc;
+    font-size: inherit;
+    box-sizing: border-box;
+}
+
+/* (スキャン済みリストのスタイル .scanned-item などは styles.css で定義) */
+
+----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\css\search_form_group.css -----
+/* C:\Users\wasab\OneDrive\デスクトップ\TKR\static\css\search_form_group.css */
+
+/*
+   共通検索フォーム (search_form_group.html) 専用スタイル
+*/
+
+.search-form-container {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    gap: 10px;
+}
+
+/* 上段 (バーコード行) */
+.search-barcode-row {
+    display: flex;
+    width: 100%;
+}
+
+.search-barcode-row .form-group {
+    flex-basis: 300px;
+    flex-grow: 1;
+    /* ▼▼▼【ここから追加】干渉を防ぐため明示的に指定 ▼▼▼ */
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    /* ▲▲▲【追加ここまで】▲▲▲ */
+}
+
+.search-barcode-form {
+    margin: 0;
+}
+
+.search-barcode-input {
+    padding: 3px;
+    font-size: inherit;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+/* 下段 (フィルター行) */
+.search-filter-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: flex-end; /* ラベル、入力欄、ボタンの底を揃える */
+    width: 100%;
+}
+
+/* ▼▼▼【ここから追加】下段の .form-group スタイル ▼▼▼ */
+.search-filter-row .form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+/* ▲▲▲【追加ここまで】▲▲▲ */
+
+/* 下段の汎用入力欄 */
+.search-filter-input {
+    padding: 3px;
+    font-size: inherit;
+}
+
+/* 下段の検索ボタン */
+.search-submit-button {
+    padding: 5px 10px;
+    margin-left: auto; /* 右寄せ */
+}
+
+/* ▼▼▼【ここから追加】ラジオボタンのスタイルを他から分離 ▼▼▼ */
+.search-filter-row .form-group .radio-group {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 10px;
+    align-items: center;
+    height: 100%;
+}
+
+.search-filter-row .form-group .radio-group label {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    white-space: nowrap;
+    font-weight: normal; /* inventory_adjustment.css の [cite: 657] を上書き */
+}
+/* ▲▲▲【追加ここまで】▲▲▲ */
+
+----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\css\search_modal.css -----
+/* C:\Users\wasab\OneDrive\デスクトップ\TKR\static\css\search_modal.css */
+
+/*
+   検索モーダル用のスタイル
+   (モーダルの基本枠は modal.css で定義)
+*/
+
+/* 検索結果テーブル */
+#search-results-table {
+    font-size: 10px; /* 通常より少し小さく */
+}
+#search-results-table th, 
+#search-results-table td {
+    padding: 3px 4px;
+    height: auto;
+    min-height: 18px;
+}
+
+/* 採用済み（マスターに既に存在する）品目を赤字にする */
+#search-results-table tr.adopted-item td {
+    color: #e60000;
+    font-weight: bold;
+}
+#search-results-table tr.adopted-item td .select-product-btn {
+    color: #e60000;
+    font-weight: bold;
+}
+
+/* ▼▼▼ common_search_modal.html のインラインスタイルをクラス化 ▼▼▼ */
+
+/*
+   注：以下のスタイルは、上記の display:none によって現在非表示だが、
+   将来的に検索モーダル内で検索を有効化する場合に備えて定義する
+*/
+#tkr-search-modal-content .filter-container {
+    background-color: #f4f4f4; 
+    border: 1px solid #ccc; 
+    padding: 10px;
+}
+#tkr-search-modal-content .filter-container fieldset {
+    border: none; 
+    padding: 0; 
+    margin: 0;
+}
+#tkr-search-modal-content .filter-container legend {
+    font-weight: bold; 
+    font-size: 1.1em; 
+    margin-bottom: 5px;
+}
+#tkr-search-modal-content #modal-search-gs1-form {
+    margin: 0;
+}
+#tkr-search-modal-content .filter-container .form-actions {
+    border-top: none; 
+    margin-top: 10px; 
+    padding-top: 0;
+}
+#tkr-search-modal-content #product-search-btn {
+    padding: 5px 10px;
+}
+
+/* 検索結果のコンテナ */
+#search-results-container {
+    max-height: 50vh; 
+    overflow-y: auto; 
+    margin-top: 10px;
+}
+
+/* 検索結果テーブルの列幅 */
+#search-results-table th.col-modal-product { width: 35%; }
+#search-results-table th.col-modal-maker   { width: 15%; }
+#search-results-table th.col-modal-spec    { width: 20%; }
+#search-results-table th.col-modal-yj      { width: 10%; }
+#search-results-table th.col-modal-jan     { width: 10%; }
+#search-results-table th.col-modal-action  { width: 10%; }
+
+/* モーダル末尾の「閉じる」ボタンのマージン */
+#tkr-search-modal-overlay .form-actions {
+    margin-top: 15px;
+}
+
+----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\css\styles.css -----
+/* TKR/static/css/styles.css (Table styles removed) */
+
+/* ========================================================================== */
+/* 1. Page Layout & Print Settings */
+/* ========================================================================== */
+
+@page {
+  size: A4 landscape;
+  margin: 10mm;
+}
+
+html, body {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  background: #eee;
+}
+
+body {
+  font-family: "MS Gothic", "ＭＳ ゴシック", sans-serif; /* WASABI font */
+  font-size: 10.4px; /* WASABI base size */
+  overflow-y: auto;
+  overflow-x: hidden;
+  box-sizing: border-box;
+  width: 297mm; /* A4 width landscape */
+  min-height: 210mm; /* A4 height landscape */
+  height: auto;
+  padding: 10mm; /* Page padding */
+  margin: 10mm auto; /* Center page */
+  background: #fff; /* Paper color */
+  box-shadow: 0 0 5px rgba(0,0,0,0.1); /* Subtle shadow */
+  border: 1px solid #ccc; /* Page border */
+}
+
+/* ========================================================================== */
+/* 7. Common Components */
+/* ========================================================================== */
+
+.btn {
+  padding: 2px 2px; /* Reduced padding */
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: inherit; /* Inherit body font size */
+  line-height: 1.3;   /* Stabilize height */
+  background-color: #f8f9fa;
+  color: #333;
+  transition: background-color 0.2s ease;
+}
+.btn:hover {
+  background-color: #e2e6ea;
+}
+
+#loading-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.6);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+  color: white;
+  font-size: 1.2em;
+}
+
+#loading-overlay.hidden {
+  display: none;
+}
+
+.spinner {
+  border: 4px solid rgba(255, 255, 255, 0.3);
+  border-radius: 50%;
+  border-top: 4px solid #fff;
+  width: 40px;
+  height: 40px;
+  animation: spin 1s linear infinite;
+  margin-bottom: 15px;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.notification-box {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 15px 25px;
+  border-radius: 5px;
+  color: white;
+  font-size: 1em;
+  z-index: 1001;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.3s ease, visibility 0.3s ease;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+}
+
+.notification-box.show {
+  opacity: 1;
+  visibility: visible;
+}
+
+.notification-box.success { background-color: #28a745; }
+.notification-box.error   { background-color: #dc3545; }
+.notification-box.warning { background-color: #ffc107; color: #333; }
+.notification-box.info    { background-color: #17a2b8; }
+
+/* 各ビューの基本設定 */
+.view {
+  display: none; /* デフォルトでは非表示 */
+}
+.view.active {
+  display: block; /* .active クラスで表示 */
+}
+
+/* dat_view.html のファイル選択ボタンコンテナ */
+#dat-upload-view .upload-button-container {
+    margin-bottom: 20px;
+}
+
+
+/* General Helper Classes */
+.hidden { display: none !important; }
+.center { text-align: center; }
+.left   { text-align: left; }
+.right  { text-align: right; }
+
+
+/* ========================================================================== */
+/* 8. Print Styles (Keep basic page settings) */
+/* ========================================================================== */
+
+@media print {
+  html { background: transparent !important; }
+  body {
+    width: auto !important;
+    min-height: auto !important;
+    margin: 0 !important;
+    border: none !important;
+    box-shadow: none !important;
+    background: transparent !important;
+    overflow: visible !important;
+    padding: 0 !important;
+  }
+  /* Add .no-print class styles here if needed later */
+  .btn, #loading-overlay, #notification-box, #datUploadBtn, #uploadResultContainer h3, #uploadResultContainer ul {
+      display: none !important; /* Hide buttons and messages when printing */
+  }
+  .data-table {
+      font-size: 9px !important; /* Slightly smaller font for printing */
+      margin-bottom: 5mm !important;
+  }
+   .data-table th, .data-table td {
+      padding: 1px 2px !important; /* Reduce padding for printing */
+  }
+
+}
+
+/* ========================================================================== */
+/* 9. Filter Container (Common) */
+/* ========================================================================== */
+
+.filter-container {
+    padding: 10px;
+    margin-bottom: 10px;
+    border: 1px solid #ddd;
+    background-color: #f7f7f7; /* 共通の背景色 */
+}
+
+.filter-container fieldset {
+    border: 1px solid #ccc;
+    padding: 5px;
+}
+
+/* (inventory_adjustment.css と masteredit.css の
+   背景色は、それぞれのファイルに記載されている
+   IDセレクタによって正しく上書きされます) 
+*/
+
+/* ▼▼▼【ここに追加】(WASABI: static/css/styles.css  より) ▼▼▼ */
+/* 予製中断時のスタイル */
+#precomp-details-container.is-inactive {
+    opacity: 0.5; /* 半透明にする */
+    pointer-events: none; /* クリックなどの操作を無効化 */
+    position: relative; /* 疑似要素の配置基準 */
+}
+#precomp-details-container.is-inactive::before {
+    content: "中断中";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%) rotate(-15deg);
+    font-size: 3em;
+    color: rgba(220, 53, 69, 0.5); /* 赤系の半透明 */
+    font-weight: bold;
+    z-index: 10;
+    pointer-events: none; /* 文字自体はクリックできないように */
+}
+/* ▲▲▲【追加ここまで】▲▲▲ */
+
+----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\css\table.css -----
+/* TKR/static/css/table.css */
+
+/* ========================================================================== */
+/* Data Table Styles */
+/* ========================================================================== */
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 0;
+  font-size: inherit;
+  table-layout: fixed;
+  box-sizing: border-box;
+}
+
+.data-table th,
+.data-table td {
+  border: 1px solid #ccc;
+  padding: 2px 2px;
+  vertical-align: middle;
+  min-height: 20px;
+  height: 20px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  box-sizing: border-box;
+}
+
+.data-table th {
+  background-color: #f2f2f2;
+  font-weight: bold;
+  text-align: center;
+}
+
+.data-table tbody tr:nth-child(4n-1),
+.data-table tbody tr:nth-child(4n) {
+  background-color: #f9f9f9;
+}
+
+
+/* ▼▼▼【ここから修正】列幅のパーセンテージを変更 ▼▼▼ */
+.data-table th.col-action     { width: 5%; }
+.data-table th.col-date       { width: 6%; } /* 7% から 1% 削減 */
+.data-table th.col-yj         { width: 8%; } /* 10% から 2% 削減 */
+/* col-product (colspan=2) は col-package + col-maker で決定 */
+.data-table th.col-package    { width: 16%; } /* 10% から 3% 増加 */
+.data-table th.col-maker      { width: 16%; } /* 10% から 3% 増加 */
+.data-table th.col-count      { width: 4%; }
+.data-table th.col-yjqty      { width: 8%; }
+.data-table th.col-yjpackqty  { width: 8%; }
+.data-table th.col-yjunit     { width: 8%; }
+.data-table th.col-unitprice  { width: 6%; }
+.data-table th.col-expiry     { width: 6%; }
+.data-table th.col-wholesaler { width: 8%; }
+.data-table th.col-line       { width: 4%; } /* 8% から 3% 削減 */
+
+/* 2行目のヘッダーも1行目に合わせる */
+.data-table th.col-flag       { width: 6%; } /* 7% -> 6% */
+.data-table th.col-jan        { width: 8%; } /* 10% -> 8% */
+.data-table th.col-form       { width: 4%; }
+.data-table th.col-janqty     { width: 8%; }
+.data-table th.col-janpackqty { width: 8%; }
+.data-table th.col-janunit    { width: 8%; }
+.data-table th.col-amount     { width: 6%; }
+.data-table th.col-lot        { width: 6%; }
+.data-table th.col-receipt    { width: 8%; }
+.data-table th.col-ma         { width: 4%; } /* 8% -> 5% */
+/* ▲▲▲【修正ここまで】▲▲▲ */
+
+
+/* ▼▼▼ データセル (td) の文字揃え (変更なし) ▼▼▼ */
+.data-table td.col-action     { text-align: center; }
+.data-table td.col-date       { text-align: center; }
+.data-table td.col-flag       { text-align: center; }
+.data-table td.col-count      { text-align: right; }
+.data-table td.col-form       { text-align: center; }
+.data-table td.col-yjqty      { text-align: right; }
+.data-table td.col-janqty     { text-align: right; }
+.data-table td.col-yjpackqty  { text-align: right; }
+.data-table td.col-janpackqty { text-align: right; }
+.data-table td.col-yjunit     { text-align: left; }
+.data-table td.col-janunit    { text-align: left; }
+.data-table td.col-unitprice  { text-align: right; }
+.data-table td.col-amount     { text-align: right; }
+.data-table td.col-expiry     { text-align: center; }
+.data-table td.col-lot        { text-align: center; } 
+.data-table td.col-wholesaler { text-align: center; }
+.data-table td.col-receipt    { text-align: center; }
+.data-table td.col-line       { text-align: center; }
+.data-table td.col-ma         { text-align: center; }
+/* ▲▲▲ 文字揃えここまで ▲▲▲ */
+
+
+/* ステータス色 */
+.status-success { color: green; }
+.status-error   { color: red; }
+
+.data-table td input[type="text"],
+.data-table td input[type="number"] {
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  border: 1px solid #ccc;
+  margin: 0;
+  padding: 0 2px;
+  font-size: inherit;
+  vertical-align: middle;
+}
+
+----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\css\valuation.css -----
+/* C:\Users\wasab\OneDrive\デスクトップ\TKR\static\css\valuation.css */
+
+/*
+   注: このビューの .filter-container, .form-group, .btn, .data-table,
+   .agg-yj-header, .modal-overlay, .modal-content 等の基本スタイルは、
+   styles.css, table.css, modal.css, search_form_group.css
+   から提供されます。
+*/
+
+/* 印刷ボタンのコンテナ */
+#valuation-print-controls {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    padding: 0 5px 5px 5px;
+    border-bottom: 1px solid #eee;
+    margin-bottom: 10px;
+}
+
+/* 在庫評価出力エリア */
+#valuation-output-container .agg-yj-header {
+    margin-top: 5px; /* グループ間のマージンを縮小 */
+    font-size: 1em;
+    padding: 5px 8px;
+}
+
+/* 評価額表示用の行 */
+#valuation-output-container .item-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 6px 8px;
+    border: 1px solid #ccc;
+    border-top: none;
+    line-height: 1.5;
+    background-color: #fff;
+}
+/* 1行おきに背景色を付ける (TKRの table.css の tbody tr:nth-child(4n) とは異なる) */
+#valuation-output-container .item-row:nth-child(even) {
+    background-color: #f9f9f9;
+}
+
+
+#valuation-output-container .item-row-left {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    gap: 10px;
+}
+
+#valuation-output-container .item-row-left .product-name {
+    font-weight: bold;
+}
+#valuation-output-container .item-row-left .package-spec {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: #333;
+}
+
+/* JCSHMS未登録警告 */
+#valuation-output-container .warning-link {
+    color: red;
+    font-weight: bold;
+    cursor: pointer;
+    text-decoration: underline;
+    font-size: 10px;
+}
+
+#valuation-output-container .item-row-right {
+    white-space: nowrap;
+    text-align: right;
+    padding-left: 20px;
+    font-size: 10px; /* TKRの基本フォントサイズに合わせる */
+}
+
+#valuation-output-container .item-row-right .value-item {
+    display: inline-block;
+    min-width: 150px; /* WASABI より縮小 */
+    text-align: right;
+}
+#valuation-output-container .item-row-right .value-item .value {
+    font-weight: bold;
+    font-size: 1.1em; /* 少し大きく */
+    display: inline-block;
+    min-width: 80px;
+}
+
+
+/* 総合計エリア */
+#valuation-output-container .valuation-grand-total {
+    text-align: right;
+    margin-top: 20px;
+    padding: 10px;
+    border-top: 2px solid #333;
+    font-weight: bold;
+    font-size: 1.1em;
+}
+#valuation-output-container .valuation-grand-total span {
+    margin-left: 20px;
+}
+
+----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\views\backorder_view.html -----
+<div id="backorder-view" class="view">
+    <h1>発注残管理</h1>
+    
+    <div class="filter-container">
+        <fieldset>
+            <legend>表示フィルタ</legend>
+            <div class="search-form-container">
+                <div class="search-filter-row">
+                    <div class="form-group">
+                        <label for="bo-search-kana">品名・カナ名 (部分一致):</label>
+                        <input type="text" id="bo-search-kana" class="search-filter-input" autocomplete="off">
+                    </div>
+                    <div class="form-group">
+                        <label for="bo-search-wholesaler">卸コード:</label>
+                        <input type="text" id="bo-search-wholesaler" class="search-filter-input" autocomplete="off" style="width: 150px;">
+                    </div>
+                    <button id="bo-search-btn" class="btn search-submit-button">この条件で絞込</button>
+                </div>
+            </div>
+        </fieldset>
+    </div>
+    
+    <div id="backorder-output-container" class="table-container">
+        <p>読み込み中...</p>
+    </div>
+</div>
+
+----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\views\common_input_modal.html -----
+{{ define "common_input_modal" }}
+<div id="input-modal-overlay" class="modal-overlay hidden">
+    <div class="modal-content" style="width: 400px; max-width: 90%;">
+        <h2 id="input-modal-title"></h2>
+        <input type="text" id="input-modal-input" style="width: 100%; padding: 5px; font-size: 1.1em; margin-top: 10px;">
+        <div class="form-actions" style="margin-top: 20px;">
+            <button id="input-modal-cancel" class="btn">キャンセル</button>
+            <button id="input-modal-ok" class="btn">OK</button>
+        </div>
+    </div>
+</div>
+{{ end }}
+
+
+----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\views\common_search_modal.html -----
+{{ define "common_search_modal" }}
+<div id="tkr-search-modal-overlay" class="modal-overlay hidden">
+    <div class="modal-content" id="tkr-search-modal-content">
+       <h2>品目検索</h2>
+        <div class="filter-container">
+            <fieldset>
+                <legend>検索条件</legend>
+                
+                <div class="search-grid-top">
+     
+
+                    <div class="form-group">
+                        <label for="modal-search-gs1">GS1バーコードスキャン:</label>
+                         <form id="modal-search-gs1-form">
+                            
+<input type="text" id="modal-search-gs1" autocomplete="off" placeholder="GS1-128スキャン...">
+ 
+                        </form>
+                    </div>
+                </div>
+                <div class="search-grid-bottom">
+                  
+  <div class="form-group">
+   
+                        <label>内外注区分:</label>
+                       <div class="radio-group" id="modal-search-usage-class">
+            
+        
+                            <label><input type="radio" name="modal_usage_class" value="内"> 内</label>
+                            <label><input type="radio" name="modal_usage_class" value="外"> 外</label>
+                            
+<label><input type="radio" name="modal_usage_class" value="歯"> 歯</label>
+                            <label><input type="radio" name="modal_usage_class" value="注"> 注</label>
+                        
+                            <label><input type="radio" name="modal_usage_class" value="機"> 機</label>
+                            <label><input type="radio" name="modal_usage_class" value="他"> 他</label>
+                         </div>
+               
+     </div>
+                    
+                    <div class="form-group">
+                         <label for="modal-search-kana">カナ名 (前方一致):</label>
+                         <input type="text" 
+id="modal-search-kana" autocomplete="off">
+                    </div>
+                    <div class="form-group">
+                         <label for="modal-search-generic">一般名 (部分一致):</label>
+   
+                          <input type="text" 
+id="modal-search-generic" autocomplete="off">
+                    </div>
+                    <div class="form-group">
+                         <label for="modal-search-shelf">棚番 (部分一致):</label>
+       
+                        
+<input type="text" id="modal-search-shelf" autocomplete="off">
+                    </div>
+                    </div>
+                 <div class="form-actions">
+                    <button id="product-search-btn" class="btn">この条件で検索</button>
+   
+              
+   </div>
+            </fieldset>
+        </div>
+        <div id="search-results-container" class="table-container">
+            <table id="search-results-table" class="data-table">
+                <thead>
+                    <tr>
+       
+          
+              <th class="col-modal-product">製品名</th>
+                        <th class="col-modal-maker">メーカー</th>
+                        <th class="col-modal-spec">包装仕様</th>
+                        <th class="col-modal-yj">YJコード</th>
+       
+   
+                     <th class="col-modal-jan">JANコード</th>
+                        <th class="col-modal-action">選択</th>
+                    </tr>
+                </thead>
+                 
+<tbody>
+    
+                    <tr>
+                        <td colspan="6" class="center">検索ボタンを押してください。</td>
+                    </tr>
+                 </tbody>
+            </table>
+ 
+       </div>
+ 
+        <div class="form-actions">
+            <button type="button" id="closeSearchModalBtn" class="btn">閉じる</button>
+        </div>
+    </div>
+</div>
+{{ end }}
+
+----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\views\config_view.html -----
+<div id="config-view" class="view">
+    <h1>設定</h1>
+    <section class="config-section">
+        <h2>パス設定</h2>
+        <div class="config-form-container">
+            <div class="form-row">
+           
+     <div class="form-group">
+   
+                    <label for="config-dat-folder-path">伝票取込フォルダパス (DAT):</label>
+     
+               <input type="text" id="config-dat-folder-path" autocomplete="off">
+                </div>
+                <div class="form-group">
+             
+       <label for="config-usage-folder-path">処方取込フォルダパス (CSV):</label>
+  
+                    <input type="text" id="config-usage-folder-path" autocomplete="off">
+  
+              </div>
+            </div>
+            <div class="form-actions">
+                <button id="configSavePathBtn" class="btn">パス保存</button>
+       
+     </div>
+       
+     </div>
+    </section>
+ 
+    <section class="config-section">
+        <h2>集計設定</h2>
+ 
+       <div class="config-form-container">
+            <div class="form-row">
+                 <div class="form-group flex-150">
+                    <label for="config-calculation-days">在庫集計期間 (日数):</label>
+  
+                
+                    
+<input type="number" id="config-calculation-days" autocomplete="off" value="90">
+                </div>
+            </div>
+            <div class="form-actions">
+                 <button id="configSaveDaysBtn" 
+class="btn">集計期間保存</button>
+            </div>
+        </div>
+    </section>
+
+    <section class="config-section">
+     
+  
+     <h2>卸コード管理</h2>
+        <div class="config-form-container">
+            <fieldset>
+                 <legend>新規卸コード追加</legend>
+                 <div class="form-row">
+   
+                 <div class="form-group flex-150">
+                 
+  
+           <label for="config-wholesaler-code">卸コード:</label>
+                         <input type="text" id="config-wholesaler-code" autocomplete="off" maxlength="10">
+                    </div>
+ 
+                     <div class="form-group flex-300">
+             
+         
+           <label for="config-wholesaler-name">卸名:</label>
+                        <input type="text" id="config-wholesaler-name" autocomplete="off">
+                 
+                     </div>
+              
+       <div class="form-actions">
+                        <button id="configAddWholesalerBtn" class="btn">追加</button>
+  
+                     </div>
+                 </div>
+         
+             </fieldset>
+    
+    </div>
+    <div class="config-form-container">
+            <fieldset>
+                <legend>得意先マスタ インポート</legend>
+                <div class="form-row">
+                    <div class="form-group flex-full">
+                        <p style="font-size: 10px; margin: 0 0 5px 0;">
+                            CSV (UTF-8) を読み込み、得意先マスタ (client_master) を上書き (Upsert) します。<br>
+                            CSV形式: <strong>client_code</strong> (必須), <strong>client_name</strong> (必須)
+                        </p>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="importClientsInput" style="font-size: 10px; font-weight: bold;">得意先CSVファイル:</label>
+                        <input type="file" id="importClientsInput" class="hidden" accept=".csv,.CSV">
+                    </div>
+                    <div class="form-actions" style="margin-top: 5px;">
+                        <button id="importClientsBtn" class="btn">得意先CSV インポート実行</button>
+                    </div>
+                </div>
+            </fieldset>
+        </div>
+         <div id="wholesalerListContainer" class="table-container">
+            <table id="wholesalerListTable" class="data-table">
+                <thead>
+    
+                    <tr>
+                        
+       
+                   <th class="col-config-code">卸コード</th>
+                         <th class="col-config-name">卸名</th>
+                        <th class="col-config-action">操作</th>
+       
+                     </tr>
+ 
+               </thead>
+   
+                       <tbody>
+                </tbody>
+             </table>
+        </div>
+    </section>
+
+    <section class="config-section">
+        <h2>予製データ移行 (一括)</h2>
+        <div class="config-form-container">
+            <fieldset>
+                <legend>A.
+予製データ エクスポート</legend>
+                <div class="form-row">
+                    <div class="form-group flex-full">
+                        <p style="font-size: 10px; margin: 0 0 5px 0;">
+                            現在登録されている全患者の予製データをCSV (patient_number, product_code, product_name, quantity_jan, unit_name) としてエクスポートします。
+                        </p>
+                    </div>
+                </div>
+                <div class="form-actions" style="margin-top: 5px;">
+                    <button id="precomp-export-all-btn" class="btn">予製(全件) エクスポート</button>
+                </div>
+            </fieldset>
+        </div>
+        <div class="config-form-container">
+            <fieldset>
+                <legend>B.
+予製データ インポート</legend>
+                <div class="form-row">
+                    <div class="form-group flex-full">
+                        <p style="font-size: 10px; margin: 0 0 5px 0; color: #dc3545; font-weight: bold;">
+                            警告: 既存の予製データをCSVの内容で上書き（患者ごとに洗い替え）します。<br>
+                            CSV形式: 上記A. と同じ形式 (patient_number, product_code, quantity_jan が必須)
+                        </p>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="precomp-import-all-input" style="font-size: 10px; font-weight: bold;">予製CSVファイル:</label>
+                        <input type="file" id="precomp-import-all-input" class="hidden" accept=".csv,.CSV">
+                    </div>
+                    <div class="form-actions" style="margin-top: 5px;">
+                        <button id="precomp-import-all-btn" class="btn">予製CSV インポート実行</button>
+                    </div>
+                </div>
+            </fieldset>
+        </div>
+    </section>
+    <section class="config-section">
+        <h2>在庫データ移行</h2>
+
+        <div class="config-form-container">
+            <fieldset>
+                <legend>B.
+TKR独自CSVインポート (全洗い替え)</legend>
+                <div class="form-row">
+                     <div class="form-group flex-full">
+                        <p style="font-size: 10px; margin: 0 0 5px 0; color: #dc3545; font-weight: bold;">
+                        
+    警告: この操作は既存の在庫をすべて削除し、CSVの内容で上書き（洗い替え）します。<br>
+                            CSV形式: PackageKey, ProductName, JAN数量 (※期限・ロットは登録されません)
+                        </p>
+                    </div>
+                </div>
+   
+             <div class="form-row">
+                    <div class="form-group">
+                        <label for="importTkrStockDate" style="font-size: 10px; font-weight: bold;">棚卸日 (CSV適用日):</label>
+                        <input type="date" id="importTkrStockDate" style="padding: 3px;">
+       
+             </div>
+              
+                    <div class="form-group">
+                        <label for="importTkrStockInput" style="font-size: 10px; font-weight: bold;">CSVファイル:</label>
+                       
+ <input type="file" id="importTkrStockInput" class="hidden" accept=".csv,.CSV">
+                    </div>
+                    
+                    <div class="form-actions" style="margin-top: 5px;">
+                        <button id="importTkrStockBtn" class="btn">TKR独自CSV（洗い替え）読込</button>
+      
+              </div>
+                </div>
+                 </fieldset>
+        </div>
+
+    </section>
+    
+    <section class="config-section">
+        <h2>マスタデータ移行</h2>
+        
+<div class="config-form-container">
+            <fieldset>
+                <legend>JCSHMS (SOU) マスター更新</legend>
+                <div class="form-row">
+                    <div class="form-group flex-full">
+                        <p style="font-size: 10px; margin: 0 0 5px 0;">
+                            SOUフォルダ内の <strong>JCSHMS.CSV</strong> および <strong>JANCODE.CSV</strong> を読み込み、
+                            データベースの JCSHMS / JANCODE テーブルを洗い替えます。<br>
+                            <span style="color: #dc3545; font-weight: bold;">
+                                警告: この処理は時間がかかる場合があります。処理が完了するまで画面を閉じないでください。
+                            </span>
+                        </p>
+                    </div>
+                </div>
+                <div class="form-actions" style="margin-top: 5px;">
+                    <button id="importJcshmsBtn" class="btn">JCSHMS (SOU) 更新実行</button>
+                </div>
+            </fieldset>
+        </div>
+
+        <div class="config-form-container">
+       
+     <fieldset>
+                <legend>A.
+製品マスタ エクスポート</legend>
+                <div class="form-row">
+                    <div class="form-group flex-full">
+                        <p style="font-size: 10px; margin: 0 0 5px 0;">
+                            現在の製品マスタ（product_master）の全項目（JCSHMS由来、ユーザー設定含む）をCSVに出力します。
+ 
+                       </p>
+                    </div>
+                </div>
+                <div class="form-actions" style="margin-top: 5px;">
+                    <button id="exportAllMastersBtn" 
+class="btn">マスタCSV エクスポート</button>
+                </div>
+            </fieldset>
+        </div>
+
+        <div class="config-form-container">
+            <fieldset>
+                <legend>B.
+製品マスタ インポート (JCSHMSマージ/上書き)</legend>
+                <div class="form-row">
+                    <div class="form-group flex-full">
+                        <p style="font-size: 10px; margin: 0 0 5px 0; color: #dc3545; font-weight: bold;">
+                        
+    警告: 既存の製品マスタをCSVの内容で上書き (Upsert) します。<br>
+                            CSV形式: 上記A.
+と同じ形式 (product_codeが必須)
+                        </p>
+                        <p style="font-size: 10px; margin: 0 0 5px 0;">
+                            <b>読込ルール:</b><br>
+                
+            1. CSVの品目がJCSHMSに存在する場合: JCSHMSの品名/薬価/規格等を優先し、CSVの棚番/仕入単価/メモ等をマージします。<br>
+                            2. JCSHMSに存在しない場合: CSVのすべての値を登録します。(YJコードが空なら自動採番されます)
+                        </p>
+                    </div>
+            
+    </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="importAllMastersInput" style="font-size: 10px; font-weight: bold;">マスタCSVファイル:</label>
+                        <input type="file" id="importAllMastersInput" class="hidden" accept=".csv,.CSV">
+ 
+                   </div>
+                    <div class="form-actions" style="margin-top: 5px;">
+                        <button id="importAllMastersBtn" class="btn">マスタCSV インポート実行</button>
+                    </div>
+           
+     </div>
+            </fieldset>
+        </div>
+    </section>
+    </div>
+
+----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\views\dat_view.html -----
+<div id="dat-upload-view" class="view">
+    <h1>ファイルアップロード (DAT)</h1>
+
+    <div class="upload-button-container">
+        <button id="datUploadBtn" class="btn">DATファイル選択</button>
+        <input type="file" id="datFileInput" multiple accept=".dat,.DAT" class="hidden">
+    </div>
+    <div class="filter-container">
+        <fieldset>
+        <legend>品目検索</legend>
+        {{ template "generic_search_form" . }}
+        </fieldset>
+    </div>
+    
+    <div id="datUploadResultContainer">
+        <p>「DATファイル選択」ボタンを押してファイルを選んでください。</p>
+    </div>
+    
+    <div id="datTableContainer" class="table-container">
+        <table id="datMainDataTable" class="data-table">
+        </table>
+    </div>
+</div>
+
+----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\views\deadstock_view.html -----
+<div id="deadstock-view" class="view">
+    <h1>不動在庫リスト</h1>
+    
+    <div class="deadstock-controls">
+        <div class="form-group">
+  
+          <label for="ds-start-date">対象期間 (開始日):</label>
+            <input type="date" id="ds-start-date">
+        </div>
+        <div class="form-group">
+            <label for="ds-end-date">対象期間 (終了日):</label>
+            <input 
+type="date" id="ds-end-date">
+        </div>
+        <div class="form-group" style="justify-content: flex-end;">
+            <label style="font-weight: normal;">
+                <input type="checkbox" id="ds-exclude-zero-stock" checked> 在庫 0 の品目を除外
+            </label>
+        </div>
+        <div class="form-actions">
+            
+<button id="ds-search-btn" class="btn">この期間で検索</button>
+            <button id="ds-export-csv-btn" class="btn">CSVエクスポート</button>
+            </div>
+    </div>
+
+    <div class="deadstock-controls deadstock-upload-area">
+        <div class="form-group">
+            <label for="ds-csv-date">棚卸日 (CSV適用日):</label>
+         
+   <input type="date" id="ds-csv-date">
+        </div>
+        <div class="form-group">
+        
+    <label for="ds-csv-file-input">棚卸CSVファイル:</label>
+            <input type="file" id="ds-csv-file-input" accept=".csv,.CSV">
+        </div>
+        <div class="form-actions">
+            <button id="ds-csv-upload-btn" class="btn">CSVを棚卸として登録</button>
+        </div>
+    </div>
+    
+   
+ <div id="deadstock-result-container" class="table-container">
+        <p>上記で期間を指定して検索してください。</p>
+    </div>
+</div>
+
+----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\views\inout_view.html -----
+<div id="inout-view" class="view">
+    <h1>入出庫伝票</h1>
+
+    <div class="inout-header-controls">
+        <div class="form-group">
+            <label for="in-out-date">日付:</label>
+            <input type="date" id="in-out-date">
+        </div>
+        <div class="form-group">
+            <label for="in-out-receipt">伝票番号 (日付選択で絞込):</label>
+            <select id="in-out-receipt">
+                <option value="">日付を選択してください</option>
+                <option value="--new--">--- 新規作成 ---</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label for="in-out-client">得意先:</label>
+            <select id="in-out-client">
+                <option value="">選択してください</option>
+                <option value="--new--">--- 新規作成 ---</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label for="in-out-type">種別:</label>
+            <select id="in-out-type">
+                <option value="11">入庫</option>
+                <option value="12">出庫</option>
+            </select>
+        </div>
+        <div class="buttons-group">
+            <button id="saveBtn" class="btn">保存</button>
+            <button id="deleteBtn" class="btn" disabled>削除</button>
+        </div>
+    </div>
+
+    <div class="inout-view-container">
+        <div class="inout-details-header">
+            <button id="addRowBtn" class="btn">明細を追加</button>
+        </div>
+        <div id="inout-details-container" class="table-container">
+            </div>
+    </div>
+</div>
+
+
+----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\views\inventory_adjustment_view.html -----
+<div id="inventory-adjustment-view" class="view">
+    <h1>棚卸調整 (1品目ごと)</h1>
+    <div class="filter-container">
+        <fieldset>
+        <legend>品目検索</legend>
+            
+            {{ template "generic_search_form" . }}
+
+        </fieldset>
+    </div>
+    <div id="inventory-adjustment-output" class="table-container">
+        <p>上記検索条件で品目を指定してください。</p>
+    </div>
+</div>
+
+----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\views\master_edit_view.html -----
+<div id="master-edit-view" class="view">
+    <h1>マスタ編集</h1>
+    <div class="filter-container">
+        <fieldset>
+        <legend>品目検索</legend>
+        {{ template "generic_search_form" .
+}}
+
+        <div class="search-form-container" style="margin-top: 10px; border-top: 1px dashed #ccc; padding-top: 10px;">
+            <div class="search-filter-row">
+                <span style="font-size: 10px; font-weight: bold; margin-right: auto;">新規マスタ作成:</span>
+                <button id="masterAdoptJCSHMSBtn" class="btn" style="background-color: #17a2b8; color: white;">JCSHMSから採用...</button>
+                <button id="masterCreateNewBtn" class="btn" style="background-color: #28a745; color: white;">その他 新規作成</button>
+            </div>
+        </div>
+        </fieldset>
+    </div>
+    <div id="masterListContainer" class="table-container">
+        <table id="masterListTable" class="data-table">
+            <thead>
+            </thead>
+            <tbody>
+            </tbody>
+        </table>
+     </div>
+</div>
+
+<div id="masterEditModalOverlay" class="modal-overlay hidden">
+    <div class="modal-content">
+   
+    <h2>製品マスター編集</h2>
+        <form id="masterEditForm" autocomplete="off">
+ 
+             <div class="form-row readonly-group">
+                <div class="form-group flex-120">
+                    <label for="edit-yj-code">YJコード (編集不可: JCSHMS)</label>
+                    <input type="text" id="edit-yj-code" class="readonly-field" readonly>
+     
+           </div>
+                <div class="form-group flex-120">
+                    <label for="view-product-code">JANコード (キー)</label>
+                    <input type="text" id="view-product-code" class="readonly-field" readonly>
+                    <input type="hidden" id="edit-product-code">
+   
+             </div>
+                <div class="form-group flex-120">
+                    <label for="edit-gs1-code">GS1コード (編集不可: JCSHMS)</label>
+                    <input type="text" id="edit-gs1-code" class="readonly-field" readonly>
+                </div>
+      
+          <div class="form-group flex-100">
+                    <label for="edit-origin">由来 (編集不可)</label>
+                    <input type="text" id="edit-origin" class="readonly-field" readonly>
+                </div>
+            </div>
+            
+  
+          <div class="form-row">
+                <div class="form-group flex-300">
+                    <label for="edit-product-name">製品名 (JCSHMS):</label>
+                    <input type="text" id="edit-product-name">
+                </div>
+           
+     <div class="form-group flex-300">
+                    <label for="edit-kana-name">カナ名 (JCSHMS):</label>
+                    <input type="text" id="edit-kana-name">
+                </div>
+                <div class="form-group flex-200">
+               
+     <label for="edit-kana-name-short">カナ名短縮 (JCSHMS):</label>
+                    <input type="text" id="edit-kana-name-short">
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group flex-300">
+            
+        <label for="edit-generic-name">一般名 (JCSHMS):</label>
+                    <input type="text" id="edit-generic-name">
+                </div>
+                <div class="form-group flex-300">
+                    <label for="edit-maker-name">メーカー名 (JCSHMS):</label>
+            
+        <input type="text" id="edit-maker-name">
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group flex-200">
+                    <label for="edit-specification">規格 (JCSHMS):</label>
+         
+           <input type="text" id="edit-specification">
+                </div>
+                <div class="form-group flex-150">
+                    <label for="edit-package-form">包装剤型 (JCSHMS):</label>
+                    <input type="text" id="edit-package-form">
+         
+       </div>
+                <div class="form-group flex-100">
+                    <label for="edit-usage-classification">内外注区分 (JCSHMS):</label>
+                    <input type="text" id="edit-usage-classification">
+                </div>
+            </div>
+   
+         <div class="form-row">
+                <div class="form-group flex-100">
+                    <label for="edit-yj-unit-name">YJ単位名 (JCSHMS):</label>
+                    <input type="text" id="edit-yj-unit-name">
+                </div>
+            
+    <div class="form-group flex-100">
+                    <label for="edit-yj-pack-unit-qty">YJ包装単位数量 (JCSHMS):</label>
+                    <input type="number" id="edit-yj-pack-unit-qty">
+                </div>
+            </div>
+            <div class="form-row">
+         
+       <div class="form-group flex-100">
+                    <label for="edit-jan-pack-inner-qty">JAN包装内数量 (JCSHMS):</label>
+                    <input type="number" id="edit-jan-pack-inner-qty">
+                </div>
+                <div class="form-group flex-100">
+             
+       <label for="edit-jan-unit-code">JAN単位コード (JCSHMS):</label>
+                    <input type="number" id="edit-jan-unit-code">
+                </div>
+                <div class="form-group flex-100">
+                    <label for="edit-jan-pack-unit-qty">JAN包装単位数量 (JCSHMS):</label>
+             
+       <input type="number" id="edit-jan-pack-unit-qty">
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group flex-100">
+                    <label for="edit-nhi-price">薬価 (JCSHMS):</label>
+          
+          <input type="number" id="edit-nhi-price" step="0.01">
+                </div>
+                <div class="form-group flex-100">
+                    <label for="edit-purchase-price">仕入単価 (ユーザー):</label>
+                    <input type="number" id="edit-purchase-price" step="0.01">
+        
+        </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group"><label for="edit-flag-poison">毒</label><input type="number" id="edit-flag-poison"></div>
+                <div class="form-group"><label for="edit-flag-deleterious">劇</label><input type="number" id="edit-flag-deleterious"></div>
+                <div class="form-group"><label for="edit-flag-narcotic">麻</label><input type="number" id="edit-flag-narcotic"></div>
+       
+         <div class="form-group"><label for="edit-flag-psychotropic">向</label><input type="number" id="edit-flag-psychotropic"></div>
+                <div class="form-group"><label for="edit-flag-stimulant">覚</label><input type="number" id="edit-flag-stimulant"></div>
+                <div class="form-group"><label for="edit-flag-stimulant-raw">覚原</label><input type="number" id="edit-flag-stimulant-raw"></div>
+                <div class="form-group"><label for="edit-is-order-stopped">発注停止</label><input type="number" id="edit-is-order-stopped"></div>
+            </div>
+            <div class="form-row">
+  
+              <div class="form-group flex-150">
+                    <label for="edit-supplier-wholesale">主要卸 (ユーザー):</label>
+                    <select id="edit-supplier-wholesale"></select>
+                </div>
+                <div class="form-group flex-150">
+       
+             <label for="edit-group-code">グループコード (ユーザー):</label>
+                    <input type="text" id="edit-group-code">
+                </div>
+                <div class="form-group flex-150">
+                    <label for="edit-shelf-number">棚番 (ユーザー):</label>
+       
+             <input type="text" id="edit-shelf-number">
+                </div>
+                <div class="form-group flex-150">
+                    <label for="edit-category">分類 (ユーザー):</label>
+                    <input type="text" id="edit-category">
+       
+         </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group flex-full">
+                    <label for="edit-user-notes">メモ (ユーザー):</label>
+                    <input type="text" id="edit-user-notes">
+    
+            </div>
+            </div>
+            <div class="form-actions">
+                <button type="button" id="saveMasterBtn" class="btn">保存</button>
+                <button type="button" id="referenceJCSHMSBtn" class="btn">参照</button>
+                <button type="button" id="cancelEditMasterBtn" class="btn">閉じる</button>
+      
+      </div>
+        </form>
+    </div>
+</div>
+
+----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\views\precomp_view.html -----
+<div id="precomp-view" class="view">
+    <h1>予製管理</h1>
+
+    <div class="inout-header-controls">
+        <div class="form-group">
+            <label for="precomp-patient-number">患者番号 (Client Code):</label>
+            <input type="text" id="precomp-patient-number" autocomplete="off" placeholder="患者番号を入力...">
+        </div>
+        
+        <div class="buttons-group" style="gap: 5px;">
+             <button id="precomp-load-btn" class="btn">呼出</button>
+            <button id="precomp-save-btn" class="btn">保存</button>
+            <button id="precomp-clear-btn" class="btn">全削除</button>
+            <button id="precomp-toggle-status-btn" class="btn">予製中断</button>
+        </div>
+        
+        </div>
+
+    <div class="inout-view-container">
+        <div class="inout-details-header">
+            <button id="precomp-add-row-btn" class="btn">明細を追加</button>
+        </div>
+   
+         <div id="precomp-details-container" class="table-container" style="position: relative;">
+            </div>
+    </div>
+</div>
+
+----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\views\pricing_view.html -----
+<div id="pricing-view" class="view">
+    <h1>見積・価格設定</h1>
+    
+    <div class="filter-container">
+        <fieldset>
+            <legend>操作パネル</legend>
+            <div class="search-form-container">
+                <div class="search-filter-row">
+                    <div class="form-group">
+                        <label for="pricing-wholesaler-select">卸業者（テンプレート作成用）:</label>
+                        <select id="pricing-wholesaler-select" class="search-filter-input"></select>
+                    </div>
+                    <button id="pricing-export-btn" class="btn">見積テンプレート(全件)作成</button>
+                    <button id="pricing-export-unregistered-btn" class="btn">見積テンプレート(未登録品)作成</button>
+                </div>
+                
+                <div class="search-filter-row" style="margin-top: 10px; border-top: 1px dashed #ccc; padding-top: 10px;">
+                    <div class="form-group">
+                        <label>見積CSV（卸から受領）:</label>
+                        <input type="file" id="pricing-upload-input" multiple accept=".csv,.CSV">
+                    </div>
+                    <span style="font-size: 10px; color: #555;">※複数ファイル同時選択可。<br>ファイル名は「(優先順位)_(卸名)_...」にしてください。</span>
+                </div>
+                
+                <div class="search-filter-row" style="margin-top: 10px; border-top: 1px dashed #ccc; padding-top: 10px;">
+                    <div class="form-group">
+                        <label>価格一括インポート (バックアップCSV):</label>
+                        <button id="pricing-direct-import-btn" class="btn">バックアップCSV読込</button>
+                        <input type="file" id="pricing-direct-import-input" class="hidden" accept=".csv,.CSV">
+                    </div>
+                    <a href="/api/pricing/backup_export" id="pricing-backup-export-btn" class="btn" style="margin-left: auto;">価格・卸バックアップ(全件)</a>
+                </div>
+            </div>
+        </fieldset>
+    </div>
+
+    <div class="filter-container" style="background-color: #f0f4f8;">
+        <fieldset>
+            <legend>表示フィルタ・一括操作</legend>
+            <div class="search-form-container">
+                <div class="search-filter-row">
+                    <div class="form-group">
+                        <label for="pricing-maker-filter">メーカー名 (部分一致):</label>
+                        <input type="text" id="pricing-maker-filter" class="search-filter-input" autocomplete="off">
+                    </div>
+                    <div class="form-group">
+                        <label style="margin-top: 10px;">
+                            <input type="checkbox" id="pricing-unregistered-filter"> 採用卸が未設定の品目のみ表示
+                        </label>
+                    </div>
+                    <button id="set-lowest-price-btn" class="btn" style="margin-left: auto; background-color: #17a2b8; color: white;">表示品目を最安値に自動設定</button>
+                    <button id="pricing-bulk-update-btn" class="btn" style="background-color: #28a745; color: white;">表示品目の一括更新を保存</button>
+                </div>
+            </div>
+        </fieldset>
+    </div>
+
+    <div id="pricing-output-container" class="table-container">
+        <p>見積CSVをアップロードしてください。</p>
+    </div>
+</div>
+
+----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\views\reorder_view.html -----
+<div id="reorder-view" class="view">
+    <h1>発注</h1>
+    
+    <div class="filter-container">
+        <fieldset>
+            <legend>発注候補 検索条件</legend>
+            <div class="search-form-container">
+                <div class="search-filter-row">
+                    <div class="form-group">
+                        <label for="order-kanaName">品名・カナ名 (部分一致):</label>
+                        <input type="text" id="order-kanaName" class="search-filter-input" autocomplete="off">
+                    </div>
+                    <div class="form-group">
+                        <label for="order-dosageForm">剤型:</label>
+                        <select id="order-dosageForm" class="search-filter-input">
+                            <option value="">すべて</option>
+                            <option value="内">内</option>
+                            <option value="外">外</option>
+                            <option value="歯">歯</option>
+                            <option value="注">注</option>
+                            <option value="機">機</option>
+                            <option value="他">他</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="order-shelf-number">棚番 (部分一致):</label>
+                        <input type="text" id="order-shelf-number" class="search-filter-input" autocomplete="off" style="width: 150px;">
+                    </div>
+                    <div class="form-group">
+                        <label for="order-reorder-coefficient">安全係数:</label>
+                        <input type="number" id="order-reorder-coefficient" value="1.3" step="0.1" style="width: 80px; padding: 3px;">
+                    </div>
+                    <button id="generate-order-candidates-btn" class="btn search-submit-button">発注候補を作成</button>
+                </div>
+            </div>
+        </fieldset>
+    </div>
+
+    <div class="inout-header-controls" style="padding: 10px; background-color: #f0f4f8; border-color: #cce;">
+        <form id="order-barcode-form" style="flex-grow: 1; margin: 0;">
+            <div class="form-group" style="flex-basis: 300px;">
+                <label for="order-barcode-input">バーコードで単品追加:</label>
+                <input type="text" id="order-barcode-input" autocomplete="off" placeholder="GS1-128 または JANをスキャン..." style="padding: 3px; font-size: inherit;">
+            </div>
+        </form>
+        <div class="buttons-group">
+            <button id="add-order-item-from-master-btn" class="btn">品目検索から追加</button>
+            <button id="continuous-order-btn" class="btn" style="background-color: #17a2b8; color: white;">連続スキャンで追加</button>
+            <button id="createOrderCsvBtn" class="btn" style="background-color: #28a745; color: white;">CSV作成・発注残登録</button>
+        </div>
+    </div>
+
+    <div id="order-candidates-output" class="table-container">
+        <p>「発注候補を作成」ボタンを押してください。</p>
+    </div>
+</div>
+
+<div id="continuous-order-modal" class="modal-overlay hidden">
+    <div class="modal-content" style="width: 600px; max-width: 90%;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+            <h2 style="margin: 0;">連続スキャン発注</h2>
+            <button id="close-continuous-modal-btn" class="btn">閉じる</button>
+        </div>
+        <div style="display: flex; gap: 10px;">
+            <div style="flex: 1;">
+                <form id="continuous-barcode-form">
+                    <div class="form-group">
+                        <label for="continuous-barcode-input">バーコード:</label>
+                        <input type="text" id="continuous-barcode-input" autocomplete="off" style="width: 100%; padding: 5px; font-size: 1.1em; ime-mode: disabled;">
+                    </div>
+                    <p style="font-size: 10px; color: #555;">GS1またはJANをスキャンしてEnterキーを押してください。</p>
+                </form>
+                <div id="processing-indicator" class="hidden" style="color: #007bff; font-weight: bold;">
+                    処理中...
+                </div>
+            </div>
+            <div style="flex: 1; border: 1px solid #ccc; background: #f9f9f9; padding: 5px; min-height: 200px; max-height: 50vh; overflow-y: auto;">
+                <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #ccc; padding-bottom: 5px; margin-bottom: 5px;">
+                    <strong>スキャン済み ( <span id="scanned-items-count">0</span> 件)</strong>
+                </div>
+                <div id="scanned-items-list">
+                    </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\views\search_form_group.html -----
+// C:\Users\wasab\OneDrive\デスクトップ\TKR\static\views\search_form_group.html
+{{ define "generic_search_form" }}
+    {{ $prefix := .Prefix }}
+    {{ $formID := .BarcodeFormID }}
+    {{ $inputID := .BarcodeFormInputID }}
+    {{ $btnID := .SearchButtonID }}
+    {{ $btnText := .SearchButtonText }}
+
+    <div class="search-form-container">
+        
+        <div class="search-barcode-row">
+            <div class="form-group">
+ 
+               <label for="{{ $inputID }}">バーコードスキャン:</label>
+           
+             <form id="{{ $formID }}" class="search-barcode-form">
+                    <input type="text" id="{{ $inputID }}" class="search-barcode-input" autocomplete="off" placeholder="GTIN/JAN, ロット情報含む可">
+                </form>
+          
+  </div>
+        </div>
+
+        <div class="search-filter-row">
+            
+      
+             <div class="form-group">
+                <label>内外注区分:</label>
+                <div class="radio-group"> 
+               
+     <label><input type="radio" name="{{ $prefix }}usage_class" value="内" checked> 内</label>
+                    <label><input type="radio" name="{{ $prefix }}usage_class" value="外"> 外</label>
+                    <label><input type="radio" name="{{ $prefix }}usage_class" value="歯"> 歯</label>
+                    <label><input type="radio" name="{{ $prefix }}usage_class" value="注"> 注</label>
+                    <label><input type="radio" name="{{ $prefix }}usage_class" value="機"> 機</label>
+                    <label><input type="radio" name="{{ $prefix }}usage_class" value="他"> 他</label>
+         
+ 
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label for="{{ $prefix }}search-kana">カナ名 (前方一致):</label>
+                <input type="text" id="{{ $prefix }}search-kana" class="search-filter-input" autocomplete="off">
+            </div>
+
+     
+       <div class="form-group">
+ 
+                 <label for="{{ $prefix }}search-generic">一般名 (部分一致):</label>
+                <input type="text" id="{{ $prefix }}search-generic" class="search-filter-input" autocomplete="off">
+            </div>
+
+            <div class="form-group">
+                <label for="{{ $prefix }}search-shelf">棚番 (部分一致):</label>
+   
+           
+               <input type="text" id="{{ $prefix }}search-shelf" class="search-filter-input" autocomplete="off">
+            </div>
+
+            <button id="{{ $btnID }}" class="btn search-submit-button">{{ $btnText }}</button>
+        </div>
+    </div>
+{{ end }}
+
+----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\views\usage_view.html -----
+<div id="usage-upload-view" class="view">
+    <h1>ファイルアップロード (USAGE)</h1>
+
+    <div class="upload-button-container">
+        <button id="usageUploadBtn" class="btn">USAGEファイル選択</button>
+        <input type="file" id="usageFileInput" multiple accept=".csv,.CSV,.txt,.TXT" class="hidden">
+        </div>
+  
+     <div id="usageUploadResultContainer">
+        <p>「USAGEファイル選択」ボタンを押してファイルを選んでください。</p>
+    </div>
+    
+    <div id="usageTableContainer" class="table-container">
+        <table id="usageMainDataTable" class="data-table">
+        </table>
+    </div>
+</div>
+
+----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\views\valuation_view.html -----
+<div id="valuation-view" class="view">
+    <h1>在庫評価</h1>
+    
+    <div class="filter-container">
+        <fieldset>
+            <legend>集計条件</legend>
+            <div class="search-form-container">
+                <div class="search-filter-row">
+                    <div class="form-group">
+                        <label for="valuation-date">評価基準日:</label>
+                        <input type="date" id="valuation-date" class="search-filter-input" style="width: 150px;">
+                    </div>
+                    <div class="form-group">
+                        <label for="val-kanaName">品名・カナ名 (部分一致):</label>
+                        <input type="text" id="val-kanaName" class="search-filter-input" autocomplete="off">
+                    </div>
+                    <div class="form-group">
+                        <label for="val-dosageForm">剤型:</label>
+                        <select id="val-dosageForm" class="search-filter-input">
+                            <option value="all">すべて</option>
+                            <option value="内">内</option>
+                            <option value="外">外</option>
+                            <option value="歯">歯</option>
+                            <option value="注">注</option>
+                            <option value="機">機</option>
+                            <option value="他">他</option>
+                        </select>
+                    </div>
+                    <button id="run-valuation-btn" class="btn search-submit-button">在庫評価を実行</button>
+                </div>
+            </div>
+        </fieldset>
+    </div>
+
+    <div id="valuation-print-controls" class="buttons-group" style="padding: 5px; justify-content: flex-end;">
+        <button id="export-valuation-csv-btn" class="btn">CSVエクスポート</button>
+    </div>
+
+    <div id="valuation-output-container" class="table-container">
+        <p>評価基準日を指定して「在庫評価を実行」ボタンを押してください。</p>
+    </div>
+
+    </div>
+
+----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\index.html -----
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>TKR アプリケーション</title>
+    <link rel="stylesheet" href="/static/css/styles.css">
+    <link rel="stylesheet" href="/static/css/table.css">
+  
+    <link rel="stylesheet" href="/static/css/masteredit.css">
+  
+     <link rel="stylesheet" href="/static/css/config.css">
+    <link rel="stylesheet" href="/static/css/inventory_adjustment.css">
+    <link rel="stylesheet" href="/static/css/search_modal.css">
+    <link rel="stylesheet" href="/static/css/search_form_group.css">
+  
+ <link rel="stylesheet" href="/static/css/modal.css">
+    <link rel="stylesheet" href="/static/css/inout.css">
+    <link rel="stylesheet" href="/static/css/deadstock.css">
+    <link rel="stylesheet" href="/static/css/reorder.css">
+    <link rel="stylesheet" href="/static/css/backorder.css">
+    <link rel="stylesheet" href="/static/css/valuation.css">
+    <link rel="stylesheet" href="/static/css/pricing.css">
+    </head>
+<body>
+  
+  <header id="main-header">
+        <button id="datViewBtn" class="btn">DAT取込</button>
+        <button id="usageViewBtn" class="btn">USAGE取込</button>
+        <button id="inOutViewBtn" class="btn">入出庫</button>
+       
+         <button id="inventoryAdjustmentViewBtn" class="btn">棚卸調整</button>
+        <button id="deadStockViewBtn" 
+class="btn">不動在庫</button>
+        <button id="reorderViewBtn" class="btn">発注</button>
+        <button id="backorderViewBtn" class="btn">発注残管理</button>
+        <button id="valuationViewBtn" class="btn">在庫評価</button>
+        <button id="pricingViewBtn" class="btn">見積・価格設定</button>
+        <button id="masterEditViewBtn" class="btn">マスタ編集</button>
+     
+       <button id="precompViewBtn" class="btn">予製管理</button>
+        <button id="reprocessBtn" class="btn">全取引再計算</button>
+        <button id="configViewBtn" class="btn">設定</button>
+    
+</header>
+
+    <main>
+      
+  {{if .Views}}
+    
+     
+      
+            {{range .Views}}
+                 {{.}}
+       
+     {{end}}
+        
+   
+             {{else}}
+            <div id="dat-upload-view" class="view active">DATビュー</div>
+ 
+         
+   
+      
+  <div id="usage-upload-view" class="view">USAGEビュー</div>
+         
+   <div id="inventory-adjustment-view" class="view">棚卸調整ビュー</div>
+   
+             <div id="master-edit-view" class="view">マスタ編集ビュー</div>
+           
+             <div id="config-view" class="view">設定ビュー</div>
+     
+             <div id="deadstock-view" class="view">不動在庫ビュー</div>
+ 
+           
+  
+             <div id="reorder-view" class="view">発注ビュー</div>
+             <div id="backorder-view" class="view">発注残管理ビュー</div>
+             <div id="valuation-view" class="view">在庫評価ビュー</div>
+             <div id="pricing-view" class="view">見積・価格設定ビュー</div>
+             {{end}}
+     
+   </main>
+
+    <div id="loading-overlay" class="hidden">
+        <div class="spinner"></div>
+        <span id="loading-message">処理中...</span>
+    </div>
+    
+<div id="notification-box"></div>
+
+ {{ template "common_search_modal" .
+}}
+ {{ template "common_input_modal" .
+}}
+    <script src="/static/js/lib/encoding.min.js"></script>
+    <script type="module" src="/static/js/app.js?v=2025110701"></script>
+    </body>
+</html>
+

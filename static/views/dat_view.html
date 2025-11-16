@@ -1,0 +1,23 @@
+<div id="dat-upload-view" class="view">
+    <h1>ファイルアップロード (DAT)</h1>
+
+    <div class="upload-button-container">
+        <button id="datUploadBtn" class="btn">DATファイル選択</button>
+        <input type="file" id="datFileInput" multiple accept=".dat,.DAT" class="hidden">
+    </div>
+    <div class="filter-container">
+        <fieldset>
+        <legend>品目検索</legend>
+        {{ template "generic_search_form" . }}
+        </fieldset>
+    </div>
+    
+    <div id="datUploadResultContainer">
+        <p>「DATファイル選択」ボタンを押してファイルを選んでください。</p>
+    </div>
+    
+    <div id="datTableContainer" class="table-container">
+        <table id="datMainDataTable" class="data-table">
+        </table>
+    </div>
+</div>

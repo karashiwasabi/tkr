@@ -1,0 +1,80 @@
+/* C:\Users\wasab\OneDrive\デスクトップ\TKR\static\css\search_modal.css */
+
+/*
+   検索モーダル用のスタイル
+   (モーダルの基本枠は modal.css で定義)
+*/
+
+/* 検索結果テーブル */
+#search-results-table {
+    font-size: 10px; /* 通常より少し小さく */
+}
+#search-results-table th, 
+#search-results-table td {
+    padding: 3px 4px;
+    height: auto;
+    min-height: 18px;
+}
+
+/* 採用済み（マスターに既に存在する）品目を赤字にする */
+#search-results-table tr.adopted-item td {
+    color: #e60000;
+    font-weight: bold;
+}
+#search-results-table tr.adopted-item td .select-product-btn {
+    color: #e60000;
+    font-weight: bold;
+}
+
+/* ▼▼▼ common_search_modal.html のインラインスタイルをクラス化 ▼▼▼ */
+
+/*
+   注：以下のスタイルは、上記の display:none によって現在非表示だが、
+   将来的に検索モーダル内で検索を有効化する場合に備えて定義する
+*/
+#tkr-search-modal-content .filter-container {
+    background-color: #f4f4f4; 
+    border: 1px solid #ccc; 
+    padding: 10px;
+}
+#tkr-search-modal-content .filter-container fieldset {
+    border: none; 
+    padding: 0; 
+    margin: 0;
+}
+#tkr-search-modal-content .filter-container legend {
+    font-weight: bold; 
+    font-size: 1.1em; 
+    margin-bottom: 5px;
+}
+#tkr-search-modal-content #modal-search-gs1-form {
+    margin: 0;
+}
+#tkr-search-modal-content .filter-container .form-actions {
+    border-top: none; 
+    margin-top: 10px; 
+    padding-top: 0;
+}
+#tkr-search-modal-content #product-search-btn {
+    padding: 5px 10px;
+}
+
+/* 検索結果のコンテナ */
+#search-results-container {
+    max-height: 50vh; 
+    overflow-y: auto; 
+    margin-top: 10px;
+}
+
+/* 検索結果テーブルの列幅 */
+#search-results-table th.col-modal-product { width: 35%; }
+#search-results-table th.col-modal-maker   { width: 15%; }
+#search-results-table th.col-modal-spec    { width: 20%; }
+#search-results-table th.col-modal-yj      { width: 10%; }
+#search-results-table th.col-modal-jan     { width: 10%; }
+#search-results-table th.col-modal-action  { width: 10%; }
+
+/* モーダル末尾の「閉じる」ボタンのマージン */
+#tkr-search-modal-overlay .form-actions {
+    margin-top: 15px;
+}

@@ -1,0 +1,27 @@
+<div id="precomp-view" class="view">
+    <h1>予製管理</h1>
+
+    <div class="inout-header-controls">
+        <div class="form-group">
+            <label for="precomp-patient-number">患者番号 (Client Code):</label>
+            <input type="text" id="precomp-patient-number" autocomplete="off" placeholder="患者番号を入力...">
+        </div>
+        
+        <div class="buttons-group" style="gap: 5px;">
+             <button id="precomp-load-btn" class="btn">呼出</button>
+            <button id="precomp-save-btn" class="btn">保存</button>
+            <button id="precomp-clear-btn" class="btn">全削除</button>
+            <button id="precomp-toggle-status-btn" class="btn">予製中断</button>
+        </div>
+        
+        </div>
+
+    <div class="inout-view-container">
+        <div class="inout-details-header">
+            <button id="precomp-add-row-btn" class="btn">明細を追加</button>
+        </div>
+   
+         <div id="precomp-details-container" class="table-container" style="position: relative;">
+            </div>
+    </div>
+</div>

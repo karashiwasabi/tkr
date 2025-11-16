@@ -1,0 +1,95 @@
+/* C:\Users\wasab\OneDrive\デスクトップ\TKR\static\css\config.css */
+
+#config-view h2 {
+    margin-top: 15px;
+    margin-bottom: 5px;
+    font-size: 1.1em;
+    border-bottom: 1px solid #eee;
+    padding-bottom: 3px;
+}
+
+/* 設定セクションの共通スタイル */
+.config-section {
+    background-color: #fdfdfd;
+    border: 1px solid #ddd;
+    padding: 10px 15px;
+    margin-bottom: 15px;
+    border-radius: 4px;
+}
+
+/* フォームコンテナ (パス設定や卸追加) */
+.config-form-container {
+    padding: 5px;
+}
+
+.config-form-container .form-row {
+    display: flex;
+    flex-wrap: wrap;
+    margin-bottom: 8px;
+    gap: 10px;
+    align-items: flex-end; /* ラベルとボタンの高さを揃える */
+}
+
+.config-form-container .form-group {
+    display: flex;
+    flex-direction: column;
+    flex-basis: 250px; 
+    flex-grow: 1;
+}
+
+/* ▼▼▼【ここから追加】インラインスタイルをクラス化 ▼▼▼ */
+.config-form-container .form-group.flex-150 {
+    flex-basis: 150px;
+}
+.config-form-container .form-group.flex-300 {
+    flex-basis: 300px;
+}
+/* ▲▲▲【追加ここまで】▲▲▲ */
+
+
+.config-form-container .form-group label {
+    font-weight: bold;
+    margin-bottom: 3px;
+    font-size: 10px;
+}
+
+.config-form-container .form-group input[type="text"],
+.config-form-container .form-group input[type="number"] {
+    width: 100%;
+    padding: 3px;
+    border: 1px solid #ccc;
+    border-radius: 3px;
+    font-size: inherit;
+    font-family: inherit;
+    box-sizing: border-box;
+}
+
+.config-form-container .form-actions {
+    margin-left: 10px;
+}
+
+/* ▼▼▼【ここから修正】インラインスタイルをIDセレクタに移動 ▼▼▼ */
+#wholesalerListContainer {
+    max-height: 300px;
+    margin-top: 10px;
+    overflow-y: auto; /* ★【追加】コンテナ内スクロールを有効化 */
+}
+#wholesalerListTable th.col-config-code   { width: 25%;
+}
+#wholesalerListTable th.col-config-name   { width: 60%; }
+#wholesalerListTable th.col-config-action { width: 15%;
+}
+/* ▲▲▲【修正ここまで】▲▲▲ */
+
+/* 卸一覧テーブルの削除ボタン */
+#wholesalerListTable .delete-wholesaler-btn {
+    padding: 1px 4px;
+    font-size: 9px;
+    background-color: #fbeeee;
+    border-color: #dc3545;
+    color: #dc3545;
+}
+#wholesalerListTable .delete-wholesaler-btn:hover {
+    background-color: #dc3545;
+    color: #fff;
+}

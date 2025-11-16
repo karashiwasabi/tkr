@@ -1,0 +1,61 @@
+<div id="pricing-view" class="view">
+    <h1>見積・価格設定</h1>
+    
+    <div class="filter-container">
+        <fieldset>
+            <legend>操作パネル</legend>
+            <div class="search-form-container">
+                <div class="search-filter-row">
+                    <div class="form-group">
+                        <label for="pricing-wholesaler-select">卸業者（テンプレート作成用）:</label>
+                        <select id="pricing-wholesaler-select" class="search-filter-input"></select>
+                    </div>
+                    <button id="pricing-export-btn" class="btn">見積テンプレート(全件)作成</button>
+                    <button id="pricing-export-unregistered-btn" class="btn">見積テンプレート(未登録品)作成</button>
+                </div>
+                
+                <div class="search-filter-row" style="margin-top: 10px; border-top: 1px dashed #ccc; padding-top: 10px;">
+                    <div class="form-group">
+                        <label>見積CSV（卸から受領）:</label>
+                        <input type="file" id="pricing-upload-input" multiple accept=".csv,.CSV">
+                    </div>
+                    <span style="font-size: 10px; color: #555;">※複数ファイル同時選択可。<br>ファイル名は「(優先順位)_(卸名)_...」にしてください。</span>
+                </div>
+                
+                <div class="search-filter-row" style="margin-top: 10px; border-top: 1px dashed #ccc; padding-top: 10px;">
+                    <div class="form-group">
+                        <label>価格一括インポート (バックアップCSV):</label>
+                        <button id="pricing-direct-import-btn" class="btn">バックアップCSV読込</button>
+                        <input type="file" id="pricing-direct-import-input" class="hidden" accept=".csv,.CSV">
+                    </div>
+                    <a href="/api/pricing/backup_export" id="pricing-backup-export-btn" class="btn" style="margin-left: auto;">価格・卸バックアップ(全件)</a>
+                </div>
+            </div>
+        </fieldset>
+    </div>
+
+    <div class="filter-container" style="background-color: #f0f4f8;">
+        <fieldset>
+            <legend>表示フィルタ・一括操作</legend>
+            <div class="search-form-container">
+                <div class="search-filter-row">
+                    <div class="form-group">
+                        <label for="pricing-maker-filter">メーカー名 (部分一致):</label>
+                        <input type="text" id="pricing-maker-filter" class="search-filter-input" autocomplete="off">
+                    </div>
+                    <div class="form-group">
+                        <label style="margin-top: 10px;">
+                            <input type="checkbox" id="pricing-unregistered-filter"> 採用卸が未設定の品目のみ表示
+                        </label>
+                    </div>
+                    <button id="set-lowest-price-btn" class="btn" style="margin-left: auto; background-color: #17a2b8; color: white;">表示品目を最安値に自動設定</button>
+                    <button id="pricing-bulk-update-btn" class="btn" style="background-color: #28a745; color: white;">表示品目の一括更新を保存</button>
+                </div>
+            </div>
+        </fieldset>
+    </div>
+
+    <div id="pricing-output-container" class="table-container">
+        <p>見積CSVをアップロードしてください。</p>
+    </div>
+</div>

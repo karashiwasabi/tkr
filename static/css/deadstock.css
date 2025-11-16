@@ -1,0 +1,77 @@
+/* C:\Users\wasab\OneDrive\デスクトップ\TKR\static\css\deadstock.css */
+
+.deadstock-controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px 16px;
+    padding: 10px;
+border: 1px solid #ccc;
+    background-color: #f7f7f7;
+    align-items: flex-end;
+    margin-bottom: 15px;
+}
+
+.deadstock-controls .form-group {
+    display: flex;
+    flex-direction: column;
+gap: 4px;
+}
+.deadstock-controls .form-group label {
+    font-size: 10px;
+    font-weight: bold;
+}
+.deadstock-controls .form-group input {
+    padding: 3px;
+    border: 1px solid #ccc;
+    font-size: inherit;
+    min-width: 150px;
+}
+.deadstock-controls .form-actions {
+    display: flex;
+    gap: 10px;
+    margin-left: auto;
+}
+
+/* ▼▼▼【追加】アップロード専用エリアのスタイル ▼▼▼ */
+.deadstock-upload-area {
+    background-color: #f0f4f8; 
+    border-color: #cce;
+    margin-top: -10px;
+}
+/* ▲▲▲【追加ここまで】▲▲▲ */
+
+/* 不動在庫テーブル */
+#deadstock-table {
+    margin-top: 10px;
+}
+
+/* ▼▼▼【ここから修正】列幅を調整 ▼▼▼ */
+#deadstock-table th.col-ds-action { width: 8%;
+} /* ★ 10% -> 8% */
+#deadstock-table th.col-ds-key { width: 24%; } /* ★ 20% -> 24% */
+#deadstock-table th.col-ds-name { width: 25%;
+} /* 変更なし */
+#deadstock-table th.col-ds-qty { width: 8%; } /* ★ 10% -> 8% */
+#deadstock-table th.col-ds-details { width: 35%;
+} /* 変更なし */
+/* ▲▲▲【修正ここまで】▲▲▲ */
+
+#deadstock-table .lot-details-list {
+    font-size: 0.9em;
+    padding-left: 15px;
+    margin: 0;
+}
+
+/* ▼▼▼【ここから追加】ボタンのスタイル ▼▼▼ */
+#deadstock-table .adjust-inventory-btn {
+    padding: 1px 4px;
+    font-size: 9px;
+    background-color: #e6f7ff;
+    border-color: #17a2b8;
+    color: #17a2b8;
+}
+#deadstock-table .adjust-inventory-btn:hover {
+    background-color: #17a2b8;
+    color: #fff;
+}
+/* ▲▲▲【追加ここまで】▲▲▲ */

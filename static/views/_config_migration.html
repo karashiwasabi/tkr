@@ -1,0 +1,162 @@
+{{ define "config_migration" }}
+<section class="config-section">
+    <h2>予製データ移行 (一括)</h2>
+    <div class="config-form-container">
+        <fieldset>
+            <legend>A. 予製データ エクスポート</legend>
+            <div class="form-row">
+                <div class="form-group flex-full">
+                    <p style="font-size: 10px; margin: 0 0 5px 0;">
+                        現在登録されている全患者の予製データをCSV (patient_number, product_code, product_name, quantity_jan, unit_name) としてエクスポートします。
+                    </p>
+                </div>
+            </div>
+            <div class="form-actions" style="margin-top: 5px;">
+                <button id="precomp-export-all-btn" class="btn">予製(全件) エクスポート</button>
+            </div>
+        </fieldset>
+    </div>
+    <div class="config-form-container">
+        <fieldset>
+            <legend>B. 予製データ インポート</legend>
+            <div class="form-row">
+                <div class="form-group flex-full">
+                    <p style="font-size: 10px; margin: 0 0 5px 0; color: #dc3545; font-weight: bold;">
+                        警告: 既存の予製データをCSVの内容で上書き（患者ごとに洗い替え）します。<br>
+                        CSV形式: 上記A. と同じ形式 (patient_number, product_code, quantity_jan が必須)
+                    </p>
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="precomp-import-all-input" style="font-size: 10px; font-weight: bold;">予製CSVファイル:</label>
+                    <input type="file" id="precomp-import-all-input" class="hidden" accept=".csv,.CSV">
+                </div>
+                <div class="form-actions" style="margin-top: 5px;">
+                    <button id="precomp-import-all-btn" class="btn">予製CSV インポート実行</button>
+                </div>
+            </div>
+        </fieldset>
+    </div>
+</section>
+
+<section class="config-section">
+    <h2>在庫データ移行</h2>
+    <div class="config-form-container">
+        <fieldset>
+            <legend>TKR独自CSVインポート (全洗い替え)</legend>
+            <div class="form-row">
+                <div class="form-group flex-full">
+                    <p style="font-size: 10px; margin: 0 0 5px 0; color: #dc3545; font-weight: bold;">
+                        警告: この操作は既存の在庫をすべて削除し、CSVの内容で上書き（洗い替え）します。<br>
+                        CSV形式: PackageKey, ProductName, JAN数量 (※期限・ロットは登録されません)
+                    </p>
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="importTkrStockDate" style="font-size: 10px; font-weight: bold;">棚卸日 (CSV適用日):</label>
+                    <input type="date" id="importTkrStockDate" style="padding: 3px;">
+                </div>
+                <div class="form-group">
+                    <label for="importTkrStockInput" style="font-size: 10px; font-weight: bold;">CSVファイル:</label>
+                    <input type="file" id="importTkrStockInput" class="hidden" accept=".csv,.CSV">
+                </div>
+                <div class="form-actions" style="margin-top: 5px;">
+                    <button id="importTkrStockBtn" class="btn">TKR独自CSV（洗い替え）読込</button>
+                </div>
+            </div>
+        </fieldset>
+    </div>
+</section>
+
+<section class="config-section">
+    <h2>マスタデータ移行</h2>
+    <div class="config-form-container">
+        <fieldset>
+            <legend>JCSHMS (SOU) マスター更新</legend>
+            <div class="form-row">
+                <div class="form-group flex-full">
+                    <p style="font-size: 10px; margin: 0 0 5px 0;">
+                        SOUフォルダ内の <strong>JCSHMS.CSV</strong> および <strong>JANCODE.CSV</strong> を読み込み、
+                        データベースの JCSHMS / JANCODE テーブルを洗い替えます。<br>
+                        <span style="color: #dc3545; font-weight: bold;">
+                            警告: この処理は時間がかかる場合があります。処理が完了するまで画面を閉じないでください。
+                        </span>
+                    </p>
+                </div>
+            </div>
+            <div class="form-actions" style="margin-top: 5px;">
+                <button id="importJcshmsBtn" class="btn">JCSHMS (SOU) 更新実行</button>
+            </div>
+        </fieldset>
+    </div>
+
+    <div class="config-form-container">
+        <fieldset>
+            <legend>A. 製品マスタ エクスポート</legend>
+            <div class="form-row">
+                <div class="form-group flex-full">
+                    <p style="font-size: 10px; margin: 0 0 5px 0;">
+                        現在の製品マスタ（product_master）の全項目（JCSHMS由来、ユーザー設定含む）をCSVに出力します。
+                    </p>
+                </div>
+            </div>
+            <div class="form-actions" style="margin-top: 5px;">
+                <button id="exportAllMastersBtn" class="btn">マスタCSV エクスポート</button>
+            </div>
+        </fieldset>
+    </div>
+
+    <div class="config-form-container">
+        <fieldset>
+            <legend>B. 製品マスタ インポート (JCSHMSマージ/上書き)</legend>
+            <div class="form-row">
+                <div class="form-group flex-full">
+                    <p style="font-size: 10px; margin: 0 0 5px 0; color: #dc3545; font-weight: bold;">
+                        警告: 既存の製品マスタをCSVの内容で上書き (Upsert) します。<br>
+                        CSV形式: 上記A. と同じ形式 (product_codeが必須)
+                    </p>
+                    <p style="font-size: 10px; margin: 0 0 5px 0;">
+                        <b>読込ルール:</b><br>
+                        1. CSVの品目がJCSHMSに存在する場合: JCSHMSの品名/薬価/規格等を優先し、CSVの棚番/仕入単価/メモ等をマージします。<br>
+                        2. JCSHMSに存在しない場合: CSVのすべての値を登録します。(YJコードが空なら自動採番されます)
+                    </p>
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="importAllMastersInput" style="font-size: 10px; font-weight: bold;">マスタCSVファイル:</label>
+                    <input type="file" id="importAllMastersInput" class="hidden" accept=".csv,.CSV">
+                </div>
+                <div class="form-actions" style="margin-top: 5px;">
+                    <button id="importAllMastersBtn" class="btn">マスタCSV インポート実行</button>
+                </div>
+            </div>
+        </fieldset>
+    </div>
+</section>
+
+<section class="config-section">
+    <h2>メンテナンス</h2>
+    <div class="config-form-container">
+       <fieldset>
+           <legend>古い棚卸履歴(flag=0)の削除</legend>
+           <div class="form-row">
+               <div class="form-group flex-full">
+                   <p style="font-size: 10px; margin: 0 0 5px 0;">
+                       最新の棚卸日を除く、それ以前の棚卸履歴(flag=0)を一括削除します。
+                       <br>
+                       <span style="color: #dc3545; font-weight: bold;">
+                           警告: この操作は取り消せません。
+                       </span>
+                   </p>
+               </div>
+           </div>
+           <div class="form-actions" style="margin-top: 5px;">
+               <button id="clearOldInventoryBtn" class="btn">古い棚卸履歴を削除</button>
+           </div>
+       </fieldset>
+    </div>
+</section>
+{{ end }}

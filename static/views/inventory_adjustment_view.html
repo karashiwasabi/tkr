@@ -1,0 +1,14 @@
+<div id="inventory-adjustment-view" class="view">
+    <h1>棚卸調整 (1品目ごと)</h1>
+    <div class="filter-container">
+        <fieldset>
+        <legend>品目検索</legend>
+            
+            {{ template "generic_search_form" . }}
+
+        </fieldset>
+    </div>
+    <div id="inventory-adjustment-output" class="table-container">
+        <p>上記検索条件で品目を指定してください。</p>
+    </div>
+</div>

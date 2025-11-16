@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>TKR アプリケーション</title>
+    <link rel="stylesheet" href="/static/css/styles.css">
+    <link rel="stylesheet" href="/static/css/table.css">
+  
+    <link rel="stylesheet" href="/static/css/masteredit.css">
+  
+     <link rel="stylesheet" href="/static/css/config.css">
+    <link rel="stylesheet" href="/static/css/inventory_adjustment.css">
+    <link rel="stylesheet" href="/static/css/search_modal.css">
+    <link rel="stylesheet" href="/static/css/search_form_group.css">
+  
+ <link rel="stylesheet" href="/static/css/modal.css">
+    <link rel="stylesheet" href="/static/css/inout.css">
+    <link rel="stylesheet" href="/static/css/deadstock.css">
+    <link rel="stylesheet" href="/static/css/reorder.css">
+    <link rel="stylesheet" href="/static/css/backorder.css">
+    <link rel="stylesheet" href="/static/css/valuation.css">
+    <link rel="stylesheet" href="/static/css/pricing.css">
+    </head>
+<body>
+  
+  <header id="main-header">
+        <button id="datViewBtn" class="btn">DAT取込</button>
+        <button id="usageViewBtn" class="btn">USAGE取込</button>
+        <button id="inOutViewBtn" class="btn">入出庫</button>
+       
+         <button id="inventoryAdjustmentViewBtn" class="btn">棚卸調整</button>
+        <button id="deadStockViewBtn" 
+class="btn">不動在庫</button>
+        <button id="reorderViewBtn" class="btn">発注</button>
+        <button id="backorderViewBtn" class="btn">発注残管理</button>
+        <button id="valuationViewBtn" class="btn">在庫評価</button>
+        <button id="pricingViewBtn" class="btn">見積・価格設定</button>
+        <button id="masterEditViewBtn" class="btn">マスタ編集</button>
+     
+       <button id="precompViewBtn" class="btn">予製管理</button>
+        <button id="reprocessBtn" class="btn">全取引再計算</button>
+        <button id="configViewBtn" class="btn">設定</button>
+    
+</header>
+
+    <main>
+      
+  {{if .Views}}
+    
+     
+      
+            {{range .Views}}
+                 {{.}}
+       
+     {{end}}
+        
+   
+             {{else}}
+            <div id="dat-upload-view" class="view active">DATビュー</div>
+ 
+         
+   
+      
+  <div id="usage-upload-view" class="view">USAGEビュー</div>
+         
+   <div id="inventory-adjustment-view" class="view">棚卸調整ビュー</div>
+   
+             <div id="master-edit-view" class="view">マスタ編集ビュー</div>
+           
+             <div id="config-view" class="view">設定ビュー</div>
+     
+             <div id="deadstock-view" class="view">不動在庫ビュー</div>
+ 
+           
+  
+             <div id="reorder-view" class="view">発注ビュー</div>
+             <div id="backorder-view" class="view">発注残管理ビュー</div>
+             <div id="valuation-view" class="view">在庫評価ビュー</div>
+             <div id="pricing-view" class="view">見積・価格設定ビュー</div>
+             {{end}}
+     
+   </main>
+
+    <div id="loading-overlay" class="hidden">
+        <div class="spinner"></div>
+        <span id="loading-message">処理中...</span>
+    </div>
+    
+<div id="notification-box"></div>
+
+ {{ template "common_search_modal" .
+}}
+ {{ template "common_input_modal" .
+}}
+    <script src="/static/js/lib/encoding.min.js"></script>
+    <script type="module" src="/static/js/app.js?v=2025110701"></script>
+    </body>
+</html>

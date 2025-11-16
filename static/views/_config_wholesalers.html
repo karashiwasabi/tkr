@@ -1,0 +1,58 @@
+{{ define "config_wholesalers" }}
+<section class="config-section">
+    <h2>卸コード管理</h2>
+    <div class="config-form-container">
+        <fieldset>
+            <legend>新規卸コード追加</legend>
+            <div class="form-row">
+                <div class="form-group flex-150">
+                    <label for="config-wholesaler-code">卸コード:</label>
+                    <input type="text" id="config-wholesaler-code" autocomplete="off" maxlength="10">
+                </div>
+                <div class="form-group flex-300">
+                    <label for="config-wholesaler-name">卸名:</label>
+                    <input type="text" id="config-wholesaler-name" autocomplete="off">
+                </div>
+                <div class="form-actions">
+                    <button id="configAddWholesalerBtn" class="btn">追加</button>
+                </div>
+            </div>
+        </fieldset>
+    </div>
+    <div class="config-form-container">
+        <fieldset>
+            <legend>得意先マスタ インポート</legend>
+            <div class="form-row">
+                <div class="form-group flex-full">
+                    <p style="font-size: 10px; margin: 0 0 5px 0;">
+                        CSV (UTF-8) を読み込み、得意先マスタ (client_master) を上書き (Upsert) します。<br>
+                        CSV形式: <strong>client_code</strong> (必須), <strong>client_name</strong> (必須)
+                    </p>
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="importClientsInput" style="font-size: 10px; font-weight: bold;">得意先CSVファイル:</label>
+                    <input type="file" id="importClientsInput" class="hidden" accept=".csv,.CSV">
+                </div>
+                <div class="form-actions" style="margin-top: 5px;">
+                    <button id="importClientsBtn" class="btn">得意先CSV インポート実行</button>
+                </div>
+            </div>
+        </fieldset>
+    </div>
+    <div id="wholesalerListContainer" class="table-container">
+        <table id="wholesalerListTable" class="data-table">
+            <thead>
+                <tr>
+                    <th class="col-config-code">卸コード</th>
+                    <th class="col-config-name">卸名</th>
+                    <th class="col-config-action">操作</th>
+                </tr>
+            </thead>
+            <tbody>
+            </tbody>
+        </table>
+    </div>
+</section>
+{{ end }}

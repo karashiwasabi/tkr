@@ -1,0 +1,47 @@
+<div id="deadstock-view" class="view">
+    <h1>不動在庫リスト</h1>
+    
+    <div class="deadstock-controls">
+        <div class="form-group">
+  
+          <label for="ds-start-date">対象期間 (開始日):</label>
+            <input type="date" id="ds-start-date">
+        </div>
+        <div class="form-group">
+            <label for="ds-end-date">対象期間 (終了日):</label>
+            <input 
+type="date" id="ds-end-date">
+        </div>
+        <div class="form-group" style="justify-content: flex-end;">
+            <label style="font-weight: normal;">
+                <input type="checkbox" id="ds-exclude-zero-stock" checked> 在庫 0 の品目を除外
+            </label>
+        </div>
+        <div class="form-actions">
+            
+<button id="ds-search-btn" class="btn">この期間で検索</button>
+            <button id="ds-export-csv-btn" class="btn">CSVエクスポート</button>
+            </div>
+    </div>
+
+    <div class="deadstock-controls deadstock-upload-area">
+        <div class="form-group">
+            <label for="ds-csv-date">棚卸日 (CSV適用日):</label>
+         
+   <input type="date" id="ds-csv-date">
+        </div>
+        <div class="form-group">
+        
+    <label for="ds-csv-file-input">棚卸CSVファイル:</label>
+            <input type="file" id="ds-csv-file-input" accept=".csv,.CSV">
+        </div>
+        <div class="form-actions">
+            <button id="ds-csv-upload-btn" class="btn">CSVを棚卸として登録</button>
+        </div>
+    </div>
+    
+   
+ <div id="deadstock-result-container" class="table-container">
+        <p>上記で期間を指定して検索してください。</p>
+    </div>
+</div>
