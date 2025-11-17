@@ -757,322 +757,332 @@ export const showNotification = (message, type = 'success') => {
     }
 };
 
------ C:\Users\wasab\OneDrive\デスクトップ\TKR\static\js\config_migration.js -----
-// C:\Users\wasab\OneDrive\デスクトップ\TKR\static\js\config_migration.js
+----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\js\config_client_migration.js -----
+// C:\Users\wasab\OneDrive\デスクトップ\TKR\static\js\config_client_migration.js
 import { handleFileUpload } from './utils.js';
-// ▼▼▼【ここに追加】 master_data.js からリフレッシュ関数をインポート ▼▼▼
 import { refreshClientMap, refreshWholesalerMap } from './master_data.js';
-// ▲▲▲【追加ここまで】▲▲▲
 
-let importTkrStockBtn, importTkrStockInput;
-let exportAllMastersBtn, importAllMastersBtn, importAllMastersInput;
-// ▼▼▼【ここに追加】予製（一括）のボタン参照 ▼▼▼
-let precompExportAllBtn, precompImportAllBtn, precompImportAllInput;
-// ▲▲▲【追加ここまで】▲▲▲
-// ▼▼▼【ここに追加】得意先インポートのボタン参照 ▼▼▼
 let importClientsBtn, importClientsInput;
-// ▲▲▲【追加ここまで】▲▲▲
-// ▼▼▼【ここに追加】JCSHMS更新ボタンの参照 ▼▼▼
-let importJcshmsBtn;
-// ▲▲▲【追加ここまで】▲▲▲
+let migrationUploadResultContainer;
+
+async function handleClientImport(event) {
+    if (!confirm('【警告】得意先CSVをインポートします。\n・client_codeが一致する既存データは上書きされます。\nよろしいですか？')) {
+        event.target.value = '';
+        return;
+    }
+
+    await handleFileUpload(
+        '/api/clients/import',
+        event.target.files,
+        importClientsInput,
+        migrationUploadResultContainer,
+        null, 
+        '得意先マスタをインポート中...'
+    );
+
+    try {
+        await refreshClientMap();
+        await refreshWholesalerMap();
+        window.showNotification('得意先・卸マスタのキャッシュを更新しました。', 'info');
+    } catch (error) {
+        console.error('Failed to refresh maps after import:', error);
+        window.showNotification('CSVインポート後のキャッシュ更新に失敗しました。', 'error');
+    }
+}
+
+export function initClientMigration() {
+    importClientsBtn = document.getElementById('importClientsBtn');
+    importClientsInput = document.getElementById('importClientsInput');
+    migrationUploadResultContainer = document.getElementById('datUploadResultContainer');
+
+    if (importClientsBtn && importClientsInput) {
+        importClientsBtn.addEventListener('click', () => importClientsInput.click());
+        importClientsInput.addEventListener('change', handleClientImport);
+    }
+}
+
+----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\js\config_maintenance.js -----
+// C:\Users\wasab\OneDrive\デスクトップ\TKR\static\js\config_maintenance.js
 
 let migrationUploadResultContainer;
 
-export function initDataMigration() {
-    importTkrStockBtn = document.getElementById('importTkrStockBtn');
-    importTkrStockInput = document.getElementById('importTkrStockInput');
+async function handleClearOldInventory() {
+    if (!confirm('【警告】最新の棚卸日を除く、それ以前のすべての棚卸履歴(flag=0)を削除します。\n在庫評価などで過去の日付を参照すると、計算結果が変わる可能性があります。\nこの操作は取り消せません。\n\n実行しますか？')) {
+        return;
+    }
+
+    if (migrationUploadResultContainer) migrationUploadResultContainer.innerHTML = '<p>古い棚卸履歴を削除中...</p>';
+    window.showLoading('古い棚卸履歴を削除中...');
     
+    try {
+        const response = await fetch('/api/inventory/clear_old', {
+            method: 'POST',
+        });
+        
+        const responseText = await response.text();
+        let result;
+        try {
+            result = JSON.parse(responseText);
+        } catch (jsonError) {
+            if (!response.ok) {
+                throw new Error(responseText || `サーバーエラー (HTTP ${response.status})`);
+            }
+            result = { message: responseText };
+        }
+
+        if (!response.ok) {
+            throw new Error(result.message || `サーバーエラー (HTTP ${response.status})`);
+        }
+        
+        if (migrationUploadResultContainer) {
+            migrationUploadResultContainer.innerHTML = `<h3>${result.message || '処理が完了しました。'}</h3>`;
+        }
+        window.showNotification(result.message || '古い棚卸履歴を削除しました。', 'success');
+
+    } catch (error) {
+        console.error('Old inventory clear failed:', error);
+        window.showNotification(`エラー: ${error.message}`, 'error');
+        if (migrationUploadResultContainer) migrationUploadResultContainer.innerHTML = `<p style="color: red;">エラーが発生しました: ${error.message}</p>`;
+    } finally {
+        window.hideLoading();
+    }
+}
+
+export function initMaintenance() {
+    migrationUploadResultContainer = document.getElementById('datUploadResultContainer');
+    const clearOldInventoryBtn = document.getElementById('clearOldInventoryBtn');
+    
+    if (clearOldInventoryBtn) {
+        clearOldInventoryBtn.addEventListener('click', handleClearOldInventory);
+    }
+}
+
+----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\js\config_master_migration.js -----
+// C:\Users\wasab\OneDrive\デスクトップ\TKR\static\js\config_master_migration.js
+import { handleFileUpload } from './utils.js';
+
+let exportAllMastersBtn, importAllMastersBtn, importAllMastersInput;
+let importJcshmsBtn;
+let migrationUploadResultContainer;
+
+async function handleJcshmsReload() {
+    if (!confirm('【警告】SOU/JCSHMS.CSV と SOU/JANCODE.CSV を再読み込みします。\nこの処理は時間がかかります。\n実行しますか？')) {
+        return;
+    }
+
+    if (migrationUploadResultContainer) migrationUploadResultContainer.innerHTML = '<p>JCSHMSマスターを更新中...</p>';
+    window.showLoading('JCSHMSマスターを更新中... (時間がかかります)');
+
+    try {
+        const response = await fetch('/api/jcshms/reload', {
+            method: 'POST',
+        });
+        
+        const responseText = await response.text();
+        let result;
+        try {
+            result = JSON.parse(responseText);
+        } catch (jsonError) {
+            if (!response.ok) {
+                throw new Error(responseText || `サーバーエラー (HTTP ${response.status})`);
+            }
+            result = { message: responseText };
+        }
+
+        if (!response.ok) {
+            throw new Error(result.message || `サーバーエラー (HTTP ${response.status})`);
+        }
+        
+        if (migrationUploadResultContainer) {
+            migrationUploadResultContainer.innerHTML = `<h3>${result.message || '処理が完了しました。'}</h3>`;
+        }
+        window.showNotification(result.message || 'JCSHMSの更新が完了しました。', 'success');
+
+    } catch (error) {
+        console.error('JCSHMS reload failed:', error);
+        window.showNotification(`エラー: ${error.message}`, 'error');
+        if (migrationUploadResultContainer) migrationUploadResultContainer.innerHTML = `<p style="color: red;">エラーが発生しました: ${error.message}</p>`;
+    } finally {
+        window.hideLoading();
+    }
+}
+
+async function handleMasterImport(event) {
+    if (!confirm('【警告】製品マスタCSVをインポートします。\n・product_codeが一致する既存マスタは上書きされます。\n・JCSHMSに存在する品目は、品名や薬価がJCSHMS優先でマージされます。\nよろしいですか？')) {
+        event.target.value = '';
+        return;
+    }
+
+    await handleFileUpload(
+        '/api/masters/import/all',
+        event.target.files,
+        importAllMastersInput,
+        migrationUploadResultContainer,
+        null,
+        '製品マスタをインポート中...'
+    );
+}
+
+export function initMasterMigration() {
     exportAllMastersBtn = document.getElementById('exportAllMastersBtn');
     importAllMastersBtn = document.getElementById('importAllMastersBtn');
     importAllMastersInput = document.getElementById('importAllMastersInput');
-
-    // ▼▼▼【ここに追加】予製（一括）のボタンIDを取得 ▼▼▼
-    precompExportAllBtn = document.getElementById('precomp-export-all-btn');
-    precompImportAllBtn = document.getElementById('precomp-import-all-btn');
-    precompImportAllInput = document.getElementById('precomp-import-all-input');
-    // ▲▲▲【追加ここまで】▲▲▲
-
-    // ▼▼▼【ここに追加】得意先インポートのボタンIDを取得 ▼▼▼
-    importClientsBtn = document.getElementById('importClientsBtn');
-    importClientsInput = document.getElementById('importClientsInput');
-    // ▲▲▲【追加ここまで】▲▲▲
-
-    // ▼▼▼【ここに追加】JCSHMS更新ボタンのIDを取得 ▼▼▼
     importJcshmsBtn = document.getElementById('importJcshmsBtn');
-    // ▲▲▲【追加ここまで】▲▲▲
-
     migrationUploadResultContainer = document.getElementById('datUploadResultContainer');
 
-    if (importTkrStockBtn && importTkrStockInput) {
-        importTkrStockBtn.addEventListener('click', () => importTkrStockInput.click());
-        importTkrStockInput.addEventListener('change', async (event) => {
-            
-            const dateInput = document.getElementById('importTkrStockDate');
-            
-            const files = event.target.files;
-
-             if (!files || files.length === 0) {
-                 return;
-             }
-            if (!dateInput || !dateInput.value) {
-                 window.showNotification('棚卸日(CSV適用日)を選択してください。', 'warning');
-                 
-                 event.target.value = ''; 
-                 
-                 return;
-             }
-    
-            if (!confirm('【警告】TKR独自CSVを読み込み、現在の在庫をすべて洗い替えます。\nこの操作は取り消せません。\nよろしいですか？')) {
-                 
-                 
-                 event.target.value = ''; 
-                 return;
- 
-            }
-
-             
-            const formData = new FormData();
-             formData.append('file', files[0]);
-             
-             formData.append('date', dateInput.value.replace(/-/g, '')); 
-
-            const apiEndpoint = '/api/stock/import/tkr';
-             const loadingMessage = 'TKR独自CSV（洗い替え）を処理中...';
-
-       
-            if (migrationUploadResultContainer) migrationUploadResultContainer.innerHTML = '<p>ファイルをアップロード中...</p>';
-            window.showLoading(loadingMessage);
-
-            try {
-                 
-                 const response = await fetch(apiEndpoint, {
-                 
-                     method: 'POST',
-                     
-                     body: formData,
-                 });
-                const responseText = await response.text();
-                let result;
-                try {
-                    
-                    result = JSON.parse(responseText);
-                } catch (jsonError) {
-            
-                     if (!response.ok) {
-                         
-                         throw new Error(responseText || `サーバーエラー (HTTP ${response.status})`);
-                    }
-                     
-                     result = { message: responseText };
-                }
-
-                 
-                 if (!response.ok) {
-                     
-                     throw new Error(result.message || `サーバーエラー (HTTP ${response.status})`);
-                }
-                 
-                 
-                 if (migrationUploadResultContainer) {
-                 
-                     migrationUploadResultContainer.innerHTML = `<h3>${result.message || '処理が完了しました。'}</h3>`;
-                }
-
-                 
-            
-                 window.showNotification(result.message || 'ファイルの処理が完了しました。', 'success');
-            } catch (error) {
-            
-                 
-                console.error('Upload failed:', error);
-                window.showNotification(`エラー: ${error.message}`, 'error');
-                if (migrationUploadResultContainer) migrationUploadResultContainer.innerHTML = `<p style="color: red;">エラーが発生しました: ${error.message}</p>`;
-            } finally {
-                 
-                 window.hideLoading();
-                if (importTkrStockInput) importTkrStockInput.value = '';
-                if (dateInput) dateInput.value = '';
-            }
-         });
-    }
-    
     if (exportAllMastersBtn) {
-    
-         
         exportAllMastersBtn.addEventListener('click', () => {
             window.location.href = '/api/masters/export/all';
-  
- 
         });
     }
 
     if (importAllMastersBtn && importAllMastersInput) {
-         
         importAllMastersBtn.addEventListener('click', () => importAllMastersInput.click());
-        // ▼▼▼【修正】 async を追加 ▼▼▼
-        importAllMastersInput.addEventListener('change', async (event) => {
-             
+        importAllMastersInput.addEventListener('change', handleMasterImport);
+    }
     
-            if (!confirm('【警告】製品マスタCSVをインポートします。\n・product_codeが一致する既存マスタは上書きされます。\n・JCSHMSに存在する品目は、品名や薬価がJCSHMS優先でマージされます。\nよろしいですか？')) {
-                 
-                 
-                 event.target.value = ''; 
-                 return;
- 
-            }
+    if (importJcshmsBtn) {
+        importJcshmsBtn.addEventListener('click', handleJcshmsReload);
+    }
+}
 
-             // ▼▼▼【修正】 await を追加 ▼▼▼
-            await handleFileUpload(
-                 '/api/masters/import/all',
-                 
-                 event.target.files,
-                 
-                 importAllMastersInput,
-                 migrationUploadResultContainer, 
-                 
-                 null, 
-                 
-                 '製品マスタをインポート中...'
-            );
-            // ▲▲▲【修正ここまで】▲▲▲
-         });
+----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\js\config_migration.js -----
+// C:\Users\wasab\OneDrive\デスクトップ\TKR\static\js\config_migration.js
+import { initStockMigration } from './config_stock_migration.js';
+import { initMasterMigration } from './config_master_migration.js';
+import { initClientMigration } from './config_client_migration.js';
+import { initPrecompMigration } from './config_precomp_migration.js';
+import { initMaintenance } from './config_maintenance.js';
+
+export function initDataMigration() {
+    initStockMigration();
+    initMasterMigration();
+    initClientMigration();
+    initPrecompMigration();
+    initMaintenance();
+}
+
+----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\js\config_precomp_migration.js -----
+// C:\Users\wasab\OneDrive\デスクトップ\TKR\static\js\config_precomp_migration.js
+import { handleFileUpload } from './utils.js';
+
+let precompExportAllBtn, precompImportAllBtn, precompImportAllInput;
+let migrationUploadResultContainer;
+
+async function handlePrecompImport(event) {
+    if (!confirm('【警告】予製CSVをインポートします。\n既存の予製データは、CSVに含まれる患者番号についてのみ洗い替え（上書き）されます。\nよろしいですか？')) {
+        event.target.value = '';
+        return;
     }
 
-    // ▼▼▼【ここから修正】得意先インポートのイベントリスナー ▼▼▼
-    
-    if (importClientsBtn && importClientsInput) {
-        importClientsBtn.addEventListener('click', () => importClientsInput.click());
-        // ▼▼▼【修正】 async を追加 ▼▼▼
-        importClientsInput.addEventListener('change', async (event) => {
-    
-             
-            if (!confirm('【警告】得意先CSVをインポートします。\n・client_codeが一致する既存データは上書きされます。\nよろしいですか？')) {
- 
-                event.target.value = ''; 
-                 return;
-            
-            }
+    await handleFileUpload(
+        '/api/precomp/import/all',
+        event.target.files,
+        precompImportAllInput,
+        migrationUploadResultContainer,
+        null,
+        '予製（一括）をインポート中...'
+    );
+}
 
-            // ▼▼▼【修正】 await を追加 ▼▼▼
-            await handleFileUpload(
-                 '/api/clients/import',
-                 event.target.files,
-                 importClientsInput,
-                 migrationUploadResultContainer, 
-                 null, // 得意先インポートはテーブル描画なし
-                 '得意先マスタをインポート中...'
-            );
-            // ▲▲▲【修正ここまで】▲▲▲
+export function initPrecompMigration() {
+    precompExportAllBtn = document.getElementById('precomp-export-all-btn');
+    precompImportAllBtn = document.getElementById('precomp-import-all-btn');
+    precompImportAllInput = document.getElementById('precomp-import-all-input');
+    migrationUploadResultContainer = document.getElementById('datUploadResultContainer');
 
-            // ▼▼▼【ここに追加】インポート完了後、JSのキャッシュを更新する ▼▼▼
-            try {
-                await refreshClientMap();
-                await refreshWholesalerMap();
-                window.showNotification('得意先・卸マスタのキャッシュを更新しました。', 'info');
-            } catch (error) {
-                console.error('Failed to refresh maps after import:', error);
-                window.showNotification('CSVインポート後のキャッシュ更新に失敗しました。', 'error');
-            }
-            // ▲▲▲【追加ここまで】▲▲▲
+    if (precompExportAllBtn) {
+        precompExportAllBtn.addEventListener('click', () => {
+            window.location.href = '/api/precomp/export/all';
         });
     }
-    // ▲▲▲【修正ここまで】▲▲▲
-
-    // ▼▼▼【ここから追加】JCSHMS更新のイベントリスナー ▼▼▼
-    if (importJcshmsBtn) {
-         
-        importJcshmsBtn.addEventListener('click', async () => {
-            if (!confirm('【警告】SOU/JCSHMS.CSV と SOU/JANCODE.CSV を再読み込みします。\nこの処理は時間がかかります。\n実行しますか？')) {
-                return;
-             }
-
-            if (migrationUploadResultContainer) migrationUploadResultContainer.innerHTML = '<p>JCSHMSマスターを更新中...</p>';
-             window.showLoading('JCSHMSマスターを更新中... (時間がかかります)');
-
-            
-            try {
-                const response = await fetch('/api/jcshms/reload', {
- 
-                    method: 'POST',
-                 });
-                 
-                
-                const responseText = await response.text();
-                let result;
-                 try {
-                     result = JSON.parse(responseText);
-                 } catch (jsonError) {
-                     if (!response.ok) {
-                         throw new Error(responseText || `サーバーエラー (HTTP ${response.status})`);
-                    }
-                     result = { message: responseText };
-                }
-
- 
-                if (!response.ok) {
-                    throw new Error(result.message || `サーバーエラー (HTTP ${response.status})`);
-                }
-                 
-                 
-                 if (migrationUploadResultContainer) {
-                     migrationUploadResultContainer.innerHTML = `<h3>${result.message || '処理が完了しました。'}</h3>`;
-                }
-                 window.showNotification(result.message || 'JCSHMSの更新が完了しました。', 'success');
-
-            } catch (error) {
-                 console.error('JCSHMS reload failed:', error);
-                window.showNotification(`エラー: ${error.message}`, 'error');
-                if (migrationUploadResultContainer) migrationUploadResultContainer.innerHTML = `<p style="color: red;">エラーが発生しました: ${error.message}</p>`;
-            } finally {
-                 window.hideLoading();
-            }
-         });
-    }
-    // ▲▲▲【追加ここまで】▲▲▲
-
-    // ▼▼▼【ここから追加】予製（一括）のイベントリスナー ▼▼▼
-    if (precompExportAllBtn) {
-        
-        precompExportAllBtn.addEventListener('click', () => {
-             window.location.href = '/api/precomp/export/all';
-         });
-    }
-
     
     if (precompImportAllBtn && precompImportAllInput) {
         precompImportAllBtn.addEventListener('click', () => precompImportAllInput.click());
-        // ▼▼▼【修正】 async を追加 ▼▼▼
-        precompImportAllInput.addEventListener('change', async (event) => {
-    
-             
-       
-        
-             if (!confirm('【警告】予製CSVをインポートします。\n既存の予製データは、CSVに含まれる患者番号についてのみ洗い替え（上書き）されます。\nよろしいですか？')) {
-                
- 
-                 event.target.value = ''; 
-                 return;
-            
-             }
-
-            // ▼▼▼【修正】 await を追加 ▼▼▼
-            await handleFileUpload(
-                 '/api/precomp/import/all',
-                 
-                 event.target.files,
-                 precompImportAllInput,
- 
-                 migrationUploadResultContainer, 
-                 
-                 null, 
-                 
-                 '予製（一括）をインポート中...'
-            );
-            // ▲▲▲【修正ここまで】▲▲▲
-             
-        });
+        precompImportAllInput.addEventListener('change', handlePrecompImport);
     }
-    // ▲▲▲【追加ここまで】▲▲▲
+}
+
+----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\js\config_stock_migration.js -----
+// C:\Users\wasab\OneDrive\デスクトップ\TKR\static\js\config_stock_migration.js
+import { handleFileUpload } from './utils.js';
+
+let importTkrStockBtn, importTkrStockInput;
+let migrationUploadResultContainer;
+
+async function handleTkrStockUpload(event) {
+    const dateInput = document.getElementById('importTkrStockDate');
+    const files = event.target.files;
+
+    if (!files || files.length === 0) {
+        return;
+    }
+
+    if (!dateInput || !dateInput.value) {
+        window.showNotification('棚卸日(CSV適用日)を選択してください。', 'warning');
+        event.target.value = '';
+        return;
+    }
+
+    if (!confirm('【警告】TKR独自CSVを読み込み、現在の在庫をすべて洗い替えます。\nこの操作は取り消せません。\nよろしいですか？')) {
+        event.target.value = '';
+        return;
+    }
+
+    const formData = new FormData();
+    formData.append('file', files[0]);
+    formData.append('date', dateInput.value.replace(/-/g, ''));
+
+    const apiEndpoint = '/api/stock/import/tkr';
+    const loadingMessage = 'TKR独自CSV（洗い替え）を処理中...';
+
+    if (migrationUploadResultContainer) migrationUploadResultContainer.innerHTML = '<p>ファイルをアップロード中...</p>';
+    window.showLoading(loadingMessage);
+
+    try {
+        const response = await fetch(apiEndpoint, {
+            method: 'POST',
+            body: formData,
+        });
+        const responseText = await response.text();
+        let result;
+        try {
+            result = JSON.parse(responseText);
+        } catch (jsonError) {
+            if (!response.ok) {
+                throw new Error(responseText || `サーバーエラー (HTTP ${response.status})`);
+            }
+            result = { message: responseText };
+        }
+
+        if (!response.ok) {
+            throw new Error(result.message || `サーバーエラー (HTTP ${response.status})`);
+        }
+
+        if (migrationUploadResultContainer) {
+            migrationUploadResultContainer.innerHTML = `<h3>${result.message || '処理が完了しました。'}</h3>`;
+        }
+        window.showNotification(result.message || 'ファイルの処理が完了しました。', 'success');
+    } catch (error) {
+        console.error('Upload failed:', error);
+        window.showNotification(`エラー: ${error.message}`, 'error');
+        if (migrationUploadResultContainer) migrationUploadResultContainer.innerHTML = `<p style="color: red;">エラーが発生しました: ${error.message}</p>`;
+    } finally {
+        window.hideLoading();
+        if (importTkrStockInput) importTkrStockInput.value = '';
+        if (dateInput) dateInput.value = '';
+    }
+}
+
+export function initStockMigration() {
+    importTkrStockBtn = document.getElementById('importTkrStockBtn');
+    importTkrStockInput = document.getElementById('importTkrStockInput');
+    migrationUploadResultContainer = document.getElementById('datUploadResultContainer');
+
+    if (importTkrStockBtn && importTkrStockInput) {
+        importTkrStockBtn.addEventListener('click', () => importTkrStockInput.click());
+        importTkrStockInput.addEventListener('change', handleTkrStockUpload);
+    }
 }
 
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\js\config_wholesaler.js -----
@@ -2347,11 +2357,6 @@ import {
 // ▲▲▲【追加ここまで】▲▲▲
 
 let outputContainer;
-// ▼▼▼【削除】状態変数を logic.js に移管 ▼▼▼
-// let lastLoadedDataCache = null;
-// let currentYjCode = null;
-// ▲▲▲【削除ここまで】▲▲▲
-
 
 /**
  * 「2. 棚卸入力」セクションのバーコードスキャンを処理します。
@@ -2364,8 +2369,7 @@ async function handleAdjustmentBarcodeScan(e) {
 
     let parsedData;
     try {
-   
-     parsedData = parseBarcode(inputValue); // TKRの utils.js を使用
+        parsedData = parseBarcode(inputValue);
     } catch (err) {
         window.showNotification(`バーコード解析エラー: 
 ${err.message}`, 'error');
@@ -2379,12 +2383,10 @@ ${err.message}`, 'error');
         return;
     }
 
- 
-   window.showLoading('製品情報を検索中...');
+    window.showLoading('製品情報を検索中...');
     try {
         // TKRの utils.js を使用
-        const productMaster = 
-await fetchProductMasterByBarcode(inputValue);
+        const productMaster = await fetchProductMasterByBarcode(inputValue);
 
         // ▼▼▼【ここを修正】logic.js の getCurrentYjCode を使用 ▼▼▼
         if (productMaster.yjCode !== getCurrentYjCode()) {
@@ -2395,36 +2397,31 @@ throw new Error(`スキャンされた品目(${productMaster.productName})は、
 
         const productTbody = outputContainer.querySelector(`.final-input-tbody[data-product-code="${productMaster.productCode}"]`);
         if (!productTbody) {
-          
-  throw new Error(`画面内に製品「${productMaster.productName}」の入力欄が見つかりません。`);
+            
+throw new Error(`画面内に製品「${productMaster.productName}」の入力欄が見つかりません。`);
         }
 
         let targetRow = null;
         const rows = productTbody.querySelectorAll('tr.inventory-row');
         // 空の行を探す
-     
-   for (let i = 0; i < rows.length; i += 2) {
+        for (let i = 0; i < rows.length; i += 2) {
             const 
 expiryInput = rows[i].querySelector('.expiry-input');
             const lotInput = rows[i+1].querySelector('.lot-input');
             if (expiryInput.value.trim() === '' && lotInput.value.trim() === '') {
-            
-    targetRow = rows[i];
+                targetRow = rows[i];
                 break;
             }
         }
 
         // 空の行がなければ新しい行を追加
-  
-      if (!targetRow) {
+        if (!targetRow) {
             const addBtn = productTbody.querySelector('.add-deadstock-row-btn');
             if (addBtn) {
- 
-               addBtn.click();
+                addBtn.click();
                 const newRows = productTbody.querySelectorAll('tr.inventory-row');
                 targetRow = newRows[newRows.length - 2]; // 追加された行
- 
-           }
+            }
         }
 
         
@@ -2432,137 +2429,130 @@ if (targetRow) {
             const expiryInput = targetRow.querySelector('.expiry-input');
             const lotInput = targetRow.nextElementSibling.querySelector('.lot-input');
             
-            if (parsedData.expiryDate) { // YYYYMM 
-形式
+            if (parsedData.expiryDate) { // YYYYMM 形式
                 expiryInput.value = parsedData.expiryDate;
             }
-        
-    if (parsedData.lotNumber) {
+            if (parsedData.lotNumber) {
                 lotInput.value = parsedData.lotNumber;
             }
-  
-          window.showNotification('ロット・期限を自動入力しました。', 'success');
+            
+window.showNotification('ロット・期限を自動入力しました。', 'success');
             
             const qtyInput = targetRow.nextElementSibling.querySelector('.lot-quantity-input');
             if(qtyInput) {
-          
-      qtyInput.focus();
+                qtyInput.focus();
                 qtyInput.select();
             }
         } else {
-         
-   throw new Error('ロット・期限の入力欄の追加に失敗しました。');
+            throw new Error('ロット・期限の入力欄の追加に失敗しました。');
         }
 
     } catch (err) {
         window.showNotification(err.message, 'error');
     } finally {
-  
-      window.hideLoading();
+        window.hideLoading();
         barcodeInput.value = '';
         barcodeInput.focus();
     }
 }
 
-// ▼▼▼【削除】計算ロジックを logic.js に移管 ▼▼▼
-/*
-function updatePrecompTotalDisplay() { ... }
-function findMaster(productCode) { ... }
-function reverseCalculateStock() { ... }
-function updateFinalInventoryTotal(productCode) { ... }
-*/
-// ▲▲▲【削除ここまで】▲▲▲
-
+// (前回修正した saveInventoryData 関数)
 async function saveInventoryData() {
- 
-   const dateInput = document.getElementById('inventory-date');
+    const dateInput = document.getElementById('inventory-date');
     if (!dateInput || !dateInput.value) {
         window.showNotification('棚卸日を指定してください。', 'error');
         return;
     }
-    if 
-(!confirm(`${dateInput.value}の棚卸データとして保存します。よろしいですか？`)) return;
-    const inventoryData = {};
-    const deadStockData = [];
+    if (!confirm(`${dateInput.value}の棚卸データとして保存します。よろしいですか？`)) return;
+
+    // ▼▼▼【ここから修正】理論在庫(inventoryData)と物理明細(deadStockData)を正しく収集する ▼▼▼
     
-    // ▼▼▼【ここを修正】logic.js の getCache を使用 ▼▼▼
+    const inventoryData = {}; // Key: ProductCode, Value: JAN理論在庫合計 (逆算値)
+    const deadStockData = []; // Key: ProductCode, Value: JAN物理在庫明細 (ロット/期限)
+    
+    // ▼▼▼【修正】logic.js の getCache を使用 ▼▼▼
     const cache = getCache();
     if (!cache || !cache.transactionLedger || cache.transactionLedger.length === 0) {
-        window.showNotification('保存対象の品目データが見つかりません。', 
-'error');
+        window.showNotification('保存対象の品目データが見つかりません。', 'error');
         return;
     }
     const allMasters = (cache.transactionLedger[0].packageLedgers || []).flatMap(pkg => pkg.masters || []);
     // ▲▲▲【修正ここまで】▲▲▲
 
     allMasters.forEach(master => {
-        const 
-productCode = master.productCode;
+        const productCode = master.productCode;
         const tbody = document.querySelector(`.final-input-tbody[data-product-code="${productCode}"]`);
-        if (!tbody) {
-    
-        inventoryData[productCode] = 0;
-            return;
-     
-   };
-        let totalInputQuantity = 0;
-        const inventoryRows = tbody.querySelectorAll('.inventory-row');
-  
-      for (let i = 0; i < inventoryRows.length; i += 2) {
-          
-  const topRow = inventoryRows[i];
-            const bottomRow = inventoryRows[i+1];
-       
-     const quantityInput = bottomRow.querySelector('.final-inventory-input, .lot-quantity-input');
-            const expiryInput = topRow.querySelector('.expiry-input');
-   
-         const lotInput = bottomRow.querySelector('.lot-input');
-            if (!quantityInput || 
-!expiryInput || !lotInput) continue;
-            const quantity = parseFloat(quantityInput.value) || 0;
-       
-     const expiry = expiryInput.value.trim();
-            const lot = lotInput.value.trim();
-            totalInputQuantity += quantity;
-deadStockData.push({
-                productCode: productCode,
-          
-      yjCode: master.yjCode,
-                packageForm: master.packageForm,
-   
-             janPackInnerQty: master.janPackInnerQty,
-             
-   yjUnitName: master.yjUnitName,
-                stockQuantityJan: quantity,
+
+        // 1. 物理在庫明細 (deadStockData) の収集 (変更なし)
+        // ユーザーが入力したロット/期限/数量（＝実在庫）を収集
+        if (tbody) {
+            const inventoryRows = tbody.querySelectorAll('.inventory-row');
       
-          expiryDate: expiry,
+            for (let i = 0; i < inventoryRows.length; i += 2) {
+                const topRow = inventoryRows[i];
+                const bottomRow = inventoryRows[i+1];
+                const quantityInput = bottomRow.querySelector('.final-inventory-input, .lot-quantity-input');
+                const expiryInput = topRow.querySelector('.expiry-input');
+                const lotInput = bottomRow.querySelector('.lot-input');
                 
-lotNumber: lot
-            });
+                if (!quantityInput || !expiryInput || !lotInput) continue;
+                
+                const quantity = parseFloat(quantityInput.value) || 0;
+                const expiry = expiryInput.value.trim();
+                const lot = lotInput.value.trim();
+
+                deadStockData.push({
+                    productCode: productCode,
+                    yjCode: master.yjCode,
+                    packageForm: master.packageForm,
+                    janPackInnerQty: master.janPackInnerQty,
+                    yjUnitName: master.yjUnitName,
+                    stockQuantityJan: quantity,
+                    expiryDate: expiry,
+                    lotNumber: lot
+                });
+            }
         }
-        inventoryData[productCode] = totalInputQuantity;
+
+        // 2. 理論在庫合計 (inventoryData) の収集
+        // 「④ 前日在庫(逆算値)」SPAN から値を取得
+        const calculatedStockSpan = document.querySelector(`.calculated-previous-day-stock[data-product-code="${productCode}"]`);
+        if (calculatedStockSpan) {
+            const theoreticalStock = parseFloat(calculatedStockSpan.textContent) || 0;
+            inventoryData[productCode] = theoreticalStock;
+        } else {
+            // スパンが見つからない場合 (画面に表示されていない？)
+            // 念のため、物理在庫合計をフォールバックとして使う
+            let totalInputQuantity = 0;
+            if (tbody) {
+                tbody.querySelectorAll('.final-inventory-input, .lot-quantity-input').forEach(input => {
+                    totalInputQuantity += parseFloat(input.value) || 0;
+                });
+            }
+            inventoryData[productCode] = totalInputQuantity;
+        }
     });
     
+    // ▲▲▲【修正ここまで】▲▲▲
+
     // ▼▼▼【ここを修正】logic.js の getCurrentYjCode を使用 ▼▼▼
     const payload = {
         date: dateInput.value.replace(/-/g, ''),
         yjCode: getCurrentYjCode(),
-        inventoryData: inventoryData,
-        deadStockData: deadStockData,
+        inventoryData: inventoryData, // 理論在庫合計 (逆算値)
+        deadStockData: deadStockData, // 物理在庫明細 (ロット入力値)
     };
     // ▲▲▲【修正ここまで】▲▲▲
+    
     console.log("Saving inventory data. Payload:", payload);
 
     window.showLoading();
     try {
-   
-     const res = await fetch('/api/inventory/adjust/save', {
+        const res = await fetch('/api/inventory/adjust/save', {
             method: 'POST',
-    
-        headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload),
-  
-      });
+        });
         const resData = await res.json();
         if (!res.ok) throw new Error(resData.message || '保存に失敗しました。');
         window.showNotification(resData.message, 'success');
@@ -2570,13 +2560,13 @@ lotNumber: lot
         loadAndRenderDetails(getCurrentYjCode());
         // ▲▲▲【修正ここまで】▲▲▲
     } catch (err) {
-  
-      console.error("Failed to save inventory data:", err);
+        console.error("Failed to save inventory data:", err);
         window.showNotification(err.message, 'error');
     } finally {
         window.hideLoading();
     }
 }
+
 
 // ▼▼▼【ここから修正】yjCodeがnullでもHTMLを描画するように修正 ▼▼▼
 export async function loadAndRenderDetails(yjCode) {
@@ -2588,8 +2578,7 @@ export async function loadAndRenderDetails(yjCode) {
         outputContainer = document.getElementById('inventory-adjustment-output');
     }
 
-   
- // yjCode がない場合（ヘッダーからの直接遷移時）
+    // yjCode がない場合（ヘッダーからの直接遷移時）
     if (!yjCode) {
         // ▼▼▼【ここを修正】logic.js の setCache を使用 ▼▼▼
         setCache({
@@ -2606,11 +2595,10 @@ export async function loadAndRenderDetails(yjCode) {
         outputContainer.innerHTML = html;
         
         // 日付入力欄にデフォルト値（前日）を設定
-      
-  const dateInput = document.getElementById('inventory-date');
+        const dateInput = document.getElementById('inventory-date');
         if(dateInput) {
             const yesterday = new Date();
-            yesterday.setDate(yesterday.getDate() - 1);
+yesterday.setDate(yesterday.getDate() - 1);
 dateInput.value = getLocalDateString(yesterday);
         }
         return; // fetch は実行しない
@@ -2623,7 +2611,7 @@ dateInput.value = getLocalDateString(yesterday);
        outputContainer = document.getElementById('inventory-adjustment-output');
     }
     
-   
+    
  window.showLoading();
     outputContainer.innerHTML = '<p>データを読み込んでいます...</p>';
     try {
@@ -2631,7 +2619,7 @@ dateInput.value = getLocalDateString(yesterday);
        const apiUrl = `/api/inventory/adjust/data?yjCode=${yjCode}`;
         const res = await fetch(apiUrl);
         if (!res.ok) {
-  
+ 
           const errText = await res.text();
             throw new Error(errText || 'データ取得に失敗しました。');
         }
@@ -2644,33 +2632,28 @@ dateInput.value = getLocalDateString(yesterday);
         
         outputContainer.innerHTML = html;
         // ▼▼▼【ここから修正】棚卸日を「前日」に設定 ▼▼▼
-    
-    const dateInput = document.getElementById('inventory-date');
+        const dateInput = document.getElementById('inventory-date');
         if(dateInput) {
             const yesterday = new Date();
-            yesterday.setDate(yesterday.getDate() 
-- 1);
-            dateInput.value = getLocalDateString(yesterday);
+            yesterday.setDate(yesterday.getDate() - 1);
+dateInput.value = getLocalDateString(yesterday);
         }
         // ▲▲▲【修正ここまで】▲▲▲
      
         
 document.querySelectorAll('.final-input-tbody').forEach(tbody => {
             const productCode = tbody.dataset.productCode;
-          
-  if (productCode) {
+            if (productCode) {
                 // ▼▼▼【ここを修正】logic.js の updateFinalInventoryTotal を使用 ▼▼▼
                 updateFinalInventoryTotal(productCode);
                 // ▲▲▲【修正ここまで】▲▲▲
-       
-     }
+            }
         });
         // ▼▼▼【ここを修正】logic.js の reverseCalculateStock を使用 ▼▼▼
         reverseCalculateStock();
         // ▲▲▲【修正ここまで】▲▲▲
     } catch (err) {
-        outputContainer.innerHTML 
-= `<p style="color:red;">エラー: ${err.message}</p>`;
+        outputContainer.innerHTML = `<p style="color:red;">エラー: ${err.message}</p>`;
     } finally {
         window.hideLoading();
     }
@@ -2678,19 +2661,16 @@ document.querySelectorAll('.final-input-tbody').forEach(tbody => {
 
 export function initDetails() {
     outputContainer = document.getElementById('inventory-adjustment-output');
-    if (!outputContainer) 
-{
+    if (!outputContainer) {
         console.error("Inventory Adjustment output container not found.");
         return;
     }
 
     outputContainer.addEventListener('input', (e) => {
-     
-   const targetClassList = e.target.classList;
+        const targetClassList = e.target.classList;
         
         if (targetClassList.contains('precomp-active-check')) {
-   
-         // ▼▼▼【ここを修正】logic.js の reverseCalculateStock を使用 ▼▼▼
+            // ▼▼▼【ここを修正】logic.js の reverseCalculateStock を使用 ▼▼▼
             reverseCalculateStock();
             // ▲▲▲【修正ここまで】▲▲▲
         }
@@ -2706,50 +2686,42 @@ targetClassList.contains('final-inventory-input')){
     });
 
     outputContainer.addEventListener('click', (e) => {
-        const target 
-= e.target;
+        const target = e.target;
         if (target.classList.contains('add-deadstock-row-btn')) {
             const productCode = target.dataset.productCode;
  
-           // ▼▼▼【ここを修正】logic.js の findMaster を使用 ▼▼▼
+            // ▼▼▼【ここを修正】logic.js の findMaster を使用 ▼▼▼
             const master = findMaster(productCode);
             // ▲▲▲【修正ここまで】▲▲▲
             const 
 tbody = document.querySelector(`.final-input-tbody[data-product-code="${productCode}"]`);
             if(master && tbody){
-           
-     const newRowHTML = createFinalInputRow(master, null, false);
-                tbody.insertAdjacentHTML('beforeend', 
-newRowHTML);
+                const newRowHTML = createFinalInputRow(master, null, false);
+                tbody.insertAdjacentHTML('beforeend', newRowHTML);
             }
         }
        
  if (target.classList.contains('delete-deadstock-row-btn')) {
             const topRow = target.closest('tr');
-         
-   const bottomRow = topRow.nextElementSibling;
+            const bottomRow = topRow.nextElementSibling;
             const productCode = bottomRow.querySelector('[data-product-code]')?.dataset.productCode;
-      
-      topRow.remove();
+            topRow.remove();
             bottomRow.remove();
-         
-   // ▼▼▼【ここを修正】logic.js の updateFinalInventoryTotal を使用 ▼▼▼
+            // ▼▼▼【ここを修正】logic.js の updateFinalInventoryTotal を使用 ▼▼▼
             if(productCode) updateFinalInventoryTotal(productCode);
             // ▲▲▲【修正ここまで】▲▲▲
         }
         if (target.classList.contains('register-inventory-btn')) {
-     
-       saveInventoryData();
+            saveInventoryData();
         }
     });
 
     outputContainer.addEventListener('submit', (e) => {
         e.preventDefault();
    
-     // ▼▼▼【ここから修正】のロジックを修正 ▼▼▼
+        // ▼▼▼【ここから修正】のロジックを修正 ▼▼▼
         if (e.target.id === 'adjustment-barcode-form') {
-        
-    handleAdjustmentBarcodeScan(e);
+            handleAdjustmentBarcodeScan(e);
         }
         // ▲▲▲【修正ここまで】▲▲▲
     });
@@ -2835,48 +2807,45 @@ export function reverseCalculateStock() {
     if (lastLoadedDataCache && lastLoadedDataCache.transactionLedger) {
         lastLoadedDataCache.transactionLedger.forEach(yjGroup => {
             if (yjGroup.packageLedgers) {
-                yjGroup.packageLedgers.forEach(pkg => {
+                 yjGroup.packageLedgers.forEach(pkg => {
                     if (pkg.transactions) {
-                        pkg.transactions.forEach(tx => {
-                            if (tx.transactionDate === todayStr && tx.flag !== 0) {
-                                let janQty = tx.janQuantity || 0;
-                                if (janQty === 0 && tx.yjQuantity) {
-                                    if (tx.janPackInnerQty > 0) {
-                                        janQty = tx.yjQuantity / tx.janPackInnerQty;
-                                    } else if (tx.yjQuantity !== 0) {
-                                        calculationErrorByProduct[tx.janCode] = '包装数量(内)未設定';
-                                    }
-                                }
-                                const signedJanQty = janQty * (tx.flag === 1 ? 1 : (tx.flag === 3 ? -1 : 0));
-                                todayNetChangeByProduct[tx.janCode] = (todayNetChangeByProduct[tx.janCode] || 0) + signedJanQty;
+                         pkg.transactions.forEach(tx => {
+                             if (tx.transactionDate === todayStr && tx.flag !== 0) {
+                                 let janQty = tx.janQuantity || 0;
+                                 if (janQty === 0 && tx.yjQuantity) {
+                                     if (tx.janPackInnerQty > 0) {
+                                         janQty = tx.yjQuantity / tx.janPackInnerQty;
+                                     } else if (tx.yjQuantity !== 0) {
+                                         calculationErrorByProduct[tx.janCode] = '包装数量(内)未設定';
+                                     }
+                                 }
+                                 const signedJanQty = janQty * (tx.flag === 1 ? 1 : (tx.flag === 3 ? -1 : 0));
+todayNetChangeByProduct[tx.janCode] = (todayNetChangeByProduct[tx.janCode] || 0) + signedJanQty;
                             }
-                        });
+                         });
                     }
                 });
             }
-        });
+         });
     }
 
-    document.querySelectorAll('.physical-stock-input').forEach(input => {
-        const productCode = input.dataset.productCode;
-        const displaySpan = document.querySelector(`.calculated-previous-day-stock[data-product-code="${productCode}"]`);
-        const finalInput = document.querySelector(`.final-inventory-input[data-product-code="${productCode}"]`);
+    document.querySelectorAll('.physical-stock-display').forEach(displaySpan => {
+        const productCode = displaySpan.dataset.productCode;
+        const calculatedSpan = document.querySelector(`.calculated-previous-day-stock[data-product-code="${productCode}"]`);
         
         if (calculationErrorByProduct[productCode]) {
-            if (displaySpan) displaySpan.innerHTML = `<span class="status-error">${calculationErrorByProduct[productCode]}</span>`;
-            if (finalInput)
-                finalInput.value = '';
+            if (calculatedSpan) calculatedSpan.innerHTML = `<span class="status-error">${calculationErrorByProduct[productCode]}</span>`;
             updateFinalInventoryTotal(productCode);
             return;
         }
         
-        const physicalStockToday = parseFloat(input.value) || 0;
+        const physicalStockToday = parseFloat(displaySpan.textContent) || 0;
         const precompStock = precompTotalsByProduct[productCode] || 0;
         const totalStockToday = physicalStockToday + precompStock;
         const netChangeToday = todayNetChangeByProduct[productCode] || 0;
         const calculatedPreviousDayStock = totalStockToday - netChangeToday;
         
-        if (displaySpan) displaySpan.textContent = calculatedPreviousDayStock.toFixed(2);
+        if (calculatedSpan) calculatedSpan.textContent = calculatedPreviousDayStock.toFixed(2);
     });
 }
 
@@ -2890,12 +2859,11 @@ export function updateFinalInventoryTotal(productCode) {
     tbody.querySelectorAll('.final-inventory-input, .lot-quantity-input').forEach(input => {
         totalQuantity += parseFloat(input.value) || 0;
     });
-    const physicalStockInput = document.querySelector(`.physical-stock-input[data-product-code="${productCode}"]`);
-    if (physicalStockInput) {
-        physicalStockInput.value = totalQuantity.toFixed(2);
+    const physicalStockDisplay = document.querySelector(`.physical-stock-display[data-product-code="${productCode}"]`);
+    if (physicalStockDisplay) {
+        physicalStockDisplay.textContent = totalQuantity.toFixed(2);
     }
     
-    // 実在庫が変更されたので、逆算を再実行
     reverseCalculateStock();
 }
 
@@ -3067,6 +3035,7 @@ import { clientMap } from './master_data.js';
 let unitMap = {};
 const transactionTypeMap = {
 	0: "棚卸", 1: "納品", 2: "返品", 3: "処方",
+    5: "予製",
     11: "入庫", 12: "出庫"
 };
 
@@ -3074,31 +3043,42 @@ export function setUnitMap(map) {
     unitMap = map;
 }
 
-function generateSummaryLedgerHtml(yjGroup, yesterdaysTotal) {
+function generateSummaryLedgerHtml(yjGroup, yesterdaysTotal, cache) {
     const endDate = getLocalDateString();
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - 30);
     const startDateStr = startDate.toISOString().slice(0, 10);
+    
     let packageLedgerHtml = (yjGroup.packageLedgers || []).map(pkg => {
         const sortedTxs = (pkg.transactions || []).sort((a, b) => 
             (a.transactionDate + a.id).toString().localeCompare(b.transactionDate + b.id)
         );
+
+        let yesterdaysPkgStock = 0;
+        if(cache && cache.yesterdaysStock && cache.yesterdaysStock.packageLedgers){
+            const prevPkg = cache.yesterdaysStock.packageLedgers.find(p => p.packageKey === pkg.packageKey);
+            if(prevPkg) {
+                 yesterdaysPkgStock = prevPkg.endingBalance || 0;
+            }
+        }
+        const balanceDisplay = (yesterdaysPkgStock || 0).toFixed(2);
+
         const pkgHeader = `
              <div class="agg-pkg-header adj-pkg-margin">
                  <span>包装: ${pkg.packageKey}</span>
-             <span class="balance-info">
-                 本日理論在庫(包装計): ${(pkg.endingBalance || 0).toFixed(2)} ${yjGroup.yjUnitName}
-             </span>
+                 <span class="balance-info">
+                     理論在庫(包装計): ${balanceDisplay} ${yjGroup.yjUnitName}
+                 </span>
             </div>
          `;
         const txTable = renderTransactionTableHTML(sortedTxs);
         return pkgHeader + txTable;
     }).join('');
+    
     return `<div class="summary-section">
         <h3 class="view-subtitle">1. 全体サマリー</h3>
         <div class="report-section-header">
-            <h4>在庫元帳 (期間: ${startDateStr} ～ ${endDate})</h4>
-            <span class="header-total">【参考】前日理論在庫合計: ${yesterdaysTotal.toFixed(2)} ${yjGroup.yjUnitName}</span>
+             <h4>在庫元帳 (期間: ${startDateStr} ～ ${endDate})</h4>
         </div>
         ${packageLedgerHtml}
     </div>`;
@@ -3111,21 +3091,30 @@ function generateSummaryPrecompHtml(precompDetails) {
         flag: 5,
         clientCodeDisplay: clientMap.get(p.clientCode) || p.clientCode || '', 
     }));
+    
     const renderTKRPrecompTable = (records) => {
+        const transactionTypeMap = {
+            0: "棚卸", 1: "納品", 2: "返品", 3: "処方",
+            5: "予製",
+            11: "入庫", 12: "出庫"
+        };
+        
         const header = `<thead>
             <tr><th rowspan="2" class="col-action">有効</th><th class="col-date">日付</th><th class="col-yj">YJ</th><th colspan="2" class="col-product">製品名</th><th class="col-count">個数</th><th class="col-yjqty">YJ数量</th><th class="col-yjpackqty">YJ包装数</th><th class="col-yjunit">YJ単位</th><th class="col-unitprice">単価</th><th class="col-expiry">期限</th><th class="col-wholesaler">患者</th><th class="col-line">行</th></tr>
             <tr><th class="col-flag">種別</th><th class="col-jan">JAN</th><th class="col-package">包装</th><th class="col-maker">メーカー</th><th class="col-form">剤型</th><th class="col-janqty">JAN数量</th><th class="col-janpackqty">JAN包装数</th><th class="col-janunit">JAN単位</th><th class="col-amount">金額</th><th class="col-lot">ロット</th><th class="col-receipt">伝票番号</th><th class="col-ma">MA</th></tr></thead>`;
+        
         let bodyHtml = `<tbody>${(!records || records.length === 0) ?
             '<tr><td colspan="13">対象データがありません。</td></tr>' : records.map(rec => {
-                const top = `<tr><td rowspan="2" class="col-action center"><input type="checkbox" 
-                    class="precomp-active-check" data-quantity="${rec.yjQuantity}" data-product-code="${rec.janCode}" checked></td>
+            
+            const top = `<tr><td rowspan="2" class="col-action center"><input type="checkbox" 
+                 class="precomp-active-check" data-quantity="${rec.yjQuantity}" data-product-code="${rec.janCode}" checked></td>
                     <td class="col-date">${rec.transactionDate || ''}</td><td class="yj-jan-code col-yj">${rec.yjCode || ''}</td><td class="left col-product" colspan="2">${rec.productName || ''}</td>
-                    <td class="right col-count">${rec.datQuantity?.toFixed(2) || ''}</td><td class="right col-yjqty">${rec.yjQuantity?.toFixed(2) || ''}</td><td class="right col-yjpackqty">${rec.yjPackUnitQty || ''}</td><td class="col-yjunit">${rec.yjUnitName || ''}</td>
-                    <td class="right col-unitprice">${rec.unitPrice?.toFixed(4) || ''}</td><td class="col-expiry">${rec.expiryDate || ''}</td><td class="left col-wholesaler">${rec.clientCodeDisplay}</td><td class="right col-line">${rec.lineNumber || ''}</td></tr>`;
+                 <td class="right col-count">${rec.datQuantity?.toFixed(2) || ''}</td><td class="right col-yjqty">${rec.yjQuantity?.toFixed(2) || ''}</td><td class="right col-yjpackqty">${rec.yjPackUnitQty || ''}</td><td class="col-yjunit">${rec.yjUnitName || ''}</td>
+                 <td class="right col-unitprice">${rec.unitPrice?.toFixed(4) || ''}</td><td class="col-expiry">${rec.expiryDate || ''}</td><td class="left col-wholesaler">${rec.clientCodeDisplay}</td><td class="right col-line">${rec.lineNumber || ''}</td></tr>`;
             
                 const bottom = `<tr><td class="col-flag">${transactionTypeMap[rec.flag] || rec.flag}</td><td class="yj-jan-code col-jan">${rec.janCode || ''}</td><td class="left col-package">${rec.packageSpec || ''}</td><td class="left col-maker">${rec.makerName || ''}</td>
-                    <td class="left col-form">${rec.usageClassification || ''}</td><td class="right col-janqty">${rec.janQuantity?.toFixed(2) || ''}</td><td class="right col-janpackqty">${rec.janPackUnitQty || ''}</td><td class="col-janunit">${rec.janUnitName || ''}</td>
-                    <td class="right col-amount">${rec.subtotal?.toFixed(2) || ''}</td><td class="left col-lot">${rec.lotNumber || ''}</td><td class="left col-receipt">${rec.receiptNumber || ''}</td><td class="left col-ma">${rec.processFlagMA || ''}</td></tr>`;
+                 <td class="left col-form">${rec.usageClassification || ''}</td><td class="right col-janqty">${rec.janQuantity?.toFixed(2) || ''}</td><td class="right col-janpackqty">${rec.janPackUnitQty || ''}</td><td class="col-janunit">${rec.janUnitName || ''}</td>
+                 <td class="right col-amount">${rec.subtotal?.toFixed(2) || ''}</td><td class="left col-lot">${rec.lotNumber || ''}</td><td class="left col-receipt">${rec.receiptNumber || ''}</td><td class="left col-ma">${rec.processFlagMA || ''}</td></tr>`;
                 return top + bottom;
             }).join('')}</tbody>`;
         return `<table class="data-table">${header}${bodyHtml}</table>`;
@@ -3133,7 +3122,7 @@ function generateSummaryPrecompHtml(precompDetails) {
 
     return `<div class="summary-section" style="margin-top: 15px;">
         <div class="report-section-header"><h4>予製払出明細 (全体)</h4>
-        <span class="header-total" id="precomp-active-total">有効合計: 0.00</span></div>
+         <span class="header-total" id="precomp-active-total">有効合計: 0.00</span></div>
         ${renderTKRPrecompTable(precompTransactions)}</div>`;
 }
 
@@ -3141,7 +3130,7 @@ export function createFinalInputRow(master, deadStockRecord = null, isPrimary = 
     const actionButtons = isPrimary ?
         `
          <button type="button" class="btn add-deadstock-row-btn" data-product-code="${master.productCode}">＋</button>
-         <button type="button" class="btn register-inventory-btn">登録</button>
+          <button type="button" class="btn register-inventory-btn">登録</button>
         ` : `<button type="button" class="btn delete-deadstock-row-btn">－</button>`;
     const quantityInputClass = isPrimary ?
         'final-inventory-input' : 'lot-quantity-input';
@@ -3152,7 +3141,7 @@ export function createFinalInputRow(master, deadStockRecord = null, isPrimary = 
 
     const topRow = `<tr class="inventory-row"><td rowspan="2" class="col-action"><div class="action-buttons">${actionButtons}</div></td>
         <td class="col-date">(棚卸日)</td><td class="yj-jan-code col-yj">${master.yjCode}</td><td class="left col-product" colspan="2">${master.productName}</td>
-        <td class="col-count"></td><td class="right col-yjqty"></td><td class="right col-yjpackqty">${master.yjPackUnitQty || ''}</td><td class="col-yjunit">${master.yjUnitName || ''}</td>
+         <td class="col-count"></td><td class="right col-yjqty"></td><td class="right col-yjpackqty">${master.yjPackUnitQty || ''}</td><td class="col-yjunit">${master.yjUnitName || ''}</td>
         <td class="right col-unitprice">${master.nhiPrice?.toFixed(4) || ''}</td><td class="col-expiry"><input type="text" class="expiry-input" placeholder="YYYYMM" value="${expiry}"></td><td class="col-wholesaler"></td><td class="col-line"></td></tr>`;
     
     const bottomRow = `<tr class="inventory-row"><td class="col-flag">棚卸</td><td class="yj-jan-code col-jan">${master.productCode}</td>
@@ -3169,7 +3158,7 @@ function generateInputSectionsHtml(packageLedgers, yjUnitName = '単位', cache,
         if(cache.yesterdaysStock && cache.yesterdaysStock.packageLedgers){
             const prevPkg = cache.yesterdaysStock.packageLedgers.find(p => p.packageKey === pkgLedger.packageKey);
             if(prevPkg) {
-                yesterdaysPkgStock = prevPkg.endingBalance || 0;
+                 yesterdaysPkgStock = prevPkg.endingBalance || 0;
             }
         }
         
@@ -3185,32 +3174,35 @@ function generateInputSectionsHtml(packageLedgers, yjUnitName = '単位', cache,
                 totalStockDisplay = `${totalJanStock.toFixed(2)} ${janUnitName}`;
                 
                 const yesterdaysTotalJanStock = yesterdaysPkgStock / janPackInnerQty;
-                yesterdaysTotalStockDisplay = `${yesterdaysTotalJanStock.toFixed(2)} ${janUnitName}`;
+yesterdaysTotalStockDisplay = `${yesterdaysTotalJanStock.toFixed(2)} ${janUnitName}`;
             }
         }
         let html = `
-        <div class="package-input-group">
+         <div class="package-input-group">
             <div class="agg-pkg-header">
-                <span>包装: ${pkgLedger.packageKey}</span>
+                 <span>包装: ${pkgLedger.packageKey}</span>
             </div>`;
         html += (pkgLedger.masters || []).map(master => {
             if (!master) return '';
             const janUnitName = master.janUnitName;
             const userInputArea = `
-                <div class="user-input-area">
+                 <div class="user-input-area">
                     <div class="form-group">
-                        <label>① 本日の実在庫数量（予製除く）:</label>
-                        <input type="number" class="physical-stock-input" data-product-code="${master.productCode}" step="any" readonly>
-                        <span>(${janUnitName})</span>
-                        <span class="info-text">本日理論在庫(包装計): ${totalStockDisplay}</span>
-                    </div>
-                    <div class="form-group">
+                         <label>① 本日の実在庫数量（予製除く）:</label>
+                         
+                         <span
+                               class="physical-stock-display" 
+                               data-product-code="${master.productCode}">0.00</span>
+
+                         <span>(${janUnitName})</span>
+                         <span class="info-text">本日理論在庫(包装計): ${totalStockDisplay}</span>
+                     </div>
+                     <div class="form-group">
                         <label>② 前日在庫(逆算値):</label>
-                        <span class="calculated-previous-day-stock" data-product-code="${master.productCode}">0.00</span>
-                        <span>(${janUnitName})</span>
-                        <span class="info-text stock-info">(この数値が棚卸データとして登録されます)</span>
-                        <span class="info-text align-right">前日理論在庫(包装計): ${yesterdaysTotalStockDisplay}</span>
-                    </div>
+                         <span class="calculated-previous-day-stock" data-product-code="${master.productCode}">0.00</span>
+                         <span>(${janUnitName})</span>
+                         <span class="info-text stock-info">(この数値が棚卸データとして登録されます)</span>
+                     </div>
                 </div>`;
             const relevantDeadStock = (cache.deadStockDetails || []).filter(ds => ds.productCode === master.productCode);
             let finalInputTbodyHtml;
@@ -3226,10 +3218,10 @@ function generateInputSectionsHtml(packageLedgers, yjUnitName = '単位', cache,
             );
             return `<div class="product-input-group">
                 ${userInputArea}
-                <div>
+                 <div>
                     <p class="lot-input-header">ロット・期限を個別入力</p>
-                    ${finalInputTable}
-                </div>
+                     ${finalInputTable}
+                 </div>
             </div>`;
         }).join('');
         html += `</div>`;
@@ -3239,47 +3231,45 @@ function generateInputSectionsHtml(packageLedgers, yjUnitName = '単位', cache,
     return `<div class="input-section">
         <h3 class="view-subtitle">2. 棚卸入力</h3>
         <div class="inventory-input-area">
-            <div class="adj-date-group">
+             <div class="adj-date-group">
                 <div class="form-group">
-                    <label for="inventory-date">棚卸日:</label>
-                    <input type="date" id="inventory-date">
+                     <label for="inventory-date">棚卸日:</label>
+                     <input type="date" id="inventory-date">
                 </div>
-                <form id="adjustment-barcode-form" class="adj-barcode-form">
-                    <div class="form-group">
-                        <label for="adjustment-barcode-input">バーコードでロット・期限入力</label>
+                 <form id="adjustment-barcode-form" class="adj-barcode-form">
+                     <div class="form-group">
+                         <label for="adjustment-barcode-input">バーコードでロット・期限入力</label>
                         <input type="text" id="adjustment-barcode-input" inputmode="latin" placeholder="GS1-128バーコードをスキャンしてEnter">
                     </div>
-                </form>
+                 </form>
             </div>
-        </div>
+         </div>
         ${packageGroupsHtml}
     </div>`;
 }
 
 function generateDeadStockReferenceHtml(deadStockRecords, cache) {
     if (!deadStockRecords || deadStockRecords.length === 0) {
-        // ▼▼▼【ここから修正】品目未選択時でも枠を描画する ▼▼▼
         const rowsHtml = '<tr><td colspan="5">品目を選択すると表示されます。</td></tr>';
-        // ▲▲▲【修正ここまで】▲▲▲
         return `
             <div class="summary-section input-section">
-                <h3 class="view-subtitle">3. 参考：現在登録済みのロット・期限情報</h3>
+                 <h3 class="view-subtitle">3. 参考：現在登録済みのロット・期限情報</h3>
                 <p class="reference-section-header">※このリストは参照用です。棚卸情報を保存するには、上の「2. 棚卸入力」の欄に改めて入力してください。</p>
                 <table class="data-table reference-table">
-                    <thead>
-                        <tr>
-                            <th class="col-ref-jan">JAN</th>
-                            <th class="col-ref-spec">包装仕様</th>
-                            <th class="col-ref-qty">在庫数量(JAN)</th>
-                            <th class="col-ref-expiry">使用期限</th>
-                            <th class="col-ref-lot">ロット番号</th>
-                        </tr>
+                     <thead>
+                         <tr>
+                             <th class="col-ref-jan">JAN</th>
+                             <th class="col-ref-spec">包装仕様</th>
+                             <th class="col-ref-qty">在庫数量(JAN)</th>
+                             <th class="col-ref-expiry">使用期限</th>
+                             <th class="col-ref-lot">ロット番号</th>
+                         </tr>
                     </thead>
-                    <tbody>
-                        ${rowsHtml}
-                    </tbody>
+                     <tbody>
+                         ${rowsHtml}
+                     </tbody>
                 </table>
-            </div>
+             </div>
         `;
     }
 
@@ -3299,88 +3289,78 @@ function generateDeadStockReferenceHtml(deadStockRecords, cache) {
         const packageSpec = master ? master.formattedPackageSpec : '(仕様不明)';
         return `
             <tr>
-                <td class="yj-jan-code col-ref-jan">${rec.productCode}</td>
+                 <td class="yj-jan-code col-ref-jan">${rec.productCode}</td>
                 <td class="left col-ref-spec">${packageSpec}</td>
-                <td class="right col-ref-qty">${rec.stockQuantityJan.toFixed(2)}</td>
-                <td class="center col-ref-expiry">${rec.expiryDate || ''}</td>
+                 <td class="right col-ref-qty">${rec.stockQuantityJan.toFixed(2)}</td>
+                 <td class="center col-ref-expiry">${rec.expiryDate || ''}</td>
                 <td class="left col-ref-lot">${rec.lotNumber || ''}</td>
-            </tr>
+             </tr>
         `;
     }).join('');
     
     return `
-        <div class="summary-section input-section">
+         <div class="summary-section input-section">
             <h3 class="view-subtitle">3. 参考：現在登録済みのロット・期限情報</h3>
-            <p class="reference-section-header">※このリストは参照用です。棚卸情報を保存するには、上の「2. 棚卸入力」の欄に改めて入力してください。</p>
+             <p class="reference-section-header">※このリストは参照用です。棚卸情報を保存するには、上の「2. 棚卸入力」の欄に改めて入力してください。</p>
             <table class="data-table reference-table">
-                <thead>
+                 <thead>
                     <tr>
-                        <th class="col-ref-jan">JAN</th>
-                        <th class="col-ref-spec">包装仕様</th>
-                        <th class="col-ref-qty">在庫数量(JAN)</th>
-                        <th class="col-ref-expiry">使用期限</th>
-                        <th class="col-ref-lot">ロット番号</th>
-                    </tr>
+                         <th class="col-ref-jan">JAN</th>
+                         <th class="col-ref-spec">包装仕様</th>
+                         <th class="col-ref-qty">在庫数量(JAN)</th>
+                         <th class="col-ref-expiry">使用期限</th>
+                         <th class="col-ref-lot">ロット番号</th>
+                     </tr>
                 </thead>
-                <tbody>
+                 <tbody>
                     ${rowsHtml}
-                </tbody>
+                 </tbody>
             </table>
-        </div>
+         </div>
     `;
 }
 
-// ▼▼▼【ここから修正】yjCodeがnullでも各セクションを描画するように修正 ▼▼▼
 export function generateFullHtml(data, cache) {
  
-    // yjCode がない (品目が選択されていない) 場合の処理
     if (!data || !data.transactionLedger || data.transactionLedger.length === 0) {
         
-        const yesterdaysTotal = 0; // 品目未選択時は 0
-        const yjGroup = { productName: '(品目未選択)', yjCode: '---', packageLedgers: [], yjUnitName: '単位' }; // ダミーデータ
+        const yesterdaysTotal = 0;
+        const yjGroup = { productName: '(品目未選択)', yjCode: '---', packageLedgers: [], yjUnitName: '単位' }; 
 
-        // 「1. 全体サマリー」は非表示（メッセージのみ）
         const summaryLedgerHtml = '<div class="summary-section"><h3 class="view-subtitle">1. 全体サマリー</h3><p>品目を選択すると表示されます。</p></div>';
         
-        // 「予製払出明細」も非表示（メッセージのみ）
         const summaryPrecompHtml = `<div class="summary-section" style="margin-top: 15px;">
            <div class="report-section-header"><h4>予製払出明細 (全体)</h4>
-           <span class="header-total" id="precomp-active-total">有効合計: 0.00</span></div>
+            <span class="header-total" id="precomp-active-total">有効合計: 0.00</span></div>
            <table class="data-table"><thead>
            <tr><th rowspan="2" class="col-action">有効</th><th class="col-date">日付</th><th class="col-yj">YJ</th><th colspan="2" class="col-product">製品名</th><th class="col-count">個数</th><th class="col-yjqty">YJ数量</th><th class="col-yjpackqty">YJ包装数</th><th class="col-yjunit">YJ単位</th><th class="col-unitprice">単価</th><th class="col-expiry">期限</th><th class="col-wholesaler">患者</th><th class="col-line">行</th></tr>
            <tr><th class="col-flag">種別</th><th class="col-jan">JAN</th><th class="col-package">包装</th><th class="col-maker">メーカー</th><th class="col-form">剤型</th><th class="col-janqty">JAN数量</th><th class="col-janpackqty">JAN包装数</th><th class="col-janunit">JAN単位</th><th class="col-amount">金額</th><th class="col-lot">ロット</th><th class="col-receipt">伝票番号</th><th class="col-ma">MA</th></tr></thead>
            <tbody><tr><td colspan="13">品目を選択すると表示されます。</td></tr></tbody></table></div>`;
 
-        // 「2. 棚卸入力」セクションは描画する
-        // (品目依存の入力欄 [packageGroupsHtml] は空になるが、日付/バーコード欄は描画される)
         const inputSectionsHtml = generateInputSectionsHtml(yjGroup.packageLedgers, yjGroup.yjUnitName, cache, yesterdaysTotal);
-
-        // 「3. 参考」セクションも空の状態で描画
         const deadStockReferenceHtml = generateDeadStockReferenceHtml([], cache);
 
         return `<h2 class="adj-header">【棚卸調整】 ${yjGroup.productName} (YJ: ${yjGroup.yjCode})</h2>
-            ${summaryLedgerHtml}
+             ${summaryLedgerHtml}
             ${summaryPrecompHtml}
             ${inputSectionsHtml}
-            ${deadStockReferenceHtml}`;
+             ${deadStockReferenceHtml}`;
     }
-    // ▲▲▲【修正ここまで】▲▲▲
 
-    // ▼▼▼ 以下、yjCode がある場合の既存ロジック ▼▼▼
     const yjGroup = data.transactionLedger[0];
     const productName = yjGroup.productName;
     const yesterdaysTotal = data.yesterdaysStock ? (data.yesterdaysStock.endingBalance || 0) : 0;
     
-    const summaryLedgerHtml = generateSummaryLedgerHtml(yjGroup, yesterdaysTotal);
+    const summaryLedgerHtml = generateSummaryLedgerHtml(yjGroup, yesterdaysTotal, cache);
     const summaryPrecompHtml = generateSummaryPrecompHtml(data.precompDetails);
     const inputSectionsHtml = generateInputSectionsHtml(yjGroup.packageLedgers, yjGroup.yjUnitName, cache, yesterdaysTotal);
     const deadStockReferenceHtml = generateDeadStockReferenceHtml(data.deadStockDetails, cache);
+    
     return `<h2 class="adj-header">【棚卸調整】 ${productName} (YJ: ${yjGroup.yjCode})</h2>
         ${summaryLedgerHtml}
-        ${summaryPrecompHtml}
+         ${summaryPrecompHtml}
         ${inputSectionsHtml}
         ${deadStockReferenceHtml}`;
-    // ▲▲▲【修正ここまで】▲▲▲
 }
 
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\js\inventory_adjustment.js -----
@@ -3581,227 +3561,19 @@ export async function loadMasterData() {
     }
 }
 
------ C:\Users\wasab\OneDrive\デスクトップ\TKR\static\js\masteredit_form.js -----
-// C:\Users\wasab\OneDrive\デスクトップ\TKR\static\js\masteredit_form.js
+----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\js\masteredit_events.js -----
+// C:\Users\wasab\OneDrive\デスクトップ\TKR\static\js\masteredit_events.js
 import { showModal } from './search_modal.js';
-import { wholesalerMap } from './master_data.js';
+import { getFormFields, populateFormWithJCSHMS } from './masteredit_ui.js';
 
-let editFormContainer;
-let saveMasterBtn, cancelEditMasterBtn, referenceJCSHMSBtn;
-let editFormFields = {};
-
-// ▼▼▼【ここを修正】'isOrderStopped' をリストから削除 ▼▼▼
-const jcshmsReadonlyKeys = [
-    'yjCode', 'gs1Code', 'productName', 'kanaName', 'kanaNameShort', 'genericName',
-    'makerName', 'specification', 'usageClassification', 'packageForm',
-    'yjUnitName', 'yjPackUnitQty', 'janPackInnerQty', 'janUnitCode',
- 
-   'janPackUnitQty', 'nhiPrice', 'flagPoison', 'flagDeleterious',
-    'flagNarcotic', 'flagPsychotropic', 'flagStimulant', 'flagStimulantRaw'
-];
-// ▲▲▲【修正ここまで】▲▲▲
-
-function populateFormWithJCSHMS(item) {
-    console.log("--- JCSHMSデータコピー処理開始 ---");
-    console.log("受け取ったJCSHMSデータ (ProductMasterView):", JSON.parse(JSON.stringify(item)));
-console.log("フォーム要素のマップ:", editFormFields);
-    const populateAndLog = (key, value) => {
-        const targetElement = editFormFields[key];
-        if (targetElement) {
-     
-       const finalValue = (value === undefined || value === null) ? '' : value;
-            console.log(`[処理中] 項目 '${key}' (要素ID: ${targetElement.id})`);
-            console.log(` 
- - 値: `, finalValue);
-            try {
-                targetElement.value = finalValue;
-                if (String(targetElement.value) 
-=== String(finalValue)) {
-                    console.log(`  -> [成功] 値の設定を確認しました。`);
-} else {
-                    console.warn(`  -> [検証失敗] 値を設定しましたが、読み取った値が異なります。設定後の値: 
-'${targetElement.value}'`);
-                }
-            } catch (e) {
-           
-     console.error(`  -> [エラー] 値の設定中に例外が発生しました: ${e.message}`);
-            }
-        } else {
-      
-      console.warn(`[スキップ] 項目 '${key}' はフォーム内に対応する要素が見つかりません。`);
-        }
-    };
-
-    populateAndLog('productName', (item.productName || '').trim());
-    populateAndLog('yjCode', item.yjCode || '');
-    populateAndLog('kanaName', (item.kanaName || '').trim());
-populateAndLog('kanaNameShort', (item.kanaNameShort || '').trim());
-    populateAndLog('genericName', (item.genericName || '').trim());
-    populateAndLog('makerName', (item.makerName || '').trim());
-    populateAndLog('specification', (item.specification || '').trim());
-    populateAndLog('usageClassification', (item.usageClassification || '').trim());
-    populateAndLog('packageForm', (item.packageForm || '').trim());
-    populateAndLog('yjUnitName', (item.yjUnitName || 
-'').trim());
-    populateAndLog('yjPackUnitQty', item.yjPackUnitQty || 0);
-    populateAndLog('nhiPrice', item.nhiPrice || 0);
-    populateAndLog('flagPoison', item.flagPoison || 0);
-    populateAndLog('flagDeleterious', item.flagDeleterious || 0);
-    populateAndLog('flagNarcotic', item.flagNarcotic || 0);
-    populateAndLog('flagPsychotropic', item.flagPsychotropic || 0);
-    populateAndLog('flagStimulant', item.flagStimulant 
-|| 0);
-    populateAndLog('flagStimulantRaw', item.flagStimulantRaw || 0);
-    populateAndLog('janPackInnerQty', item.janPackInnerQty || 0);
-    populateAndLog('janUnitCode', parseInt(item.janUnitCode, 10) || 0);
-    populateAndLog('janPackUnitQty', item.janPackUnitQty || 0);
-
-    console.log("--- JCSHMSデータコピー処理終了 ---");
-    window.showNotification('データコピー処理完了。', 'info');
-}
-
-export function populateEditForm(master) 
-{
-     console.log("Populating form for:", master);
-    const viewProductCode = document.getElementById('view-product-code');
-    if (viewProductCode) {
-        viewProductCode.value = master.productCode ||
-'';
-    }
-
-    const isJcshmsOrigin = master.origin === 'JCSHMS';
-    // ★★★【ここに追加】MA2Yコードチェックの変数を定義 ★★★
-    const isMa2yCode = master.yjCode && master.yjCode.startsWith('MA2Y');
-    // ★★★【追加ここまで】★★★
-    // ▼▼▼【ここに追加】新規作成（productCodeが空）かどうかのフラグ ▼▼▼
-    const isNewCreation = !master.productCode;
-    // ▲▲▲【追加ここまで】▲▲▲
-   
- 
-    if (referenceJCSHMSBtn) {
-        if (isJcshmsOrigin) {
-          
-  referenceJCSHMSBtn.style.display = 'none';
-        } else {
-            referenceJCSHMSBtn.style.display = 'inline-block';
-        }
-    }
-
- 
-   for (const key in editFormFields) {
-        const element = editFormFields[key];
-        const masterValue = master[key];
-
-        if (element) {
- 
-           if (key === 'supplierWholesale' && element.tagName === 'SELECT') {
-        
-        element.value = masterValue || '';
-            } 
-            else 
-if (typeof masterValue === 'number') {
-                element.value = masterValue;
-            } else {
- 
-               element.value = masterValue || '';
-            }
-
-       
-     if (key !== 'productCode' && element.id !== 'view-product-code') {
-              
-  
-                if (key === 'origin') {
-     
-               element.readOnly = true;
-                    element.classList.add('readonly-field');
-                    // ▼▼▼【ここに追加】新規作成時は 'PROVISIONAL' を設定 ▼▼▼
-                    if (isNewCreation) {
-                        element.value = 'PROVISIONAL';
-                    }
-                    // ▲▲▲【追加ここまで】▲▲▲
-                } 
-       
-         // ★★★【ここを修正】YJコードの編集可否ロジックを変更 ★★★
-                
-else if (key === 'yjCode') {
-                    // ▼▼▼【ここから修正】新規作成時は編集可能にする ▼▼▼
-                    if (isNewCreation) {
-                        element.readOnly = false;
-                        element.classList.remove('readonly-field');
-                    } else if (isJcshmsOrigin 
-&& !isMa2yCode) {
-                         
-// JCSHMS由来で、かつ MA2Yコードではない（正式なYJコード）場合のみ readonly
-                        
-element.readOnly = true;
-                        element.classList.add('readonly-field');
-                    } else {
-                     
-   element.readOnly = false;
-                        element.classList.remove('readonly-field');
-                    }
-                    // ▲▲▲【修正ここまで】▲▲▲
-                }
-    
-            // JCSHMS由来の他の readonly な項目 (YJコード以外)
-           
-     else if (isJcshmsOrigin && jcshmsReadonlyKeys.includes(key)) {
-                 
-   element.readOnly = true;
-                    element.classList.add('readonly-field'); 
-                } else {
-                  
-  element.readOnly = false;
-                    element.classList.remove('readonly-field');
-                }
-                // ★★★【修正ここまで】★★★
-    
-        }
-        }
-    }
-    // ▼▼▼【ここに追加】productCode (hidden) は常に編集可能（読み取り専用解除）▼▼▼
-    if (editFormFields['productCode']) {
-        if (isNewCreation) {
-            editFormFields['productCode'].value = ''; // 隠しフィールドもクリア
-        }
-    }
-    if (viewProductCode) {
-        if (isNewCreation) {
-            viewProductCode.value = ''; // 表示用フィールドもクリア
-            viewProductCode.readOnly = false; // 表示用フィールドを編集可能に
-            viewProductCode.classList.remove('readonly-field');
-            editFormFields['productCode'].value = ''; // 念のため隠しフィールドもクリア
-        } else {
-            viewProductCode.readOnly = true; // 既存編集時は readonly
-            viewProductCode.classList.add('readonly-field');
-        }
-    }
-    // ▲▲▲【追加ここまで】▲▲▲
-}
-
-export function showEditModal() {
-    
-if (editFormContainer) {
-        editFormContainer.classList.remove('hidden');
-    }
-}
-
-export function hideEditModal() {
-    if (editFormContainer) {
-       
- editFormContainer.classList.add('hidden');
-    }
-}
-
-async function handleSaveMaster() {
-    // ▼▼▼【ここに追加】表示用の view-product-code から値を取得し、隠しフィールドにコピーする ▼▼▼
+export async function handleSaveMaster() {
+    const editFormFields = getFormFields();
     const viewProductCode = document.getElementById('view-product-code');
     if (viewProductCode && editFormFields['productCode']) {
         if (!viewProductCode.readOnly) {
             editFormFields['productCode'].value = viewProductCode.value.trim();
         }
     }
-    // ▲▲▲【追加ここまで】▲▲▲
 
     const inputData = {};
     const floatKeys = [
@@ -3810,168 +3582,140 @@ async function handleSaveMaster() {
     ];
     const intKeys = [
         'janUnitCode', 'flagPoison', 'flagDeleterious', 'flagNarcotic',
-       
- 'flagPsychotropic', 'flagStimulant', 'flagStimulantRaw', 'isOrderStopped'
+        'flagPsychotropic', 'flagStimulant', 'flagStimulantRaw', 'isOrderStopped'
     ];
     for (const key in editFormFields) {
         const element = editFormFields[key];
-        if 
-(element) {
+        if (element) {
             const value = element.value;
             if (floatKeys.includes(key)) {
-        
-        inputData[key] = parseFloat(value) || 0;
+                inputData[key] = parseFloat(value) || 0;
             } else if (intKeys.includes(key)) {
-          
-      inputData[key] = parseInt(value, 10) || 0;
+                inputData[key] = parseInt(value, 10) || 0;
             } else {
-             
-   inputData[key] = value;
+                inputData[key] = value;
             }
         }
     }
-
-    // ▼▼▼【ここを削除】JANコード必須チェックを削除 (サーバーサイドで採番するため) ▼▼▼
-    /*
-    if (!inputData.productCode) {
-   
-     window.showNotification('JANコードが不明なため保存できません。', 'error');
-        return;
-    }
-    */
-    // ▲▲▲【削除ここまで】▲▲▲
 
     console.log("Saving master:", inputData);
     window.showLoading('マスターデータを保存中...');
 
     try {
-        const response 
-= await fetch('/api/masters/update', {
+        const response = await fetch('/api/masters/update', {
             method: 'POST',
-           
- headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(inputData),
         });
-// ▼▼▼【ここから修正】アラートメッセージをハンドリング ▼▼▼
         if (!response.ok) {
-            let errorText = 
-`サーバーエラー (HTTP ${response.status})`;
+            let errorText = `サーバーエラー (HTTP ${response.status})`;
             try {
                 const text = await response.text();
-                errorText = 
-text || errorText;
+                errorText = text || errorText;
             } catch (e) {
             }
-         
-   throw new Error(errorText);
+            throw new Error(errorText);
         }
 
         const result = await response.json();
         
         let message = result.message || '保存しました。';
-        let messageType 
-= 'success';
+        let messageType = 'success';
 
         if (result.alert) {
             message += `\n\n警告: ${result.alert}`;
-            messageType = 'warning'; // 警告がある場合は warning タイプにする
- 
-       }
+            messageType = 'warning'; 
+        }
         window.showNotification(message, messageType);
-        // ▲▲▲【修正ここまで】▲▲▲
 
     } catch (error) {
-  
-      console.error('Save failed:', error);
+        console.error('Save failed:', error);
         window.showNotification(`保存エラー: ${error.message}`, 'error');
     } finally {
         window.hideLoading();
     }
 }
 
-function setupWholesalerDropdown() {
-  
-  const selectElement = editFormFields['supplierWholesale'];
-    if (!selectElement || selectElement.tagName !== 'SELECT') {
-        console.error("Wholesaler select element not found in edit form.");
-        return;
-    }
-    selectElement.innerHTML = '<option value="">--- 選択なし ---</option>';
-    wholesalerMap.forEach((name, code) => {
-        const option = document.createElement('option');
- 
-       option.value = code;
-        option.textContent = `${code}: ${name}`;
-       
- selectElement.appendChild(option);
-    });
+export function handleReferenceJCSHMS() {
+    showModal(
+        null, 
+        (selectedProduct) => {
+            populateFormWithJCSHMS(selectedProduct);
+        }, 
+        {
+            searchMode: 'inout',
+            copyOnly: true
+        }
+    );
 }
 
+----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\js\masteredit_form.js -----
+// C:\Users\wasab\OneDrive\デスクトップ\TKR\static\js\masteredit_form.js
+import { 
+    setFormFields, 
+    setupWholesalerDropdown, 
+    hideEditModal as hideEditModalUI,
+    populateEditForm as populateEditFormUI,
+    showEditModal as showEditModalUI
+} from './masteredit_ui.js';
+import { handleSaveMaster, handleReferenceJCSHMS } from './masteredit_events.js';
+
+let saveMasterBtn, cancelEditMasterBtn, referenceJCSHMSBtn;
+
 export function initEditForm() {
-    editFormContainer = document.getElementById('masterEditModalOverlay');
+    const editFormContainer = document.getElementById('masterEditModalOverlay');
     saveMasterBtn = document.getElementById('saveMasterBtn');
     cancelEditMasterBtn = document.getElementById('cancelEditMasterBtn');
     referenceJCSHMSBtn = document.getElementById('referenceJCSHMSBtn');
-    const form 
-= document.getElementById('masterEditForm');
+    const form = document.getElementById('masterEditForm');
+    
     if (!form || !editFormContainer) {
         console.error("Master edit form or modal overlay not found!");
         return;
     }
 
-    
-const toCamelCase = (s) => {
+    const editFormFields = {};
+    const toCamelCase = (s) => {
         return s.replace(/^edit-/, '').replace(/-(\w)/g, (_, p1) => p1.toUpperCase());
     };
 
     form.querySelectorAll('input, select').forEach(element => {
-   
-     if (element.id) {
+        if (element.id) {
             if (element.id === 'edit-product-code') {
-    
-            editFormFields['productCode'] = element;
-            } 
-else if (element.id.startsWith('edit-')) {
+                editFormFields['productCode'] = element;
+            } else if (element.id.startsWith('edit-')) {
                 const key = toCamelCase(element.id);
-     
-           editFormFields[key] = element;
+                editFormFields[key] = element;
             }
-  
-      }
+        }
     });
+    
+    setFormFields(editFormFields);
     setupWholesalerDropdown();
     
     if (saveMasterBtn) {
         saveMasterBtn.addEventListener('click', handleSaveMaster);
     }
-   
- if (cancelEditMasterBtn) {
-        cancelEditMasterBtn.addEventListener('click', hideEditModal);
+    if (cancelEditMasterBtn) {
+        cancelEditMasterBtn.addEventListener('click', hideEditModalUI);
     }
     if (referenceJCSHMSBtn) {
-        
-referenceJCSHMSBtn.addEventListener('click', () => {
-            showModal(
-            
-    null, 
-                (selectedProduct) => {
-    
-                populateFormWithJCSHMS(selectedProduct);
-           
-     },
-                {
-      
-              searchMode: 'inout',
-            
-        copyOnly: true
-                }
-  
-          );
-        });
+        referenceJCSHMSBtn.addEventListener('click', handleReferenceJCSHMS);
     }
     
-    
-console.log("Initialized editFormFields map:", editFormFields);
+    console.log("Initialized editFormFields map:", editFormFields);
+}
+
+export function populateEditForm(master) {
+    populateEditFormUI(master);
+}
+
+export function showEditModal() {
+    showEditModalUI();
+}
+
+export function hideEditModal() {
+    hideEditModalUI();
 }
 
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\js\masteredit_search.js -----
@@ -4188,6 +3932,190 @@ gs1Form.addEventListener('submit', handleMasterGs1Scan);
     if (searchKanaNameInput) searchKanaNameInput.addEventListener('keypress', handleKeyPress);
     if (searchGenericNameInput) searchGenericNameInput.addEventListener('keypress', handleKeyPress);
     if (searchShelfNumberInput) searchShelfNumberInput.addEventListener('keypress', handleKeyPress);
+}
+
+----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\js\masteredit_ui.js -----
+// C:\Users\wasab\OneDrive\デスクトップ\TKR\static\js\masteredit_ui.js
+import { wholesalerMap } from './master_data.js';
+
+let editFormFields = {};
+
+const jcshmsReadonlyKeys = [
+    'yjCode', 'gs1Code', 'productName', 'kanaName', 'kanaNameShort', 'genericName',
+    'makerName', 'specification', 'usageClassification', 'packageForm',
+    'yjUnitName', 'yjPackUnitQty', 'janPackInnerQty', 'janUnitCode',
+    'janPackUnitQty', 'nhiPrice', 'flagPoison', 'flagDeleterious',
+    'flagNarcotic', 'flagPsychotropic', 'flagStimulant', 'flagStimulantRaw'
+];
+
+export function setFormFields(fields) {
+    editFormFields = fields;
+}
+
+export function getFormFields() {
+    return editFormFields;
+}
+
+export function populateFormWithJCSHMS(item) {
+    console.log("--- JCSHMSデータコピー処理開始 ---");
+    console.log("受け取ったJCSHMSデータ (ProductMasterView):", JSON.parse(JSON.stringify(item)));
+    console.log("フォーム要素のマップ:", editFormFields);
+    const populateAndLog = (key, value) => {
+        const targetElement = editFormFields[key];
+        if (targetElement) {
+            const finalValue = (value === undefined || value === null) ? '' : value;
+            console.log(`[処理中] 項目 '${key}' (要素ID: ${targetElement.id})`);
+            console.log(`  - 値: `, finalValue);
+            try {
+                targetElement.value = finalValue;
+                if (String(targetElement.value) === String(finalValue)) {
+                    console.log(`  -> [成功] 値の設定を確認しました。`);
+                } else {
+                    console.warn(`  -> [検証失敗] 値を設定しましたが、読み取った値が異なります。設定後の値: '${targetElement.value}'`);
+                }
+            } catch (e) {
+                console.error(`  -> [エラー] 値の設定中に例外が発生しました: ${e.message}`);
+            }
+        } else {
+            console.warn(`[スキップ] 項目 '${key}' はフォーム内に対応する要素が見つかりません。`);
+        }
+    };
+
+    populateAndLog('productName', (item.productName || '').trim());
+    populateAndLog('yjCode', item.yjCode || '');
+    populateAndLog('kanaName', (item.kanaName || '').trim());
+    populateAndLog('kanaNameShort', (item.kanaNameShort || '').trim());
+    populateAndLog('genericName', (item.genericName || '').trim());
+    populateAndLog('makerName', (item.makerName || '').trim());
+    populateAndLog('specification', (item.specification || '').trim());
+    populateAndLog('usageClassification', (item.usageClassification || '').trim());
+    populateAndLog('packageForm', (item.packageForm || '').trim());
+    populateAndLog('yjUnitName', (item.yjUnitName || '').trim());
+    populateAndLog('yjPackUnitQty', item.yjPackUnitQty || 0);
+    populateAndLog('nhiPrice', item.nhiPrice || 0);
+    populateAndLog('flagPoison', item.flagPoison || 0);
+    populateAndLog('flagDeleterious', item.flagDeleterious || 0);
+    populateAndLog('flagNarcotic', item.flagNarcotic || 0);
+    populateAndLog('flagPsychotropic', item.flagPsychotropic || 0);
+    populateAndLog('flagStimulant', item.flagStimulant || 0);
+    populateAndLog('flagStimulantRaw', item.flagStimulantRaw || 0);
+    populateAndLog('janPackInnerQty', item.janPackInnerQty || 0);
+    populateAndLog('janUnitCode', parseInt(item.janUnitCode, 10) || 0);
+    populateAndLog('janPackUnitQty', item.janPackUnitQty || 0);
+    console.log("--- JCSHMSデータコピー処理終了 ---");
+    window.showNotification('データコピー処理完了。', 'info');
+}
+
+export function populateEditForm(master) {
+    console.log("Populating form for:", master);
+    const viewProductCode = document.getElementById('view-product-code');
+    if (viewProductCode) {
+        viewProductCode.value = master.productCode || '';
+    }
+
+    const isJcshmsOrigin = master.origin === 'JCSHMS';
+    const isMa2yCode = master.yjCode && master.yjCode.startsWith('MA2Y');
+    const isNewCreation = !master.productCode;
+    
+    const referenceJCSHMSBtn = document.getElementById('referenceJCSHMSBtn');
+    if (referenceJCSHMSBtn) {
+        if (isJcshmsOrigin) {
+            referenceJCSHMSBtn.style.display = 'none';
+        } else {
+            referenceJCSHMSBtn.style.display = 'inline-block';
+        }
+    }
+
+    for (const key in editFormFields) {
+        const element = editFormFields[key];
+        const masterValue = master[key];
+
+        if (element) {
+            if (key === 'supplierWholesale' && element.tagName === 'SELECT') {
+                element.value = masterValue || '';
+            } 
+            else if (typeof masterValue === 'number') {
+                element.value = masterValue;
+            } else {
+                element.value = masterValue || '';
+            }
+
+            if (key !== 'productCode' && element.id !== 'view-product-code') {
+                if (key === 'origin') {
+                    element.readOnly = true;
+                    element.classList.add('readonly-field');
+                    if (isNewCreation) {
+                        element.value = 'PROVISIONAL';
+                    }
+                } 
+                else if (key === 'yjCode') {
+                    if (isNewCreation) {
+                        element.readOnly = false;
+                        element.classList.remove('readonly-field');
+                    } else if (isJcshmsOrigin && !isMa2yCode) {
+                        element.readOnly = true;
+                        element.classList.add('readonly-field');
+                    } else {
+                        element.readOnly = false;
+                        element.classList.remove('readonly-field');
+                    }
+                } 
+                else if (isJcshmsOrigin && jcshmsReadonlyKeys.includes(key)) {
+                    element.readOnly = true;
+                    element.classList.add('readonly-field'); 
+                } else {
+                    element.readOnly = false;
+                    element.classList.remove('readonly-field');
+                }
+            }
+        }
+    }
+
+    if (editFormFields['productCode']) {
+        if (isNewCreation) {
+            editFormFields['productCode'].value = ''; 
+        }
+    }
+    if (viewProductCode) {
+        if (isNewCreation) {
+            viewProductCode.value = ''; 
+            viewProductCode.readOnly = false; 
+            viewProductCode.classList.remove('readonly-field');
+            editFormFields['productCode'].value = ''; 
+        } else {
+            viewProductCode.readOnly = true; 
+            viewProductCode.classList.add('readonly-field');
+        }
+    }
+}
+
+export function showEditModal() {
+    const editFormContainer = document.getElementById('masterEditModalOverlay');
+    if (editFormContainer) {
+        editFormContainer.classList.remove('hidden');
+    }
+}
+
+export function hideEditModal() {
+    const editFormContainer = document.getElementById('masterEditModalOverlay');
+    if (editFormContainer) {
+        editFormContainer.classList.add('hidden');
+    }
+}
+
+export function setupWholesalerDropdown() {
+    const selectElement = editFormFields['supplierWholesale'];
+    if (!selectElement || selectElement.tagName !== 'SELECT') {
+        console.error("Wholesaler select element not found in edit form.");
+        return;
+    }
+    selectElement.innerHTML = '<option value="">--- 選択なし ---</option>';
+    wholesalerMap.forEach((name, code) => {
+        const option = document.createElement('option');
+        option.value = code;
+        option.textContent = `${code}: ${name}`;
+        selectElement.appendChild(option);
+    });
 }
 
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\js\masteredit.js -----

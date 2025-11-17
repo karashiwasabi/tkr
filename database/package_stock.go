@@ -7,7 +7,6 @@ import (
 	"strings"
 	"tkr/model"
 
-	// ▼▼▼【追加】units パッケージをインポート ▼▼▼
 	"github.com/jmoiron/sqlx"
 )
 
@@ -22,13 +21,12 @@ func UpsertPackageStockInTx(tx *sqlx.Tx, packageKey string, yjCode string, quant
 	`
 	_, err := tx.Exec(q, packageKey, yjCode, quantityYj, inventoryDate)
 	if err != nil {
-		// ▼▼▼【修正】[source]タグを文字列の外に移動し、改行を削除 ▼▼▼
 		return fmt.Errorf("failed to upsert package_stock for key %s: %w", packageKey, err)
 	}
 	return nil
 }
 
-// ▼▼▼【修正】[source]タグを文字列の外に移動 ▼▼▼
+// GetPackageStockByYjCode は単一のYJコードで検索します（既存互換用）
 func GetPackageStockByYjCode(dbtx DBTX, yjCode string) (map[string]model.PackageStock, error) {
 	var stocks []model.PackageStock
 	const q = `
@@ -47,7 +45,39 @@ func GetPackageStockByYjCode(dbtx DBTX, yjCode string) (map[string]model.Package
 	return stockMap, nil
 }
 
-// ▲▲▲【修正ここまで】▲▲▲
+// ▼▼▼【追加】複数のPackageKeyで一括取得する関数 ▼▼▼
+func GetPackageStocksByKeys(dbtx DBTX, keys []string) (map[string]model.PackageStock, error) {
+	stockMap := make(map[string]model.PackageStock)
+	if len(keys) == 0 {
+		return stockMap, nil
+	}
+
+	// sqlx.In を使用して IN 句を構築
+	query, args, err := sqlx.In(`
+		SELECT package_key, yj_code, stock_quantity_yj, last_inventory_date
+		FROM package_stock
+		WHERE package_key IN (?)`, keys)
+	if err != nil {
+		return nil, fmt.Errorf("failed to construct IN query for package_stock keys: %w", err)
+	}
+
+	if rebinder, ok := dbtx.(interface{ Rebind(string) string }); ok {
+		query = rebinder.Rebind(query)
+	}
+
+	var stocks []model.PackageStock
+	err = dbtx.Select(&stocks, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get package_stocks by keys: %w", err)
+	}
+
+	for _, s := range stocks {
+		stockMap[s.PackageKey] = s
+	}
+	return stockMap, nil
+}
+
+// ▲▲▲【追加ここまで】▲▲▲
 
 type ParsedPackageKey struct {
 	YjCode          string

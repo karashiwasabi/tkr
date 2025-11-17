@@ -515,6 +515,19 @@ gap: 4px;
     margin-bottom: 4px;
 }
 
+/* 棚卸調整画面: 「①実在庫数量」の表示スタイル */
+.physical-stock-display {
+    display: inline-block;
+    padding: 4px 8px;
+    background-color: #DC3545; /* 赤系の背景 */
+    color: white;             /* 白文字 */
+    font-weight: bold;
+    border-radius: 4px;
+    min-width: 60px;
+    text-align: right;
+    border: 1px solid #a02834;
+}
+
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\css\masteredit.css -----
 /* C:\Users\wasab\OneDrive\デスクトップ\TKR\static\css\masteredit.css */
 
@@ -1387,6 +1400,270 @@ body {
     margin-left: 20px;
 }
 
+----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\views\_config_aggregation.html -----
+{{ define "config_aggregation" }}
+<section class="config-section">
+    <h2>集計設定</h2>
+    <div class="config-form-container">
+        <div class="form-row">
+            <div class="form-group flex-150">
+                <label for="config-calculation-days">在庫集計期間 (日数):</label>
+                <input type="number" id="config-calculation-days" autocomplete="off" value="90">
+            </div>
+        </div>
+        <div class="form-actions">
+            <button id="configSaveDaysBtn" class="btn">集計期間保存</button>
+        </div>
+    </div>
+</section>
+{{ end }}
+
+----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\views\_config_migration.html -----
+{{ define "config_migration" }}
+<section class="config-section">
+    <h2>予製データ移行 (一括)</h2>
+    <div class="config-form-container">
+        <fieldset>
+            <legend>A. 予製データ エクスポート</legend>
+            <div class="form-row">
+                <div class="form-group flex-full">
+                    <p style="font-size: 10px; margin: 0 0 5px 0;">
+                        現在登録されている全患者の予製データをCSV (patient_number, product_code, product_name, quantity_jan, unit_name) としてエクスポートします。
+                    </p>
+                </div>
+            </div>
+            <div class="form-actions" style="margin-top: 5px;">
+                <button id="precomp-export-all-btn" class="btn">予製(全件) エクスポート</button>
+            </div>
+        </fieldset>
+    </div>
+    <div class="config-form-container">
+        <fieldset>
+            <legend>B. 予製データ インポート</legend>
+            <div class="form-row">
+                <div class="form-group flex-full">
+                    <p style="font-size: 10px; margin: 0 0 5px 0; color: #dc3545; font-weight: bold;">
+                        警告: 既存の予製データをCSVの内容で上書き（患者ごとに洗い替え）します。<br>
+                        CSV形式: 上記A. と同じ形式 (patient_number, product_code, quantity_jan が必須)
+                    </p>
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="precomp-import-all-input" style="font-size: 10px; font-weight: bold;">予製CSVファイル:</label>
+                    <input type="file" id="precomp-import-all-input" class="hidden" accept=".csv,.CSV">
+                </div>
+                <div class="form-actions" style="margin-top: 5px;">
+                    <button id="precomp-import-all-btn" class="btn">予製CSV インポート実行</button>
+                </div>
+            </div>
+        </fieldset>
+    </div>
+</section>
+
+<section class="config-section">
+    <h2>在庫データ移行</h2>
+    <div class="config-form-container">
+        <fieldset>
+            <legend>TKR独自CSVインポート (全洗い替え)</legend>
+            <div class="form-row">
+                <div class="form-group flex-full">
+                    <p style="font-size: 10px; margin: 0 0 5px 0; color: #dc3545; font-weight: bold;">
+                        警告: この操作は既存の在庫をすべて削除し、CSVの内容で上書き（洗い替え）します。<br>
+                        CSV形式: PackageKey, ProductName, JAN数量 (※期限・ロットは登録されません)
+                    </p>
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="importTkrStockDate" style="font-size: 10px; font-weight: bold;">棚卸日 (CSV適用日):</label>
+                    <input type="date" id="importTkrStockDate" style="padding: 3px;">
+                </div>
+                <div class="form-group">
+                    <label for="importTkrStockInput" style="font-size: 10px; font-weight: bold;">CSVファイル:</label>
+                    <input type="file" id="importTkrStockInput" class="hidden" accept=".csv,.CSV">
+                </div>
+                <div class="form-actions" style="margin-top: 5px;">
+                    <button id="importTkrStockBtn" class="btn">TKR独自CSV（洗い替え）読込</button>
+                </div>
+            </div>
+        </fieldset>
+    </div>
+</section>
+
+<section class="config-section">
+    <h2>マスタデータ移行</h2>
+    <div class="config-form-container">
+        <fieldset>
+            <legend>JCSHMS (SOU) マスター更新</legend>
+            <div class="form-row">
+                <div class="form-group flex-full">
+                    <p style="font-size: 10px; margin: 0 0 5px 0;">
+                        SOUフォルダ内の <strong>JCSHMS.CSV</strong> および <strong>JANCODE.CSV</strong> を読み込み、
+                        データベースの JCSHMS / JANCODE テーブルを洗い替えます。<br>
+                        <span style="color: #dc3545; font-weight: bold;">
+                            警告: この処理は時間がかかる場合があります。処理が完了するまで画面を閉じないでください。
+                        </span>
+                    </p>
+                </div>
+            </div>
+            <div class="form-actions" style="margin-top: 5px;">
+                <button id="importJcshmsBtn" class="btn">JCSHMS (SOU) 更新実行</button>
+            </div>
+        </fieldset>
+    </div>
+
+    <div class="config-form-container">
+        <fieldset>
+            <legend>A. 製品マスタ エクスポート</legend>
+            <div class="form-row">
+                <div class="form-group flex-full">
+                    <p style="font-size: 10px; margin: 0 0 5px 0;">
+                        現在の製品マスタ（product_master）の全項目（JCSHMS由来、ユーザー設定含む）をCSVに出力します。
+                    </p>
+                </div>
+            </div>
+            <div class="form-actions" style="margin-top: 5px;">
+                <button id="exportAllMastersBtn" class="btn">マスタCSV エクスポート</button>
+            </div>
+        </fieldset>
+    </div>
+
+    <div class="config-form-container">
+        <fieldset>
+            <legend>B. 製品マスタ インポート (JCSHMSマージ/上書き)</legend>
+            <div class="form-row">
+                <div class="form-group flex-full">
+                    <p style="font-size: 10px; margin: 0 0 5px 0; color: #dc3545; font-weight: bold;">
+                        警告: 既存の製品マスタをCSVの内容で上書き (Upsert) します。<br>
+                        CSV形式: 上記A. と同じ形式 (product_codeが必須)
+                    </p>
+                    <p style="font-size: 10px; margin: 0 0 5px 0;">
+                        <b>読込ルール:</b><br>
+                        1. CSVの品目がJCSHMSに存在する場合: JCSHMSの品名/薬価/規格等を優先し、CSVの棚番/仕入単価/メモ等をマージします。<br>
+                        2. JCSHMSに存在しない場合: CSVのすべての値を登録します。(YJコードが空なら自動採番されます)
+                    </p>
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="importAllMastersInput" style="font-size: 10px; font-weight: bold;">マスタCSVファイル:</label>
+                    <input type="file" id="importAllMastersInput" class="hidden" accept=".csv,.CSV">
+                </div>
+                <div class="form-actions" style="margin-top: 5px;">
+                    <button id="importAllMastersBtn" class="btn">マスタCSV インポート実行</button>
+                </div>
+            </div>
+        </fieldset>
+    </div>
+</section>
+
+<section class="config-section">
+    <h2>メンテナンス</h2>
+    <div class="config-form-container">
+       <fieldset>
+           <legend>古い棚卸履歴(flag=0)の削除</legend>
+           <div class="form-row">
+               <div class="form-group flex-full">
+                   <p style="font-size: 10px; margin: 0 0 5px 0;">
+                       最新の棚卸日を除く、それ以前の棚卸履歴(flag=0)を一括削除します。
+                       <br>
+                       <span style="color: #dc3545; font-weight: bold;">
+                           警告: この操作は取り消せません。
+                       </span>
+                   </p>
+               </div>
+           </div>
+           <div class="form-actions" style="margin-top: 5px;">
+               <button id="clearOldInventoryBtn" class="btn">古い棚卸履歴を削除</button>
+           </div>
+       </fieldset>
+    </div>
+</section>
+{{ end }}
+
+----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\views\_config_paths.html -----
+{{ define "config_paths" }}
+<section class="config-section">
+    <h2>パス設定</h2>
+    <div class="config-form-container">
+        <div class="form-row">
+            <div class="form-group">
+                <label for="config-dat-folder-path">伝票取込フォルダパス (DAT):</label>
+                <input type="text" id="config-dat-folder-path" autocomplete="off">
+            </div>
+            <div class="form-group">
+                <label for="config-usage-folder-path">処方取込フォルダパス (CSV):</label>
+                <input type="text" id="config-usage-folder-path" autocomplete="off">
+            </div>
+        </div>
+        <div class="form-actions">
+            <button id="configSavePathBtn" class="btn">パス保存</button>
+        </div>
+    </div>
+</section>
+{{ end }}
+
+----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\views\_config_wholesalers.html -----
+{{ define "config_wholesalers" }}
+<section class="config-section">
+    <h2>卸コード管理</h2>
+    <div class="config-form-container">
+        <fieldset>
+            <legend>新規卸コード追加</legend>
+            <div class="form-row">
+                <div class="form-group flex-150">
+                    <label for="config-wholesaler-code">卸コード:</label>
+                    <input type="text" id="config-wholesaler-code" autocomplete="off" maxlength="10">
+                </div>
+                <div class="form-group flex-300">
+                    <label for="config-wholesaler-name">卸名:</label>
+                    <input type="text" id="config-wholesaler-name" autocomplete="off">
+                </div>
+                <div class="form-actions">
+                    <button id="configAddWholesalerBtn" class="btn">追加</button>
+                </div>
+            </div>
+        </fieldset>
+    </div>
+    <div class="config-form-container">
+        <fieldset>
+            <legend>得意先マスタ インポート</legend>
+            <div class="form-row">
+                <div class="form-group flex-full">
+                    <p style="font-size: 10px; margin: 0 0 5px 0;">
+                        CSV (UTF-8) を読み込み、得意先マスタ (client_master) を上書き (Upsert) します。<br>
+                        CSV形式: <strong>client_code</strong> (必須), <strong>client_name</strong> (必須)
+                    </p>
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="importClientsInput" style="font-size: 10px; font-weight: bold;">得意先CSVファイル:</label>
+                    <input type="file" id="importClientsInput" class="hidden" accept=".csv,.CSV">
+                </div>
+                <div class="form-actions" style="margin-top: 5px;">
+                    <button id="importClientsBtn" class="btn">得意先CSV インポート実行</button>
+                </div>
+            </div>
+        </fieldset>
+    </div>
+    <div id="wholesalerListContainer" class="table-container">
+        <table id="wholesalerListTable" class="data-table">
+            <thead>
+                <tr>
+                    <th class="col-config-code">卸コード</th>
+                    <th class="col-config-name">卸名</th>
+                    <th class="col-config-action">操作</th>
+                </tr>
+            </thead>
+            <tbody>
+            </tbody>
+        </table>
+    </div>
+</section>
+{{ end }}
+
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\views\backorder_view.html -----
 <div id="backorder-view" class="view">
     <h1>発注残管理</h1>
@@ -1533,290 +1810,13 @@ id="modal-search-generic" autocomplete="off">
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\views\config_view.html -----
 <div id="config-view" class="view">
     <h1>設定</h1>
-    <section class="config-section">
-        <h2>パス設定</h2>
-        <div class="config-form-container">
-            <div class="form-row">
-           
-     <div class="form-group">
-   
-                    <label for="config-dat-folder-path">伝票取込フォルダパス (DAT):</label>
-     
-               <input type="text" id="config-dat-folder-path" autocomplete="off">
-                </div>
-                <div class="form-group">
-             
-       <label for="config-usage-folder-path">処方取込フォルダパス (CSV):</label>
-  
-                    <input type="text" id="config-usage-folder-path" autocomplete="off">
-  
-              </div>
-            </div>
-            <div class="form-actions">
-                <button id="configSavePathBtn" class="btn">パス保存</button>
-       
-     </div>
-       
-     </div>
-    </section>
- 
-    <section class="config-section">
-        <h2>集計設定</h2>
- 
-       <div class="config-form-container">
-            <div class="form-row">
-                 <div class="form-group flex-150">
-                    <label for="config-calculation-days">在庫集計期間 (日数):</label>
-  
-                
-                    
-<input type="number" id="config-calculation-days" autocomplete="off" value="90">
-                </div>
-            </div>
-            <div class="form-actions">
-                 <button id="configSaveDaysBtn" 
-class="btn">集計期間保存</button>
-            </div>
-        </div>
-    </section>
-
-    <section class="config-section">
-     
-  
-     <h2>卸コード管理</h2>
-        <div class="config-form-container">
-            <fieldset>
-                 <legend>新規卸コード追加</legend>
-                 <div class="form-row">
-   
-                 <div class="form-group flex-150">
-                 
-  
-           <label for="config-wholesaler-code">卸コード:</label>
-                         <input type="text" id="config-wholesaler-code" autocomplete="off" maxlength="10">
-                    </div>
- 
-                     <div class="form-group flex-300">
-             
-         
-           <label for="config-wholesaler-name">卸名:</label>
-                        <input type="text" id="config-wholesaler-name" autocomplete="off">
-                 
-                     </div>
-              
-       <div class="form-actions">
-                        <button id="configAddWholesalerBtn" class="btn">追加</button>
-  
-                     </div>
-                 </div>
-         
-             </fieldset>
     
-    </div>
-    <div class="config-form-container">
-            <fieldset>
-                <legend>得意先マスタ インポート</legend>
-                <div class="form-row">
-                    <div class="form-group flex-full">
-                        <p style="font-size: 10px; margin: 0 0 5px 0;">
-                            CSV (UTF-8) を読み込み、得意先マスタ (client_master) を上書き (Upsert) します。<br>
-                            CSV形式: <strong>client_code</strong> (必須), <strong>client_name</strong> (必須)
-                        </p>
-                    </div>
-                </div>
-                <div class="form-row">
-                    <div class="form-group">
-                        <label for="importClientsInput" style="font-size: 10px; font-weight: bold;">得意先CSVファイル:</label>
-                        <input type="file" id="importClientsInput" class="hidden" accept=".csv,.CSV">
-                    </div>
-                    <div class="form-actions" style="margin-top: 5px;">
-                        <button id="importClientsBtn" class="btn">得意先CSV インポート実行</button>
-                    </div>
-                </div>
-            </fieldset>
-        </div>
-         <div id="wholesalerListContainer" class="table-container">
-            <table id="wholesalerListTable" class="data-table">
-                <thead>
-    
-                    <tr>
-                        
-       
-                   <th class="col-config-code">卸コード</th>
-                         <th class="col-config-name">卸名</th>
-                        <th class="col-config-action">操作</th>
-       
-                     </tr>
- 
-               </thead>
-   
-                       <tbody>
-                </tbody>
-             </table>
-        </div>
-    </section>
+    {{ template "config_paths" . }}
+    {{ template "config_aggregation" . }}
+    {{ template "config_wholesalers" . }}
+    {{ template "config_migration" . }}
 
-    <section class="config-section">
-        <h2>予製データ移行 (一括)</h2>
-        <div class="config-form-container">
-            <fieldset>
-                <legend>A.
-予製データ エクスポート</legend>
-                <div class="form-row">
-                    <div class="form-group flex-full">
-                        <p style="font-size: 10px; margin: 0 0 5px 0;">
-                            現在登録されている全患者の予製データをCSV (patient_number, product_code, product_name, quantity_jan, unit_name) としてエクスポートします。
-                        </p>
-                    </div>
-                </div>
-                <div class="form-actions" style="margin-top: 5px;">
-                    <button id="precomp-export-all-btn" class="btn">予製(全件) エクスポート</button>
-                </div>
-            </fieldset>
-        </div>
-        <div class="config-form-container">
-            <fieldset>
-                <legend>B.
-予製データ インポート</legend>
-                <div class="form-row">
-                    <div class="form-group flex-full">
-                        <p style="font-size: 10px; margin: 0 0 5px 0; color: #dc3545; font-weight: bold;">
-                            警告: 既存の予製データをCSVの内容で上書き（患者ごとに洗い替え）します。<br>
-                            CSV形式: 上記A. と同じ形式 (patient_number, product_code, quantity_jan が必須)
-                        </p>
-                    </div>
-                </div>
-                <div class="form-row">
-                    <div class="form-group">
-                        <label for="precomp-import-all-input" style="font-size: 10px; font-weight: bold;">予製CSVファイル:</label>
-                        <input type="file" id="precomp-import-all-input" class="hidden" accept=".csv,.CSV">
-                    </div>
-                    <div class="form-actions" style="margin-top: 5px;">
-                        <button id="precomp-import-all-btn" class="btn">予製CSV インポート実行</button>
-                    </div>
-                </div>
-            </fieldset>
-        </div>
-    </section>
-    <section class="config-section">
-        <h2>在庫データ移行</h2>
-
-        <div class="config-form-container">
-            <fieldset>
-                <legend>B.
-TKR独自CSVインポート (全洗い替え)</legend>
-                <div class="form-row">
-                     <div class="form-group flex-full">
-                        <p style="font-size: 10px; margin: 0 0 5px 0; color: #dc3545; font-weight: bold;">
-                        
-    警告: この操作は既存の在庫をすべて削除し、CSVの内容で上書き（洗い替え）します。<br>
-                            CSV形式: PackageKey, ProductName, JAN数量 (※期限・ロットは登録されません)
-                        </p>
-                    </div>
-                </div>
-   
-             <div class="form-row">
-                    <div class="form-group">
-                        <label for="importTkrStockDate" style="font-size: 10px; font-weight: bold;">棚卸日 (CSV適用日):</label>
-                        <input type="date" id="importTkrStockDate" style="padding: 3px;">
-       
-             </div>
-              
-                    <div class="form-group">
-                        <label for="importTkrStockInput" style="font-size: 10px; font-weight: bold;">CSVファイル:</label>
-                       
- <input type="file" id="importTkrStockInput" class="hidden" accept=".csv,.CSV">
-                    </div>
-                    
-                    <div class="form-actions" style="margin-top: 5px;">
-                        <button id="importTkrStockBtn" class="btn">TKR独自CSV（洗い替え）読込</button>
-      
-              </div>
-                </div>
-                 </fieldset>
-        </div>
-
-    </section>
-    
-    <section class="config-section">
-        <h2>マスタデータ移行</h2>
-        
-<div class="config-form-container">
-            <fieldset>
-                <legend>JCSHMS (SOU) マスター更新</legend>
-                <div class="form-row">
-                    <div class="form-group flex-full">
-                        <p style="font-size: 10px; margin: 0 0 5px 0;">
-                            SOUフォルダ内の <strong>JCSHMS.CSV</strong> および <strong>JANCODE.CSV</strong> を読み込み、
-                            データベースの JCSHMS / JANCODE テーブルを洗い替えます。<br>
-                            <span style="color: #dc3545; font-weight: bold;">
-                                警告: この処理は時間がかかる場合があります。処理が完了するまで画面を閉じないでください。
-                            </span>
-                        </p>
-                    </div>
-                </div>
-                <div class="form-actions" style="margin-top: 5px;">
-                    <button id="importJcshmsBtn" class="btn">JCSHMS (SOU) 更新実行</button>
-                </div>
-            </fieldset>
-        </div>
-
-        <div class="config-form-container">
-       
-     <fieldset>
-                <legend>A.
-製品マスタ エクスポート</legend>
-                <div class="form-row">
-                    <div class="form-group flex-full">
-                        <p style="font-size: 10px; margin: 0 0 5px 0;">
-                            現在の製品マスタ（product_master）の全項目（JCSHMS由来、ユーザー設定含む）をCSVに出力します。
- 
-                       </p>
-                    </div>
-                </div>
-                <div class="form-actions" style="margin-top: 5px;">
-                    <button id="exportAllMastersBtn" 
-class="btn">マスタCSV エクスポート</button>
-                </div>
-            </fieldset>
-        </div>
-
-        <div class="config-form-container">
-            <fieldset>
-                <legend>B.
-製品マスタ インポート (JCSHMSマージ/上書き)</legend>
-                <div class="form-row">
-                    <div class="form-group flex-full">
-                        <p style="font-size: 10px; margin: 0 0 5px 0; color: #dc3545; font-weight: bold;">
-                        
-    警告: 既存の製品マスタをCSVの内容で上書き (Upsert) します。<br>
-                            CSV形式: 上記A.
-と同じ形式 (product_codeが必須)
-                        </p>
-                        <p style="font-size: 10px; margin: 0 0 5px 0;">
-                            <b>読込ルール:</b><br>
-                
-            1. CSVの品目がJCSHMSに存在する場合: JCSHMSの品名/薬価/規格等を優先し、CSVの棚番/仕入単価/メモ等をマージします。<br>
-                            2. JCSHMSに存在しない場合: CSVのすべての値を登録します。(YJコードが空なら自動採番されます)
-                        </p>
-                    </div>
-            
-    </div>
-                <div class="form-row">
-                    <div class="form-group">
-                        <label for="importAllMastersInput" style="font-size: 10px; font-weight: bold;">マスタCSVファイル:</label>
-                        <input type="file" id="importAllMastersInput" class="hidden" accept=".csv,.CSV">
- 
-                   </div>
-                    <div class="form-actions" style="margin-top: 5px;">
-                        <button id="importAllMastersBtn" class="btn">マスタCSV インポート実行</button>
-                    </div>
-           
-     </div>
-            </fieldset>
-        </div>
-    </section>
-    </div>
+</div>
 
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\views\dat_view.html -----
 <div id="dat-upload-view" class="view">

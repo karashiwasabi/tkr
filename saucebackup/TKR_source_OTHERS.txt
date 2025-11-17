@@ -1949,21 +1949,18 @@ import (
 	"strconv"
 	"tkr/mappers"
 	"tkr/model"
-	"tkr/units" //
+	"tkr/units"
 
 	"github.com/jmoiron/sqlx"
 )
 
-// DeleteTransactionsByFlagAndDateAndCodes は、指定されたフラグ、日付、製品コード群に一致する取引データを削除します。
-// (WASABI: db/transaction_records.go  より移植)
-// ▼▼▼【修正】[source]タグを文字列の外に移動 ▼▼▼
 func DeleteTransactionsByFlagAndDateAndCodes(tx *sqlx.Tx, flag int, date string, productCodes []string) error {
 	if len(productCodes) == 0 {
 		return nil
 	}
 
 	query, args, err := sqlx.In(`DELETE FROM transaction_records WHERE flag = ?
- AND transaction_date = ? AND jan_code IN (?)`, flag, date, productCodes) //
+AND transaction_date = ? AND jan_code IN (?)`, flag, date, productCodes)
 	if err != nil {
 		return fmt.Errorf("failed to create IN query for deleting transactions: %w", err)
 	}
@@ -1976,10 +1973,6 @@ func DeleteTransactionsByFlagAndDateAndCodes(tx *sqlx.Tx, flag int, date string,
 	return nil
 }
 
-// ▲▲▲【修正ここまで】▲▲▲
-
-// SaveGuidedInventoryData は、棚卸調整画面からの入力データを棚卸レコード(flag=0)として保存します。
-// (WASABI: db/guided_inventory.go  より移植・TKR用に修正)
 func SaveGuidedInventoryData(tx *sqlx.Tx, date string, yjCode string, allPackagings []*model.ProductMaster, inventoryData map[string]float64, deadstockData []model.DeadStockRecord) error {
 
 	var allProductCodes []string
@@ -1989,39 +1982,29 @@ func SaveGuidedInventoryData(tx *sqlx.Tx, date string, yjCode string, allPackagi
 		mastersMap[pkg.ProductCode] = pkg
 	}
 
-	// 1. 同日の既存棚卸データ(flag=0)を削除
 	if len(allProductCodes) > 0 {
-		if err := DeleteTransactionsByFlagAndDateAndCodes(tx, 0, date, allProductCodes); err != nil { //
+		if err := DeleteTransactionsByFlagAndDateAndCodes(tx, 0, date, allProductCodes); err != nil {
 			return fmt.Errorf("failed to delete old inventory records for the same day: %w", err)
 		}
 	}
 
-	// ▼▼▼【ここから修正】伝票番号の採番ロジック (WASABI  を参考に変更) ▼▼▼
 	var lastSeq int
-	// ▼▼▼【修正】ADJ(14桁) -> AJ(13桁) ▼▼▼
-	// AJyymmddnnnnn (AJ + 6桁 + 5桁 = 13桁)
-
-	// YYYYMMDD (8桁) -> YYMMDD (6桁)
 	var dateYYMMDD string
 	if len(date) >= 8 {
-		dateYYMMDD = date[2:8] // "20251031" -> "251031"
+		dateYYMMDD = date[2:8]
 	} else if len(date) == 6 {
-		dateYYMMDD = date // 既に6桁ならそのまま
+		dateYYMMDD = date
 	} else {
 		return fmt.Errorf("invalid date format for receipt number: %s", date)
 	}
 
-	prefix := "AJ" + dateYYMMDD // "AJ251031"
+	prefix := "AJ" + dateYYMMDD
 
-	// データベースから 'AJ251031' で始まる最大の伝票番号を取得
-	// ▲▲▲【修正ここまで】▲▲▲
-	// ▼▼▼【修正】[source]タグを文字列の外に移動 ▼▼▼
 	q := `SELECT receipt_number FROM transaction_records 
 		  WHERE receipt_number LIKE ?
- ORDER BY receipt_number DESC LIMIT 1` //
+ORDER BY receipt_number DESC LIMIT 1`
 	var lastReceiptNumber string
-	err := tx.Get(&lastReceiptNumber, q, prefix+"%") //
-	// ▲▲▲【修正ここまで】▲▲▲
+	err := tx.Get(&lastReceiptNumber, q, prefix+"%")
 
 	if err != nil && err != sql.ErrNoRows {
 		return fmt.Errorf("failed to get last receipt number sequence for prefix %s: %w", prefix, err)
@@ -2029,88 +2012,67 @@ func SaveGuidedInventoryData(tx *sqlx.Tx, date string, yjCode string, allPackagi
 
 	lastSeq = 0
 	if lastReceiptNumber != "" {
-		// ▼▼▼【修正】14桁 -> 13桁, 9文字目 -> 8文字目 ▼▼▼
-		// "AJ25103100001" (13桁) から "00001" (5桁) の部分を取得
 		if len(lastReceiptNumber) == 13 {
-			seqStr := lastReceiptNumber[8:] // 8文字目以降 (AJ + 6桁 = 8桁)
+			seqStr := lastReceiptNumber[8:]
 			lastSeq, _ = strconv.Atoi(seqStr)
 		}
 	}
 
 	newSeq := lastSeq + 1
-	receiptNumber := fmt.Sprintf("%s%05d", prefix, newSeq) // 13桁 (AJ + 6 + 5)
-	// ▲▲▲【修正ここまで】▲▲▲
 
-	// ▼▼▼【削除】productCodesWithInventory (dead_stock_list 用) は不要 ▼▼▼
-	// var productCodesWithInventory []string
-
-	// ▼▼▼【ここから修正】packageStockTotalsYj（在庫起点用）の集計を deadStockData から inventoryData（合計マップ）基準に変更 ▼▼▼
-	packageStockTotalsYj := make(map[string]float64) //
+	packageStockTotalsYj := make(map[string]float64)
 
 	for productCode, janQty := range inventoryData {
 		master, ok := mastersMap[productCode]
 		if !ok {
-			continue // マスタ情報がない（YJグループ外の）データは無視
+			continue
 		}
-
 		yjQty := janQty * master.JanPackInnerQty
+		packageKey := fmt.Sprintf("%s|%s|%g|%s", master.YjCode, master.PackageForm, master.JanPackInnerQty, units.ResolveName(master.YjUnitName))
+		packageStockTotalsYj[packageKey] += yjQty
 
-		// 包装キー単位でYJ在庫量を集計
-		packageKey := fmt.Sprintf("%s|%s|%g|%s", master.YjCode, master.PackageForm, master.JanPackInnerQty, units.ResolveName(master.YjUnitName)) //
-		packageStockTotalsYj[packageKey] += yjQty                                                                                                 //
 	}
 
-	// ▼▼▼【ここから修正】2. deadStockData (明細) を基準に transaction_records(flag=0) を挿入 ▼▼▼
-	// (JSが0の行も送信するようになったため、0の履歴も保存される)
 	for i, ds := range deadstockData {
 		master, ok := mastersMap[ds.ProductCode]
 		if !ok {
-			// allPackagings に含まれないマスタのデッドストックデータは無視
 			continue
 		}
 
+		receiptNumber := fmt.Sprintf("%s%05d", prefix, newSeq+i)
+
 		janQty := ds.StockQuantityJan
-		yjQty := janQty * master.JanPackInnerQty //
+		yjQty := janQty * master.JanPackInnerQty
 
 		tr := model.TransactionRecord{
 			TransactionDate: date,
-			Flag:            0,             // 棚卸
-			ReceiptNumber:   receiptNumber, // ★生成した伝票番号を使用
+			Flag:            0,
+			ReceiptNumber:   receiptNumber,
 			LineNumber:      fmt.Sprintf("%d", i+1),
 			JanCode:         master.ProductCode,
 			YjCode:          master.YjCode,
 			JanQuantity:     janQty,
-			YjQuantity:      yjQty, // YJ単位に換算
-			// ▼▼▼ 明細から期限とロットを設定 ▼▼▼
+			YjQuantity:      yjQty,
+
 			ExpiryDate: ds.ExpiryDate,
 			LotNumber:  ds.LotNumber,
 		}
 
-		// (棚卸の場合は薬価を単価とし、金額を計算)
 		tr.UnitPrice = master.NhiPrice
 		tr.Subtotal = tr.YjQuantity * tr.UnitPrice
 
-		// 共通マッパー呼び出し
 		mappers.MapMasterToTransaction(&tr, master)
 
-		if err := InsertTransactionRecord(tx, tr); err != nil { //
+		if err := InsertTransactionRecord(tx, tr); err != nil {
 			return fmt.Errorf("failed to insert inventory record for %s: %w", ds.ProductCode, err)
 		}
 	}
-	// ▲▲▲【修正ここまで】▲▲▲
 
-	// ▼▼▼【削除】3. ロット・期限情報を更新 (dead_stock_list 廃止のため不要) ▼▼▼
-	//
-	// ▲▲▲【削除ここまで】▲▲▲
-
-	// ▼▼▼【ここから修正】4. package_stock テーブルを更新（在庫起点）▼▼▼
-	// (集計済みの packageStockTotalsYj を使う)
 	for key, totalYjQty := range packageStockTotalsYj {
-		if err := UpsertPackageStockInTx(tx, key, yjCode, totalYjQty, date); err != nil { //
+		if err := UpsertPackageStockInTx(tx, key, yjCode, totalYjQty, date); err != nil {
 			return fmt.Errorf("failed to upsert package_stock for key %s: %w", key, err)
 		}
 	}
-	// ▲▲▲【修正ここまで】▲▲▲
 
 	return nil
 }
@@ -3183,7 +3145,8 @@ import (
 
 func ClearAllPackageStockInTx(tx *sqlx.Tx) error {
 	_, err := tx.Exec("DELETE FROM package_stock")
-	if err != nil {
+	if err !=
+		nil {
 		return fmt.Errorf("failed to clear package_stock: %w", err)
 	}
 	_, err = tx.Exec("DELETE FROM transaction_records WHERE flag = 0")
@@ -3219,7 +3182,8 @@ func GetRepresentativeProductNameMap(db *sqlx.DB) (map[string]string, error) {
 		WHERE (yj_code, origin = 'JCSHMS') IN (
 			SELECT yj_code, MAX(origin = 'JCSHMS')
 			FROM product_master
-			WHERE yj_code != ''
+			WHERE yj_code 
+!= ''
 			GROUP BY yj_code
 		)
 	`
@@ -3235,9 +3199,6 @@ func GetRepresentativeProductNameMap(db *sqlx.DB) (map[string]string, error) {
 	return nameMap, nil
 }
 
-// ▼▼▼【ここから追加】不足していた GetCurrentStockDetails 関数 ▼▼▼
-
-// StockDetailItem はCSVエクスポート用の在庫明細構造体です。
 type StockDetailItem struct {
 	JanCode     string  `db:"jan_code"`
 	Gs1Code     string  `db:"gs1_code"`
@@ -3247,11 +3208,9 @@ type StockDetailItem struct {
 	LotNumber   string  `db:"lot_number"`
 }
 
-// GetCurrentStockDetails は、最新の棚卸実績(flag=0)のうち、在庫が0より大きい明細を取得します。
 func GetCurrentStockDetails(db *sqlx.DB) ([]StockDetailItem, error) {
 	var items []StockDetailItem
 
-	// 1. 最新の棚卸日を取得
 	var latestInventoryDate string
 	err := db.Get(&latestInventoryDate, `
 		SELECT MAX(last_inventory_date) 
@@ -3259,16 +3218,15 @@ func GetCurrentStockDetails(db *sqlx.DB) ([]StockDetailItem, error) {
 	`)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return items, nil // 棚卸履歴なし
+			return items, nil
 		}
 		return nil, fmt.Errorf("failed to get latest inventory date from package_stock: %w", err)
 	}
 
 	if latestInventoryDate == "" {
-		return items, nil // 棚卸履歴なし
+		return items, nil
 	}
 
-	// 2. 最新棚卸日の flag=0 かつ jan_quantity > 0 の取引明細を、master と JOIN して取得
 	query := `
 		SELECT 
 			T.jan_code, 
@@ -3281,7 +3239,7 @@ func GetCurrentStockDetails(db *sqlx.DB) ([]StockDetailItem, error) {
 		LEFT JOIN product_master AS P ON T.jan_code = P.product_code
 		WHERE T.flag = 0 
 		  AND T.transaction_date = ?
-		  AND T.jan_quantity > 0
+AND T.jan_quantity > 0
 		ORDER BY P.kana_name, T.jan_code, T.expiry_date, T.lot_number
 	`
 
@@ -3292,7 +3250,33 @@ func GetCurrentStockDetails(db *sqlx.DB) ([]StockDetailItem, error) {
 	return items, nil
 }
 
-// ▲▲▲【追加ここまで】▲▲▲
+// ▼▼▼【ここから修正】製品ごとの最新日以外を削除するロジックに変更 ▼▼▼
+func DeleteOldInventoryTransactions(tx *sqlx.Tx) (int64, error) {
+	// package_stock に (yj_code, last_inventory_date) のペアで存在する
+	// 最新の棚卸履歴(flag=0) *以外* の、古い履歴を削除する
+	const q = `
+		DELETE FROM transaction_records
+		WHERE flag = 0 AND id IN (
+			SELECT T.id
+			FROM transaction_records AS T
+			LEFT JOIN package_stock AS P ON T.yj_code = P.yj_code AND T.transaction_date = P.last_inventory_date
+			WHERE T.flag = 0 AND P.package_key IS NULL
+		)
+	`
+	res, err := tx.Exec(q)
+	if err != nil {
+		return 0, fmt.Errorf("failed to delete old inventory transactions: %w", err)
+	}
+
+	rowsAffected, err := res.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("failed to get affected rows: %w", err)
+	}
+
+	return rowsAffected, nil
+}
+
+// ▲▲▲【修正ここまで】▲▲▲
 
 
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\database\stock.go -----
@@ -3302,70 +3286,54 @@ package database
 import (
 	"database/sql"
 	"fmt"
+	"tkr/model"
 
-	// TKRのmodelを使用
 	"github.com/jmoiron/sqlx"
 )
 
-// SignedYjQty はフラグに基づいて符号付きのYJ数量を返します。
-// TKRの集計では 納品(1) と 処方(3) のみ考慮します。
-func signedYjQty(flag int, yjQty float64) float64 {
-	switch flag {
-	case 1: // 納品
-		return yjQty
-	case 11: // 入庫
-		return yjQty
-	case 3: // 処方
-		return -yjQty
-	case 2: // 返品
-		return -yjQty
-	case 12: // 出庫
-		return -yjQty
-	default: // 棚卸(0), その他
-		return 0
-	}
-}
-
-// CalculateStockOnDate は指定された製品の、特定の日付時点での理論在庫を計算します。
-// (WASABI: db/stock.go より移植・TKR用に修正)
 func CalculateStockOnDate(dbtx *sqlx.DB, productCode string, targetDate string) (float64, error) {
-	var latestInventoryDate sql.NullString
-	// 1. 基準日以前の最新の棚卸日を取得
-	err := dbtx.Get(&latestInventoryDate, `
-		SELECT MAX(transaction_date) FROM transaction_records
-		WHERE jan_code = ?
-AND flag = 0 AND transaction_date <= ?`,
-		productCode, targetDate)
-	if err != nil && err != sql.ErrNoRows {
-		return 0, fmt.Errorf("failed to get latest inventory date for %s on or before %s: %w", productCode, targetDate, err)
+
+	master, err := GetProductMasterByCode(dbtx, productCode)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return 0, nil
+		}
+		return 0, fmt.Errorf("failed to get master for stock calculation (ProductCode: %s): %w", productCode, err)
 	}
 
-	if latestInventoryDate.Valid && latestInventoryDate.String != "" {
-		// --- 棚卸履歴がある場合の計算 ---
-		var baseStock float64
-		// 1a.棚卸日の在庫合計を基点とする
-		err := dbtx.Get(&baseStock, `
-			SELECT SUM(yj_quantity) FROM transaction_records
-			WHERE jan_code = ? AND flag = 0 AND transaction_date = ?`,
-			productCode, latestInventoryDate.String)
-		if err != nil {
-			return 0, fmt.Errorf("failed to sum inventory for %s on %s: %w", productCode, latestInventoryDate.String, err)
-		}
+	packageKey := fmt.Sprintf("%s|%s|%g|%s", master.YjCode, master.PackageForm, master.JanPackInnerQty, master.YjUnitName)
 
-		// 1b.もし基準日が棚卸日当日なら、棚卸数量のみを返す
-		if latestInventoryDate.String == targetDate {
+	var latestInvDate string
+	var baseStock float64
+
+	var stockInfo model.PackageStock
+	err = dbtx.Get(&stockInfo, `
+		SELECT package_key, stock_quantity_yj, last_inventory_date 
+		FROM package_stock 
+		WHERE package_key = ? AND last_inventory_date <= ?
+		ORDER BY last_inventory_date DESC 
+LIMIT 1`,
+		packageKey, targetDate)
+
+	if err != nil && err != sql.ErrNoRows {
+		return 0, fmt.Errorf("failed to get package_stock for %s on or before %s: %w", packageKey, targetDate, err)
+	}
+
+	if err == nil {
+		baseStock = stockInfo.StockQuantityYj
+		latestInvDate = stockInfo.LastInventoryDate
+
+		if latestInvDate == targetDate {
 			return baseStock, nil
 		}
 
-		// 1c. 棚卸日の翌日から基準日までの変動を計算 (flag 1, 2, 3, 11, 12 を全て考慮)
 		var netChangeAfterInvDate sql.NullFloat64
-		// ▼▼▼【ここを修正】納品(1), 返品(2), 処方(3), 入庫(11), 出庫(12) を全て含める ▼▼▼
 		err = dbtx.Get(&netChangeAfterInvDate, `
 			SELECT SUM(CASE WHEN flag IN (1, 11) THEN yj_quantity WHEN flag IN (2, 3, 12) THEN -yj_quantity ELSE 0 END)
 			FROM transaction_records
 			WHERE jan_code = ? AND flag IN (1, 2, 3, 11, 12) AND transaction_date > ? AND transaction_date <= ?`,
-			productCode, latestInventoryDate.String, targetDate)
-		// ▲▲▲【修正ここまで】▲▲▲
+			productCode, latestInvDate, targetDate)
+
 		if err != nil && err != sql.ErrNoRows {
 			return 0, fmt.Errorf("failed to calculate net change after inventory date for %s: %w", productCode, err)
 		}
@@ -3373,88 +3341,20 @@ AND flag = 0 AND transaction_date <= ?`,
 		return baseStock + netChangeAfterInvDate.Float64, nil
 
 	} else {
-		// --- 棚卸履歴がない場合の計算 ---
 		var totalNetChange sql.NullFloat64
-		// ▼▼▼【ここを修正】納品(1), 返品(2), 処方(3), 入庫(11), 出庫(12) を全て含める ▼▼▼
+
 		err = dbtx.Get(&totalNetChange, `
 			SELECT SUM(CASE WHEN flag IN (1, 11) THEN yj_quantity WHEN flag IN (2, 3, 12) THEN -yj_quantity ELSE 0 END)
 			FROM transaction_records
-			WHERE jan_code = ? AND flag IN (1, 2, 3, 11, 12) AND transaction_date <= ?`,
+			WHERE jan_code = ?
+AND flag IN (1, 2, 3, 11, 12) AND transaction_date <= ?`,
 			productCode, targetDate)
-		// ▲▲▲【修正ここまで】▲▲▲
+
 		if err != nil && err != sql.ErrNoRows {
 			return 0, fmt.Errorf("failed to calculate total net change for %s: %w", productCode, err)
 		}
 		return totalNetChange.Float64, nil
 	}
-}
-
-// (GetAllCurrentStockMap は変更なし)
-func GetAllCurrentStockMap(conn *sqlx.DB) (map[string]float64, error) {
-	rows, err := conn.Query(`
-		SELECT jan_code, transaction_date, flag, yj_quantity 
-		FROM transaction_records 
-		ORDER BY jan_code, transaction_date, id`)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get all transactions for stock calculation: %w", err)
-	}
-	defer rows.Close()
-
-	stockMap := make(map[string]float64)
-
-	type txRecord struct {
-		Date string
-		Flag int
-		Qty  float64
-	}
-	recordsByJan := make(map[string][]txRecord)
-
-	for rows.Next() {
-		var janCode, date string
-		var flag int
-		var qty float64
-		if err := rows.Scan(&janCode, &date, &flag, &qty); err != nil {
-			return nil, err
-		}
-		if janCode == "" {
-			continue
-		}
-		recordsByJan[janCode] = append(recordsByJan[janCode], txRecord{Date: date, Flag: flag, Qty: qty})
-	}
-
-	for janCode, records := range recordsByJan {
-		var latestInvDate string
-		baseStock := 0.0
-
-		invStocksOnDate := make(map[string]float64)
-		for _, r := range records {
-			if r.Flag == 0 {
-				if r.Date > latestInvDate {
-					latestInvDate = r.Date
-				}
-				invStocksOnDate[r.Date] += r.Qty
-			}
-		}
-		if latestInvDate != "" {
-			baseStock = invStocksOnDate[latestInvDate]
-		}
-
-		netChange := 0.0
-		for _, r := range records {
-			startDate := "00000000"
-			if latestInvDate != "" {
-				startDate = latestInvDate
-			}
-
-			if r.Date > startDate {
-				// TKR用に signedYjQty を使う
-				netChange += signedYjQty(r.Flag, r.Qty)
-			}
-		}
-		stockMap[janCode] = baseStock + netChange
-	}
-
-	return stockMap, nil
 }
 
 
@@ -4678,20 +4578,19 @@ package inventoryadjustment
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"time"
-	"tkr/aggregation" // TKR集計ロジック
+	"tkr/aggregation"
 	"tkr/config"
 	"tkr/database"
-	"tkr/mappers" // TKR Viewマッパー
+	"tkr/mappers"
 	"tkr/model"
 
 	"github.com/jmoiron/sqlx"
 )
 
-// GetInventoryDataHandler は棚卸調整画面に必要な全データを取得します。
-// (WASABI: guidedinventory/handler.go  より移植・TKR用に修正)
 func GetInventoryDataHandler(conn *sqlx.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		q := r.URL.Query()
@@ -4701,23 +4600,19 @@ func GetInventoryDataHandler(conn *sqlx.DB) http.HandlerFunc {
 			return
 		}
 
-		// 1. 集計期間の設定
 		cfg, err := config.LoadConfig()
 		if err != nil {
 			http.Error(w, "設定ファイルの読み込みに失敗: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
 		now := time.Now()
-		// ▼▼▼【ここを修正】endDate を「本日」から「未来("99991231")」に変更 ▼▼▼
-		endDate := "99991231" //
-		// ▲▲▲【修正ここまで】▲▲▲
+		endDate := "99991231"
 		startDate := now.AddDate(0, 0, -cfg.CalculationPeriodDays)
 		yesterdayDate := now.AddDate(0, 0, -1)
 
-		// 2. 本日時点の理論在庫を取得 (EndDate を未来日に設定)
 		filtersToday := model.AggregationFilters{
 			StartDate: startDate.Format("20060102"),
-			EndDate:   endDate, //
+			EndDate:   endDate,
 			YjCode:    yjCode,
 		}
 		ledgerToday, err := aggregation.GetStockLedger(conn, filtersToday)
@@ -4727,7 +4622,6 @@ func GetInventoryDataHandler(conn *sqlx.DB) http.HandlerFunc {
 			return
 		}
 
-		// 3. 昨日時点の理論在庫を取得 (EndDate は「昨日」のまま)
 		filtersYesterday := model.AggregationFilters{
 			StartDate: startDate.Format("20060102"),
 			EndDate:   yesterdayDate.Format("20060102"),
@@ -4739,7 +4633,6 @@ func GetInventoryDataHandler(conn *sqlx.DB) http.HandlerFunc {
 			return
 		}
 
-		// 4. 表示用にモデルを変換
 		transactionLedgerView := mappers.ConvertToView(ledgerToday)
 		var yesterdaysStockView *mappers.StockLedgerYJGroupView
 		if len(ledgerYesterday) > 0 {
@@ -4749,7 +4642,6 @@ func GetInventoryDataHandler(conn *sqlx.DB) http.HandlerFunc {
 			}
 		}
 
-		// ▼▼▼【ここから追加】予製詳細(PrecompDetails)取得ロジック (WASABI: guidedinventory/handler.go [cite: 541] より) ▼▼▼
 		var productCodes []string
 		if len(ledgerToday) > 0 {
 			for _, pkg := range ledgerToday[0].PackageLedgers {
@@ -4761,12 +4653,10 @@ func GetInventoryDataHandler(conn *sqlx.DB) http.HandlerFunc {
 
 		precompDetails, err := database.GetPreCompoundingDetailsByProductCodes(conn, productCodes)
 		if err != nil {
-			// 予製はオプション機能なので、エラーでも続行
-			log.Printf("WARN: Failed to get pre-compounding details: %v", err)
+			log.Printf("WARN: Failed to get pre-compounding details: %v",
+				err)
 		}
-		// ▲▲▲【追加ここまで】▲▲▲
 
-		// ▼▼▼【ここから修正】5. ロット・期限情報 (最新の棚卸明細) を取得 ▼▼▼
 		tx, err := conn.Beginx()
 		if err != nil {
 			http.Error(w, "Failed to start transaction for latest inventory details", http.StatusInternalServerError)
@@ -4774,14 +4664,11 @@ func GetInventoryDataHandler(conn *sqlx.DB) http.HandlerFunc {
 		}
 		defer tx.Rollback()
 
-		// deadstock.go の代わりに新関数を呼び出す
 		latestInventoryTxs, err := database.GetLatestInventoryDetailsByYjCode(tx, yjCode)
 		if err != nil {
 			log.Printf("WARN: Failed to get latest inventory details (flag=0 txs) for adjustment: %v", err)
-			// エラーでも続行
 		}
 
-		// TransactionRecord を DeadStockRecord (JSが期待する形式) にマッピング
 		deadStockDetails := make([]model.DeadStockRecord, len(latestInventoryTxs))
 		for i, tx := range latestInventoryTxs {
 			deadStockDetails[i] = model.DeadStockRecord{
@@ -4796,98 +4683,112 @@ func GetInventoryDataHandler(conn *sqlx.DB) http.HandlerFunc {
 			}
 		}
 
-		// 6. レスポンスを構築
 		response := mappers.ResponseDataView{
 			TransactionLedger: transactionLedgerView,
 			YesterdaysStock:   yesterdaysStockView,
-			DeadStockDetails:  deadStockDetails, // マッピングした結果を渡す
-			// TKRには予製(PrecompDetails)はない
-
-			// ▼▼▼【ここに追加】▼▼▼
-			PrecompDetails: precompDetails,
-			// ▲▲▲【追加ここまで】▲▲▲
-
+			DeadStockDetails:  deadStockDetails,
+			PrecompDetails:    precompDetails,
 		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(response)
 	}
 }
 
-// SavePayload は棚卸保存時のペイロードです。
-// (WASABI: guidedinventory/handler.go  より)
 type SavePayload struct {
 	Date          string                  `json:"date"`
 	YjCode        string                  `json:"yjCode"`
-	InventoryData map[string]float64      `json:"inventoryData"` // Key: ProductCode, Value: JanQuantity
+	InventoryData map[string]float64      `json:"inventoryData"`
 	DeadStockData []model.DeadStockRecord `json:"deadStockData"`
 }
 
-// SaveInventoryDataHandler は棚卸データを保存します。
-// (WASABI: guidedinventory/handler.go  より)
 func SaveInventoryDataHandler(conn *sqlx.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var payload SavePayload
 		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-			// ▼▼▼【ログ追加】▼▼▼
 			log.Printf("[SaveInventoryDataHandler] ERROR: Invalid request body: %v", err)
-			// ▲▲▲
 			http.Error(w, "Invalid request body: "+err.Error(), http.StatusBadRequest)
 			return
 		}
 
-		// ▼▼▼【ログ追加】▼▼▼
 		log.Printf("[SaveInventoryDataHandler] Received payload for YJ: %s, Date: %s. DeadStock items: %d", payload.YjCode, payload.Date, len(payload.DeadStockData))
-		// ▲▲▲
 
 		tx, err := conn.Beginx()
 		if err != nil {
-			// ▼▼▼【ログ追加】▼▼▼
 			log.Printf("[SaveInventoryDataHandler] ERROR: Failed to start transaction: %v", err)
-			// ▲▲▲
 			http.Error(w, "Failed to start transaction", http.StatusInternalServerError)
 			return
 		}
 		defer tx.Rollback()
 
-		// YJコードに紐づく全てのマスター包装を取得
 		masters, err := database.GetProductMastersByYjCode(tx, payload.YjCode)
 		if err != nil {
-			// ▼▼▼【ログ追加】▼▼▼
 			log.Printf("[SaveInventoryDataHandler] ERROR: Failed to get product masters for yj %s: %v", payload.YjCode, err)
-			// ▲▲▲
 			http.Error(w, "Failed to get product masters for yj: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
 
-		// ▼▼▼【ログ追加】▼▼▼
 		log.Printf("[SaveInventoryDataHandler] Calling SaveGuidedInventoryData with Date: %s, YjCode: %s, Masters found: %d, DeadStock items: %d",
-			payload.Date, payload.YjCode, len(masters), len(payload.DeadStockData))
-		// ▲▲▲
+			payload.Date,
+			payload.YjCode, len(masters), len(payload.DeadStockData))
 
 		if err := database.SaveGuidedInventoryData(tx, payload.Date, payload.YjCode, masters, payload.InventoryData, payload.DeadStockData); err != nil {
-			// ▼▼▼【ログ追加】▼▼▼
 			log.Printf("[SaveInventoryDataHandler] ERROR: Failed to save inventory data in SaveGuidedInventoryData: %v", err)
-			// ▲▲▲
 			http.Error(w, "Failed to save inventory data: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
 
 		if err := tx.Commit(); err != nil {
-			// ▼▼▼【ログ追加】▼▼▼
 			log.Printf("[SaveInventoryDataHandler] ERROR: Failed to commit transaction: %v", err)
-			// ▲▲▲
 			http.Error(w, "Failed to commit transaction", http.StatusInternalServerError)
 			return
 		}
 
-		// ▼▼▼【ログ追加】▼▼▼
 		log.Printf("[SaveInventoryDataHandler] Successfully saved inventory data for YJ: %s, Date: %s", payload.YjCode, payload.Date)
-		// ▲▲▲
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{"message": "棚卸データを保存しました。"})
 	}
 }
+
+// ▼▼▼【ここから修正】戻り値とメッセージを変更 ▼▼▼
+func ClearOldInventoryHandler(conn *sqlx.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		tx, err := conn.Beginx()
+		if err != nil {
+			http.Error(w, "Failed to start transaction", http.StatusInternalServerError)
+			return
+		}
+		defer tx.Rollback()
+
+		rowsAffected, err := database.DeleteOldInventoryTransactions(tx)
+		if err != nil {
+			http.Error(w, "Failed to delete old inventory records: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		if err := tx.Commit(); err != nil {
+			http.Error(w, "Failed to commit transaction", http.StatusInternalServerError)
+			return
+		}
+
+		var message string
+		if rowsAffected == 0 {
+			message = "削除対象の古い棚卸履歴はありませんでした。"
+		} else {
+			message = fmt.Sprintf("最新ではない古い棚卸履歴(flag=0) %d 件を削除しました。", rowsAffected)
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"message": message})
+	}
+}
+
+// ▲▲▲【修正ここまで】▲▲▲
 
 
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\loader\handler.go -----
@@ -10112,6 +10013,25 @@ func main() {
 		if err != nil {
 			log.Fatalf("Failed to parse views/common_input_modal.html: %v", err)
 		}
+
+		// ▼▼▼【ここから追加】config用サブテンプレートの読み込み ▼▼▼
+		appTemplate, err = appTemplate.ParseFS(viewsFS, "_config_paths.html")
+		if err != nil {
+			log.Fatalf("Failed to parse views/_config_paths.html: %v", err)
+		}
+		appTemplate, err = appTemplate.ParseFS(viewsFS, "_config_aggregation.html")
+		if err != nil {
+			log.Fatalf("Failed to parse views/_config_aggregation.html: %v", err)
+		}
+		appTemplate, err = appTemplate.ParseFS(viewsFS, "_config_wholesalers.html")
+		if err != nil {
+			log.Fatalf("Failed to parse views/_config_wholesalers.html: %v", err)
+		}
+		appTemplate, err = appTemplate.ParseFS(viewsFS, "_config_migration.html")
+		if err != nil {
+			log.Fatalf("Failed to parse views/_config_migration.html: %v", err)
+		}
+		// ▲▲▲【追加ここまで】▲▲▲
 	}
 
 	log.Println("HTML templates loaded and parsed.")
@@ -10136,9 +10056,12 @@ func main() {
 				return
 			}
 			for _, file := range files {
-				if file != "search_form_group.html" && file != "common_search_modal.html" && file != "common_input_modal.html" {
+				// ▼▼▼【ここを修正】サブテンプレートを除外リストに追加 ▼▼▼
+				if file != "search_form_group.html" && file != "common_search_modal.html" && file != "common_input_modal.html" &&
+					!strings.HasPrefix(file, "_config_") {
 					viewFiles = append(viewFiles, file)
 				}
+				// ▲▲▲【修正ここまで】▲▲▲
 			}
 		}
 
@@ -10301,6 +10224,7 @@ func SetupRoutes(mux *http.ServeMux, dbConn *sqlx.DB) {
 
 	mux.HandleFunc("/api/inventory/adjust/data", inventoryadjustment.GetInventoryDataHandler(dbConn))
 	mux.HandleFunc("/api/inventory/adjust/save", inventoryadjustment.SaveInventoryDataHandler(dbConn))
+	mux.HandleFunc("/api/inventory/clear_old", inventoryadjustment.ClearOldInventoryHandler(dbConn))
 
 	mux.HandleFunc("/api/precomp/save", precomp.SavePrecompHandler(dbConn))
 	mux.HandleFunc("/api/precomp/load", precomp.LoadPrecompHandler(dbConn))
@@ -10337,7 +10261,8 @@ func SetupRoutes(mux *http.ServeMux, dbConn *sqlx.DB) {
 	mux.HandleFunc("/api/clients/import", client.ImportClientsHandler(dbConn))
 
 	mux.HandleFunc("/api/clients", func(w http.ResponseWriter, r *http.Request) {
-		clients, err := database.GetAllClients(dbConn)
+		clients, err :=
+			database.GetAllClients(dbConn)
 		if err != nil {
 			http.Error(w, "Failed to get clients", http.StatusInternalServerError)
 			return

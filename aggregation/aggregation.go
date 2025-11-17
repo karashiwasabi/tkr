@@ -14,7 +14,6 @@ import (
 
 func signedYjQty(flag int, yjQty float64) float64 {
 	switch flag {
-	// ▼▼▼【ここから修正】TKRの入出庫フラグ (11, 12) も考慮 ▼▼▼
 	case 1: // 納品
 		return yjQty
 	case 11: // 入庫
@@ -25,13 +24,13 @@ func signedYjQty(flag int, yjQty float64) float64 {
 		return -yjQty
 	case 12: // 出庫
 		return -yjQty
-	// ▲▲▲【修正ここまで】▲▲▲
 	default: // 棚卸(0), その他
 		return 0
 	}
 }
 
 func GetStockLedger(conn *sqlx.DB, filters model.AggregationFilters) ([]model.StockLedgerYJGroup, error) {
+	// 1. マスタの取得
 	mastersByYjCode, yjCodes, err := GetFilteredMastersAndYjCodes(conn, filters)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get filtered masters: %w", err)
@@ -39,40 +38,55 @@ func GetStockLedger(conn *sqlx.DB, filters model.AggregationFilters) ([]model.St
 	if len(yjCodes) == 0 {
 		return []model.StockLedgerYJGroup{}, nil
 	}
+
+	// 2. トランザクション取得
 	allProductCodes, err := getAllProductCodesForYjCodes(conn, yjCodes)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get all product codes for yj codes: %w", err)
+		return nil, fmt.Errorf("failed to get all product codes: %w", err)
 	}
 	transactionsByProductCode, err := getTransactionsByProductCodes(conn, allProductCodes)
-	if err !=
-		nil {
-		return nil, fmt.Errorf("failed to get all transactions for product codes: %w", err)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get transactions: %w", err)
 	}
 
 	precompTotals, err := database.GetPreCompoundingTotals(conn)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get pre-compounding totals for aggregation: %w", err)
+		return nil, fmt.Errorf("failed to get pre-compounding totals: %w", err)
 	}
 
-	// ▼▼▼【ここから追加】発注残マップの取得 (WASABI: db/aggregation.go より) ▼▼▼
 	backordersMap, err := database.GetAllBackordersMap(conn)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get backorders for aggregation: %w", err)
+		return nil, fmt.Errorf("failed to get backorders: %w", err)
 	}
-	// ▲▲▲【追加ここまで】▲▲▲
 
-	packageStockMap, err := database.GetPackageStockByYjCode(conn, filters.YjCode) //
+	// 3. PackageKey の生成と PackageStock の一括取得
+	var targetPackageKeys []string
+	mastersByPackageKeyGlobal := make(map[string][]*model.ProductMaster)
+
+	for _, yjCode := range yjCodes {
+		masters := mastersByYjCode[yjCode]
+		for _, m := range masters {
+			key := database.GeneratePackageKey(m)
+			if _, exists := mastersByPackageKeyGlobal[key]; !exists {
+				targetPackageKeys = append(targetPackageKeys, key)
+			}
+			mastersByPackageKeyGlobal[key] = append(mastersByPackageKeyGlobal[key], m)
+		}
+	}
+
+	packageStockMap, err := database.GetPackageStocksByKeys(conn, targetPackageKeys)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get package stock map: %w", err)
+		return nil, fmt.Errorf("failed to get package stocks by keys: %w", err)
 	}
 
+	// 4. 計算処理
 	var result []model.StockLedgerYJGroup
 	for _, yjCode := range yjCodes {
 		mastersInYjGroup, ok := mastersByYjCode[yjCode]
-		if !ok ||
-			len(mastersInYjGroup) == 0 { //
+		if !ok || len(mastersInYjGroup) == 0 {
 			continue
 		}
+
 		var representativeProductName, representativeYjUnitName string
 		representativeProductName = mastersInYjGroup[0].ProductName
 		representativeYjUnitName = mastersInYjGroup[0].YjUnitName
@@ -89,123 +103,109 @@ func GetStockLedger(conn *sqlx.DB, filters model.AggregationFilters) ([]model.St
 			YjUnitName:  units.ResolveName(representativeYjUnitName),
 		}
 
-		mastersByPackageKey := make(map[string][]*model.ProductMaster)
-		for _, m := range mastersInYjGroup { //
-			key := fmt.Sprintf("%s|%s|%g|%s", m.YjCode, m.PackageForm, m.JanPackInnerQty, units.ResolveName(m.YjUnitName)) //
-			mastersByPackageKey[key] = append(mastersByPackageKey[key], m)
+		localMastersByPackageKey := make(map[string][]*model.ProductMaster)
+		for _, m := range mastersInYjGroup {
+			key := database.GeneratePackageKey(m)
+			localMastersByPackageKey[key] = append(localMastersByPackageKey[key], m)
 		}
-		var allPackageLedgers []model.StockLedgerPackageGroup
-		for key, mastersInPackageGroup := range mastersByPackageKey {
 
+		var allPackageLedgers []model.StockLedgerPackageGroup
+		for key, mastersInPackageGroup := range localMastersByPackageKey {
+
+			// A. 起点(StartingBalance)の決定
 			var startingBalance float64
 			var stockStartDate string
 
-			if stockInfo, ok := packageStockMap[key]; ok { //
-				startingBalance = stockInfo.StockQuantityYj  //
-				stockStartDate = stockInfo.LastInventoryDate //
+			if stockInfo, ok := packageStockMap[key]; ok {
+				startingBalance = stockInfo.StockQuantityYj
+				stockStartDate = stockInfo.LastInventoryDate
 			} else {
-				startingBalance = 0.0       //
-				stockStartDate = "00000000" //
+				startingBalance = 0.0
+				stockStartDate = "00000000"
 			}
 
-			netChangeAfterStockDate := 0.0
+			// B. 関連トランザクションの収集
+			// 「期間表示」のためには StartDate 以降のデータが必要。
+			// 「在庫計算（逆算）」のためには StartDate ～ stockStartDate のデータが必要。
+			// よって、filters.StartDate より未来の全データを対象とする。
+			var relevantTxs []*model.TransactionRecord
 			for _, m := range mastersInPackageGroup {
 				txs, ok := transactionsByProductCode[m.ProductCode]
 				if !ok {
 					continue
 				}
-				for _, t := range txs {
-					// ▼▼▼【ここを修正】filters.EndDate の制限を削除し、未来日も集計対象に含める ▼▼▼
-					if t.TransactionDate > stockStartDate { //
-						netChangeAfterStockDate += signedYjQty(t.Flag, t.YjQuantity) //
+				for i := range txs {
+					// ▼▼▼【修正】stockStartDate ではなく filters.StartDate を基準にする ▼▼▼
+					if txs[i].TransactionDate >= filters.StartDate {
+						relevantTxs = append(relevantTxs, &txs[i])
 					}
 					// ▲▲▲【修正ここまで】▲▲▲
 				}
 			}
 
-			currentTheoreticalStock := startingBalance + netChangeAfterStockDate //
-
-			netChangeInPeriod := 0.0
-			var txsForPackageInPeriod []*model.TransactionRecord
-			for _, m := range mastersInPackageGroup { //
-				txs, ok := transactionsByProductCode[m.ProductCode]
-				if !ok {
-					continue
+			sort.Slice(relevantTxs, func(i, j int) bool {
+				if relevantTxs[i].TransactionDate != relevantTxs[j].TransactionDate {
+					return relevantTxs[i].TransactionDate < relevantTxs[j].TransactionDate
 				}
-				for _, t := range txs {
-					if t.TransactionDate >= filters.StartDate && t.TransactionDate <= filters.EndDate {
-						netChangeInPeriod += signedYjQty(t.Flag, t.YjQuantity) //
-						txCopy := t
-						txsForPackageInPeriod = append(txsForPackageInPeriod, &txCopy)
-						//
-					}
+				return relevantTxs[i].ID < relevantTxs[j].ID
+			})
+
+			// C. 逆算による期間開始在庫の算出
+			// stockStartDate(確定在庫日) の在庫は startingBalance である。
+			// ここから「逆算」して、filters.StartDate(90日前) 時点の在庫を推定する。
+			netChangeForBackCalc := 0.0
+
+			for _, t := range relevantTxs {
+				qty := signedYjQty(t.Flag, t.YjQuantity)
+
+				// ケースA: トランザクションが [StartDate ... stockStartDate] の範囲にある場合
+				// -> この変動は startingBalance に含まれているので、引くことで過去に戻る
+				if t.TransactionDate >= filters.StartDate && t.TransactionDate <= stockStartDate {
+					netChangeForBackCalc -= qty
+				}
+
+				// ケースB: トランザクションが [stockStartDate ... StartDate] の範囲にある場合
+				// (StartDateが未来の場合など。今回は稀だがロジックとして保持)
+				if t.TransactionDate > stockStartDate && t.TransactionDate < filters.StartDate {
+					netChangeForBackCalc += qty
 				}
 			}
 
-			periodStartingBalance := currentTheoreticalStock - netChangeInPeriod //
+			// 期間開始時点の在庫
+			periodStartingBalance := startingBalance + netChangeForBackCalc
 
+			// D. 積み上げ計算 (順算) で帳簿を作成
+			runningBalance := periodStartingBalance
+			var transactionsInPeriod []model.LedgerTransaction
 			var maxUsage float64
 
-			var transactionsInPeriod []model.LedgerTransaction
-			runningBalance := periodStartingBalance //
-
-			sort.Slice(txsForPackageInPeriod, func(i, j int) bool { //
-				if txsForPackageInPeriod[i].TransactionDate != txsForPackageInPeriod[j].TransactionDate {
-					return txsForPackageInPeriod[i].TransactionDate < txsForPackageInPeriod[j].TransactionDate
+			for _, t := range relevantTxs {
+				qty := 0.0
+				if t.Flag != 0 {
+					qty = signedYjQty(t.Flag, t.YjQuantity)
 				}
-				return txsForPackageInPeriod[i].ID < txsForPackageInPeriod[j].ID
-			})
 
-			periodInventorySums := make(map[string]float64) //
-			for _, t := range txsForPackageInPeriod {
-				if t.Flag == 0 {
-					periodInventorySums[t.TransactionDate] += t.YjQuantity //
-				}
-				// ▼▼▼【ここを修正】TKRの処方フラグ(3)のみで最大使用量を計算 ▼▼▼
+				runningBalance += qty
+
 				if t.Flag == 3 && t.YjQuantity > maxUsage {
 					maxUsage = t.YjQuantity
 				}
-				// ▲▲▲【修正ここまで】▲▲▲
-			}
 
-			lastProcessedDate := ""
-			for _, t := range txsForPackageInPeriod { //
-				if t.TransactionDate != lastProcessedDate && lastProcessedDate != "" { //
-					if inventorySum, ok := periodInventorySums[lastProcessedDate]; ok { //
-						runningBalance = inventorySum //
-					}
+				// 指定期間内のデータであれば表示用リストに追加
+				if t.TransactionDate >= filters.StartDate && t.TransactionDate <= filters.EndDate {
+					transactionsInPeriod = append(transactionsInPeriod, model.LedgerTransaction{
+						TransactionRecord: *t,
+						RunningBalance:    runningBalance,
+					})
 				}
-
-				if t.Flag == 0 {
-					// 棚卸データ(flag=0)は runningBalance に影響を与えない (次のループの開始時に適用される)
-				} else {
-					runningBalance += signedYjQty(t.Flag, t.YjQuantity) //
-				}
-
-				transactionsInPeriod = append(transactionsInPeriod, model.LedgerTransaction{TransactionRecord: *t, RunningBalance: runningBalance}) //
-				lastProcessedDate = t.TransactionDate
-				//
 			}
 
-			if inventorySum, ok := periodInventorySums[lastProcessedDate]; ok { //
-				runningBalance = inventorySum //
-			}
+			// E. 最終在庫の確定
+			// runningBalance は、論理的には「現在在庫」と一致するはず
+			// (startingBalance - backCalc + forwardCalc = startingBalance + forward_from_stock_date)
 
-			// ▼▼▼【ここから修正】発注残(backorderQty)を考慮 (WASABI: db/aggregation.go より) ▼▼▼
-			backorderQty := backordersMap[key] //
+			backorderQty := backordersMap[key]
 			effectiveEndingBalance := runningBalance + backorderQty
-			// ▲▲▲【修正ここまで】▲▲▲
-
-			pkg := model.StockLedgerPackageGroup{
-				PackageKey:             key,
-				StartingBalance:        periodStartingBalance, //
-				EndingBalance:          runningBalance,        //
-				Transactions:           transactionsInPeriod,
-				NetChange:              netChangeInPeriod, //
-				Masters:                mastersInPackageGroup,
-				EffectiveEndingBalance: effectiveEndingBalance, // 修正後の値
-				MaxUsage:               maxUsage,
-			}
 
 			var precompTotalForPackage float64
 			for _, master := range mastersInPackageGroup {
@@ -214,33 +214,39 @@ func GetStockLedger(conn *sqlx.DB, filters model.AggregationFilters) ([]model.St
 				}
 			}
 
+			pkg := model.StockLedgerPackageGroup{
+				PackageKey:             key,
+				StartingBalance:        periodStartingBalance,
+				EndingBalance:          runningBalance,
+				Transactions:           transactionsInPeriod,
+				NetChange:              runningBalance - periodStartingBalance,
+				Masters:                mastersInPackageGroup,
+				EffectiveEndingBalance: effectiveEndingBalance,
+				MaxUsage:               maxUsage,
+			}
+
 			pkg.BaseReorderPoint = maxUsage * filters.Coefficient
 			pkg.PrecompoundedTotal = precompTotalForPackage
 			pkg.ReorderPoint = pkg.BaseReorderPoint + pkg.PrecompoundedTotal
-			// ▼▼▼【ここを修正】発注判定を effectiveEndingBalance (発注残込み) で行う ▼▼▼
 			pkg.IsReorderNeeded = effectiveEndingBalance < pkg.ReorderPoint && pkg.MaxUsage > 0
-			// ▲▲▲【修正ここまで】▲▲▲
 
 			allPackageLedgers = append(allPackageLedgers, pkg)
 		}
-		if len(allPackageLedgers) > 0 { //
+
+		if len(allPackageLedgers) > 0 {
 			var yjTotalEnding, yjTotalNetChange, yjTotalStarting float64
 			var yjTotalReorderPoint, yjTotalBaseReorderPoint, yjTotalPrecompounded float64
-			// ▼▼▼【ここに追加】YJグループ全体の発注残込み在庫 (表示用) ▼▼▼
 			var yjTotalEffectiveEnding float64
-			// ▲▲▲【追加ここまで】▲▲▲
 			isYjReorderNeeded := false
 
 			for _, pkg := range allPackageLedgers {
-				if start, ok := pkg.StartingBalance.(float64); ok { //
+				if start, ok := pkg.StartingBalance.(float64); ok {
 					yjTotalStarting += start
 				}
-				if end, ok := pkg.EndingBalance.(float64); ok { //
+				if end, ok := pkg.EndingBalance.(float64); ok {
 					yjTotalEnding += end
 				}
-				// ▼▼▼【ここに追加】YJグループ全体の発注残込み在庫 (表示用) ▼▼▼
 				yjTotalEffectiveEnding += pkg.EffectiveEndingBalance
-				// ▲▲▲【追加ここまで】▲▲▲
 				yjTotalNetChange += pkg.NetChange
 				yjTotalReorderPoint += pkg.ReorderPoint
 				yjTotalBaseReorderPoint += pkg.BaseReorderPoint
@@ -251,11 +257,6 @@ func GetStockLedger(conn *sqlx.DB, filters model.AggregationFilters) ([]model.St
 			}
 			yjGroup.StartingBalance = yjTotalStarting
 			yjGroup.EndingBalance = yjTotalEnding
-			// ▼▼▼【ここに追加】YJグループ全体の発注残込み在庫 (表示用) ▼▼▼
-			// (model.StockLedgerYJGroup に EffectiveEndingBalance フィールドはないが、
-			// TKRでは ReorderItemView にコピーされるため、計算だけはしておく)
-			// yjGroup.EffectiveEndingBalance = yjTotalEffectiveEnding
-			// ▲▲▲【追加ここまで】▲▲▲
 			yjGroup.NetChange = yjTotalNetChange
 			yjGroup.PackageLedgers = allPackageLedgers
 			yjGroup.TotalReorderPoint = yjTotalReorderPoint
@@ -265,19 +266,17 @@ func GetStockLedger(conn *sqlx.DB, filters model.AggregationFilters) ([]model.St
 			result = append(result, yjGroup)
 		}
 	}
-	sort.Slice(result, func(i, j int) bool { //
-		// ▼▼▼【ここを修正】TKRの剤型順序に合わせる ▼▼▼
+	sort.Slice(result, func(i, j int) bool {
 		prio := map[string]int{"内": 1, "外": 2, "歯": 3, "注": 4, "機": 5, "他": 6}
-		// ▲▲▲【修正ここまで】▲▲▲
 		masterI := mastersByYjCode[result[i].YjCode][0]
 		masterJ := mastersByYjCode[result[j].YjCode][0]
 		prioI, okI := prio[strings.TrimSpace(masterI.UsageClassification)]
 		if !okI {
-			prioI = 7 //
+			prioI = 7
 		}
 		prioJ, okJ := prio[strings.TrimSpace(masterJ.UsageClassification)]
 		if !okJ {
-			prioJ = 7 //
+			prioJ = 7
 		}
 		if prioI != prioJ {
 			return prioI < prioJ
