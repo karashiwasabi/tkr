@@ -11,7 +11,6 @@ let runBtn, continuousOrderBtn;
 
 /**
  * 単品バーコードスキャン（手動追加）のハンドラ
- * (旧 reorder.js より移管)
  */
 async function handleOrderBarcodeScan(e) { 
     e.preventDefault();
@@ -19,8 +18,8 @@ async function handleOrderBarcodeScan(e) {
     if (!inputValue) return;
     window.showLoading('製品情報を検索中...');
     try {
-        const productMaster = await fetchProductMasterByBarcode(inputValue); // from utils.js
-        addOrUpdateOrderItem(productMaster); // from reorder_ui.js
+        const productMaster = await fetchProductMasterByBarcode(inputValue); 
+        addOrUpdateOrderItem(productMaster); 
         barcodeInput.value = '';
         barcodeInput.focus();
     } catch (err) {
@@ -32,25 +31,23 @@ async function handleOrderBarcodeScan(e) {
 
 /**
  * 「品目検索から追加」ボタンのハンドラ
- * (旧 reorder.js より移管)
  */
 function handleAddFromMaster() { 
-  
   showModal(
         document.getElementById('reorder-view'), 
         (selectedProduct) => {
             // TKRでは採用・未採用の区別なく、選択されたものをそのまま追加
-            addOrUpdateOrderItem(selectedProduct); // from reorder_ui.js
+            addOrUpdateOrderItem(selectedProduct);
         },
         {
-            searchMode: 'inout' // JCSHMSからも検索可能にする
+            searchMode: 'inout', // JCSHMSからも検索可能にする
+            allowAdopted: true   // ▼▼▼【追加】採用済みでも選択可能にする ▼▼▼
         }
     );
 }
 
 /**
  * 「発注候補を作成」ボタンのハンドラ
- * (旧 reorder.js より移管)
  */
 async function handleGenerateCandidates() { 
     window.showLoading('発注候補リストを作成中...');
@@ -68,7 +65,7 @@ async function handleGenerateCandidates() {
             throw new Error(errText || 'List generation failed');
         }
         const data = await res.json();
-        renderOrderCandidates(data, outputContainer); // from reorder_ui.js
+        renderOrderCandidates(data, outputContainer); 
     } catch (err) {
         outputContainer.innerHTML = `<p class="status-error">エラー: ${err.message}</p>`;
     } finally {
@@ -78,13 +75,9 @@ async function handleGenerateCandidates() {
 
 /**
  * 「CSV作成・発注残登録」ボタンのハンドラ
- * (旧 reorder.js より移管)
- * @param {Function} fetchAndRenderReorderCallback - メインの `fetchAndRenderReorder` (リセット用)
  */
 async function handleCreateCsv(fetchAndRenderReorderCallback) {
-    // ▼▼▼【ここを修正】発注可テーブルの行のみを対象にする ▼▼▼
     const rows = outputContainer.querySelectorAll('#orderable-table tbody tr');
-    // ▲▲▲【修正ここまで】▲▲▲
 
     if (rows.length === 0) {
         window.showNotification('発注する品目がありません。', 'error');
@@ -107,13 +100,13 @@ async function handleCreateCsv(fetchAndRenderReorderCallback) {
             hasItemsToOrder = true;
             
             const janCode = row.dataset.janCode;
-            const productName = row.cells[0].textContent; // TKRのテーブルレイアウト (colspan=2)
+            const productName = row.cells[0].textContent; 
             const wholesalerCode = row.querySelector('.wholesaler-select').value;
 
             // TKR CSVフォーマット
             const csvRow = [
                 janCode, 
-                `"${productName.replace(/"/g, '""')}"`, // 品名を""で囲む
+                `"${productName.replace(/"/g, '""')}"`, 
                 quantity, 
                 wholesalerCode
             ].join(',');
@@ -121,9 +114,8 @@ async function handleCreateCsv(fetchAndRenderReorderCallback) {
 
             const orderMultiplier = parseFloat(row.dataset.orderMultiplier) || 0;
             
-            // ▼▼▼【ここを修正】janCode をペイロードに追加 ▼▼▼
             backorderPayload.push({
-                janCode: janCode, // ★JANコードを追加
+                janCode: janCode,
                 yjCode: row.dataset.yjCode,
                 packageForm: row.dataset.packageForm,
                 janPackInnerQty: parseFloat(row.dataset.janPackInnerQty),
@@ -133,9 +125,8 @@ async function handleCreateCsv(fetchAndRenderReorderCallback) {
                 yjPackUnitQty: parseFloat(row.dataset.yjPackUnitQty) || 0,
                 janPackUnitQty: parseFloat(row.dataset.janPackUnitQty) || 0,
                 janUnitCode: parseInt(row.dataset.janUnitCode, 10) || 0,
-                wholesalerCode: wholesalerCode, // TKRでは string
+                wholesalerCode: wholesalerCode,
             });
-            // ▲▲▲【修正ここまで】▲▲▲
         }
     });
 
@@ -165,7 +156,7 @@ async function handleCreateCsv(fetchAndRenderReorderCallback) {
         });
         const sjisUint8Array = new Uint8Array(sjisArray);
 
-        const blob = new Blob([sjisUint8Array], { type: 'text/csv; charset=shift_jis' }); // MIMEタイプ指定
+        const blob = new Blob([sjisUint8Array], { type: 'text/csv; charset=shift_jis' });
         const link = document.createElement("a");
         const url = URL.createObjectURL(blob);
         const now = new Date();
@@ -190,7 +181,6 @@ async function handleCreateCsv(fetchAndRenderReorderCallback) {
 
 /**
  * テーブル内（除外、発注不可など）のクリックイベントハンドラ
- * (旧 reorder.js より移管)
  */
 async function handleTableClicks(e, handleGenerateCandidatesCallback) { 
     const target = e.target;
@@ -202,11 +192,10 @@ async function handleTableClicks(e, handleGenerateCandidatesCallback) {
         const productCode = target.dataset.productCode;
         const productName = row.cells[0].textContent;
         if (!confirm(`「${productName}」を発注不可に設定しますか？\nこの品目は今後、不足品リストに表示されなくなります。`)) {
-            return;
+             return;
         }
         window.showLoading('マスターを更新中...');
         try {
-            // TKRのAPI (mastermanager.goで定義)
             const res = await fetch('/api/master/set_order_stopped', { 
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -215,7 +204,6 @@ async function handleTableClicks(e, handleGenerateCandidatesCallback) {
             const resData = await res.json();
             if (!res.ok) throw new Error(resData.message || '更新に失敗しました。');
             
-            // ▼▼▼【ここから修正】行を移動させる処理を追加 ▼▼▼
             window.showNotification(`「${productName}」を発注不可に設定しました。`, 'success');
             
             // 1. 発注可テーブルから行を削除
@@ -224,7 +212,6 @@ async function handleTableClicks(e, handleGenerateCandidatesCallback) {
             // 2. 発注不可テーブルに行を再構築して追加 (簡易的に、ページリロード)
             window.showNotification('発注不可リストに移動しました。リストを更新します。', 'info');
             handleGenerateCandidatesCallback(); // 発注候補を再生成して全体を再描画
-            // ▲▲▲【修正ここまで】▲▲▲
 
         } catch(err) {
             window.showNotification(err.message, 'error');
@@ -234,7 +221,6 @@ async function handleTableClicks(e, handleGenerateCandidatesCallback) {
     } 
     // 「発注に変更」ボタン (発注不可テーブル内)
     else if (target.classList.contains('change-to-orderable-btn')) {
-        // ▼▼▼【ここから修正】行を移動させる処理を追加 ▼▼▼
         const productCode = row.dataset.janCode;
         if (!productCode) return;
 
@@ -262,30 +248,25 @@ async function handleTableClicks(e, handleGenerateCandidatesCallback) {
         } finally {
             window.hideLoading();
         }
-        // ▲▲▲【修正ここまで】▲▲▲
     } 
     // 「除外」ボタン (発注可テーブル内)
     else if (target.classList.contains('remove-order-item-btn')) {
-        // ▼▼▼【ここから修正】テーブル構造の変更に対応 ▼▼▼
         const tbody = row.closest('tbody');
         const table = tbody.closest('table');
         row.remove();
         
         if (tbody.children.length === 0 && table.id === 'orderable-table') {
-            const header = outputContainer.querySelector('h3');
+             const header = outputContainer.querySelector('h3');
             if(header) header.textContent = `発注対象品目 (0件)`;
             tbody.innerHTML = '<tr><td colspan="8">発注対象の品目はありません。</td></tr>';
         }
-        // ▲▲▲【修正ここまで】▲▲▲
     }
 }
 
 /**
  * 発注ビューの全イベントリスナーを初期化
- * @param {Function} fetchAndRenderReorderCallback - メインの `fetchAndRenderReorder` 関数
  */
 export function initReorderEvents(fetchAndRenderReorderCallback) { 
-    // ▼▼▼【ここを修正】コメント行を削除 ▼▼▼
     runBtn = document.getElementById('generate-order-candidates-btn');
     outputContainer = document.getElementById('order-candidates-output');
     kanaNameInput = document.getElementById('order-kanaName');
@@ -298,7 +279,6 @@ export function initReorderEvents(fetchAndRenderReorderCallback) {
     addFromMasterBtn = document.getElementById('add-order-item-from-master-btn');
     continuousOrderBtn = document.getElementById('continuous-order-btn');
 
-    // イベントリスナーの割り当て
     if (addFromMasterBtn) {
         addFromMasterBtn.addEventListener('click', handleAddFromMaster);
     }
@@ -309,14 +289,12 @@ export function initReorderEvents(fetchAndRenderReorderCallback) {
         barcodeForm.addEventListener('submit', handleOrderBarcodeScan);
     }
     if (runBtn) {
-        // ▼▼▼【修正】handleGenerateCandidates を直接登録 ▼▼▼
         runBtn.addEventListener('click', handleGenerateCandidates);
     }
     if (createCsvBtn) {
         createCsvBtn.addEventListener('click', () => handleCreateCsv(fetchAndRenderReorderCallback));
     }
     if (outputContainer) {
-        // ▼▼▼【修正】handleTableClicks に handleGenerateCandidates を渡す ▼▼▼
         outputContainer.addEventListener('click', (e) => handleTableClicks(e, handleGenerateCandidates));
     }
 }

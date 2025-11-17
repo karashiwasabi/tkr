@@ -1,5 +1,6 @@
 // C:\Users\wasab\OneDrive\デスクトップ\TKR\static\js\search_modal.js
 import { hiraganaToKatakana } from './utils.js';
+
 let activeCallback = null;
 let activeRowElement = null;
 let modal, closeModalBtn, searchResultsBody;
@@ -19,6 +20,7 @@ function handleResultClick(event) {
 
   const product = JSON.parse(event.target.dataset.product);
 
+  // コピーモード（参照のみ）の場合
   if (modal && modal.dataset.copyOnly === 'true') {
     if (typeof activeCallback === 'function') {
       activeCallback(product, activeRowElement);
@@ -27,14 +29,17 @@ function handleResultClick(event) {
     return;
   }
 
+  // 採用済みの場合
   if (product.isAdopted) {
+    // allowAdoptedフラグが立っている（発注画面など）か、通常の選択フローならそのままコールバック
     if (typeof activeCallback === 'function') {
       activeCallback(product, activeRowElement);
     }
     hideModal();
   } else {
+    // 未採用の場合、マスタ採用フローへ
     if (!confirm(`「${product.productName}」をマスターに新規採用します。よろしいですか？`)) {
-        return;
+      return;
     }
     window.showLoading('マスターに採用中...');
     fetch('/api/master/adopt', {
@@ -51,14 +56,15 @@ function handleResultClick(event) {
     .then(adoptedMaster => {
         window.hideLoading();
         window.showNotification(`「${adoptedMaster.productName}」をマスターに採用しました。`, 'success');
+        
         if (typeof activeCallback === 'function') {
             activeCallback(adoptedMaster, activeRowElement);
-         }
+        }
         hideModal();
     })
     .catch(err => {
         window.hideLoading();
-         window.showNotification(`エラー: ${err.message}`, 'error');
+        window.showNotification(`エラー: ${err.message}`, 'error');
     });
   }
 }
@@ -69,7 +75,13 @@ function renderSearchResults(products) {
     return;
   }
   let html = '';
-  const isAdoptFlow = modal.dataset.searchMode === 'inout' && modal.dataset.copyOnly !== 'true';
+  
+  // ▼▼▼【修正】採用済みボタンを無効化する条件に allowAdopted のチェックを追加 ▼▼▼
+  // 「inoutモード」かつ「コピーモードでない」かつ「採用済み許可(allowAdopted)がない」場合のみ無効化
+  const isAdoptFlow = modal.dataset.searchMode === 'inout' && 
+                      modal.dataset.copyOnly !== 'true' &&
+                      modal.dataset.allowAdopted !== 'true';
+  // ▲▲▲【修正ここまで】▲▲▲
 
   products.forEach(p => {
     const productData = JSON.stringify(p);
@@ -91,7 +103,7 @@ function renderSearchResults(products) {
         <td>${p.productCode || ''}</td>
          <td>${buttonHtml}</td>
       </tr>
-     `;
+    `;
   });
   searchResultsBody.innerHTML = html;
 }
@@ -102,6 +114,7 @@ async function performSearch() {
     const shelfNumber = modalShelfInput ? modalShelfInput.value.trim() : '';
     const selectedUsageRadio = modalUsageClassRadios ? document.querySelector('input[name="modal_usage_class"]:checked') : null;
     const usageClass = selectedUsageRadio ? selectedUsageRadio.value : '';
+    
     const params = new URLSearchParams();
     params.append('kanaName', kanaName);
     params.append('genericName', genericName);
@@ -146,7 +159,7 @@ async function handleGs1Search(event) {
 
         if (modal && modal.dataset.copyOnly === 'true') {
             if (typeof activeCallback === 'function') {
-                 activeCallback(master, activeRowElement);
+                activeCallback(master, activeRowElement);
             }
             hideModal();
             return;
@@ -204,6 +217,9 @@ export function showModal(rowElement, callback, options = {}) {
   
   modal.dataset.searchMode = options.searchMode || '';
   modal.dataset.copyOnly = options.copyOnly || 'false';
+  // ▼▼▼【追加】採用済み選択許可フラグを設定 ▼▼▼
+  modal.dataset.allowAdopted = options.allowAdopted ? 'true' : 'false';
+  // ▲▲▲【追加ここまで】▲▲▲
   
   modal.classList.remove('hidden');
     

@@ -30,7 +30,7 @@ func signedYjQty(flag int, yjQty float64) float64 {
 }
 
 func GetStockLedger(conn *sqlx.DB, filters model.AggregationFilters) ([]model.StockLedgerYJGroup, error) {
-	// 1. マスタの取得
+	// 1. マスタとYJコードの取得
 	mastersByYjCode, yjCodes, err := GetFilteredMastersAndYjCodes(conn, filters)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get filtered masters: %w", err)
@@ -39,10 +39,10 @@ func GetStockLedger(conn *sqlx.DB, filters model.AggregationFilters) ([]model.St
 		return []model.StockLedgerYJGroup{}, nil
 	}
 
-	// 2. トランザクション取得
+	// 2. 全トランザクションの取得 (メモリ上でフィルタするため一旦全て取得)
 	allProductCodes, err := getAllProductCodesForYjCodes(conn, yjCodes)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get all product codes: %w", err)
+		return nil, fmt.Errorf("failed to get all product codes for yj codes: %w", err)
 	}
 	transactionsByProductCode, err := getTransactionsByProductCodes(conn, allProductCodes)
 	if err != nil {
@@ -79,7 +79,7 @@ func GetStockLedger(conn *sqlx.DB, filters model.AggregationFilters) ([]model.St
 		return nil, fmt.Errorf("failed to get package stocks by keys: %w", err)
 	}
 
-	// 4. 計算処理
+	// 4. 計算処理 (PackageKey単位)
 	var result []model.StockLedgerYJGroup
 	for _, yjCode := range yjCodes {
 		mastersInYjGroup, ok := mastersByYjCode[yjCode]
@@ -112,7 +112,10 @@ func GetStockLedger(conn *sqlx.DB, filters model.AggregationFilters) ([]model.St
 		var allPackageLedgers []model.StockLedgerPackageGroup
 		for key, mastersInPackageGroup := range localMastersByPackageKey {
 
-			// A. 起点(StartingBalance)の決定
+			// =================================================================================
+			// ステップ A: 【計算（正解）】 現在在庫の確定 (PackageStock起点)
+			// =================================================================================
+
 			var startingBalance float64
 			var stockStartDate string
 
@@ -121,91 +124,109 @@ func GetStockLedger(conn *sqlx.DB, filters model.AggregationFilters) ([]model.St
 				stockStartDate = stockInfo.LastInventoryDate
 			} else {
 				startingBalance = 0.0
-				stockStartDate = "00000000"
+				stockStartDate = "00000000" // データなし＝通算
 			}
 
-			// B. 関連トランザクションの収集
-			// 「期間表示」のためには StartDate 以降のデータが必要。
-			// 「在庫計算（逆算）」のためには StartDate ～ stockStartDate のデータが必要。
-			// よって、filters.StartDate より未来の全データを対象とする。
-			var relevantTxs []*model.TransactionRecord
+			// 関連する全トランザクションをマスタグループから集約
+			var allRelatedTxs []*model.TransactionRecord
 			for _, m := range mastersInPackageGroup {
 				txs, ok := transactionsByProductCode[m.ProductCode]
 				if !ok {
 					continue
 				}
 				for i := range txs {
-					// ▼▼▼【修正】stockStartDate ではなく filters.StartDate を基準にする ▼▼▼
-					if txs[i].TransactionDate >= filters.StartDate {
-						relevantTxs = append(relevantTxs, &txs[i])
-					}
-					// ▲▲▲【修正ここまで】▲▲▲
+					allRelatedTxs = append(allRelatedTxs, &txs[i])
 				}
 			}
 
-			sort.Slice(relevantTxs, func(i, j int) bool {
-				if relevantTxs[i].TransactionDate != relevantTxs[j].TransactionDate {
-					return relevantTxs[i].TransactionDate < relevantTxs[j].TransactionDate
+			// 日付順ソート
+			sort.Slice(allRelatedTxs, func(i, j int) bool {
+				if allRelatedTxs[i].TransactionDate != allRelatedTxs[j].TransactionDate {
+					return allRelatedTxs[i].TransactionDate < allRelatedTxs[j].TransactionDate
 				}
-				return relevantTxs[i].ID < relevantTxs[j].ID
+				return allRelatedTxs[i].ID < allRelatedTxs[j].ID
 			})
 
-			// C. 逆算による期間開始在庫の算出
-			// stockStartDate(確定在庫日) の在庫は startingBalance である。
-			// ここから「逆算」して、filters.StartDate(90日前) 時点の在庫を推定する。
-			netChangeForBackCalc := 0.0
-
-			for _, t := range relevantTxs {
-				qty := signedYjQty(t.Flag, t.YjQuantity)
-
-				// ケースA: トランザクションが [StartDate ... stockStartDate] の範囲にある場合
-				// -> この変動は startingBalance に含まれているので、引くことで過去に戻る
-				if t.TransactionDate >= filters.StartDate && t.TransactionDate <= stockStartDate {
-					netChangeForBackCalc -= qty
-				}
-
-				// ケースB: トランザクションが [stockStartDate ... StartDate] の範囲にある場合
-				// (StartDateが未来の場合など。今回は稀だがロジックとして保持)
-				if t.TransactionDate > stockStartDate && t.TransactionDate < filters.StartDate {
-					netChangeForBackCalc += qty
+			// PackageStock日より未来の変動を積み上げる（これが現在在庫の正解）
+			currentTheoreticalStock := startingBalance
+			for _, t := range allRelatedTxs {
+				if t.TransactionDate > stockStartDate {
+					if t.Flag != 0 { // 棚卸レコードは無視
+						currentTheoreticalStock += signedYjQty(t.Flag, t.YjQuantity)
+					}
 				}
 			}
 
-			// 期間開始時点の在庫
-			periodStartingBalance := startingBalance + netChangeForBackCalc
+			// =================================================================================
+			// ステップ B: 【表示（リスト）】 90日分のリスト作成
+			// =================================================================================
 
-			// D. 積み上げ計算 (順算) で帳簿を作成
-			runningBalance := periodStartingBalance
 			var transactionsInPeriod []model.LedgerTransaction
+			var txsForDisplay []*model.TransactionRecord
+			netChangeInPeriod := 0.0
 			var maxUsage float64
 
-			for _, t := range relevantTxs {
+			// 表示期間（90日前）以降のデータを収集
+			for _, t := range allRelatedTxs {
+				if t.TransactionDate >= filters.StartDate && t.TransactionDate <= filters.EndDate {
+					txsForDisplay = append(txsForDisplay, t)
+
+					qty := 0.0
+					if t.Flag != 0 {
+						qty = signedYjQty(t.Flag, t.YjQuantity)
+					}
+					netChangeInPeriod += qty
+
+					if t.Flag == 3 && t.YjQuantity > maxUsage {
+						maxUsage = t.YjQuantity
+					}
+				}
+			}
+
+			// =================================================================================
+			// ステップ C: 【つじつま合わせ】 表示用開始在庫の逆算
+			// =================================================================================
+
+			// 「現在在庫(正解)」から「期間内の変動」を引けば、「期間開始時点の在庫」になる
+			// ※filters.EndDate が未来(99991231)の場合はこれでOK
+			// もしfilters.EndDateが過去なら、EndDate以降の変動も考慮が必要だが、
+			// 今回の要件（現在在庫を知る、直近90日を見る）ではこれで十分整合する
+
+			// 全期間の変動を考慮した現在在庫から、表示期間の変動を引く
+			// (厳密には、表示期間より「後」のデータがある場合はそれも引く必要がある)
+			netChangeAfterPeriod := 0.0
+			for _, t := range allRelatedTxs {
+				if t.TransactionDate > filters.EndDate {
+					if t.Flag != 0 {
+						netChangeAfterPeriod += signedYjQty(t.Flag, t.YjQuantity)
+					}
+				}
+			}
+
+			// 期間開始在庫 = 現在在庫 - (期間内変動 + 期間後変動)
+			periodStartingBalance := currentTheoreticalStock - (netChangeInPeriod + netChangeAfterPeriod)
+
+			// 帳簿の作成（RunningBalanceの計算）
+			runningBalance := periodStartingBalance
+			for _, t := range txsForDisplay {
 				qty := 0.0
 				if t.Flag != 0 {
 					qty = signedYjQty(t.Flag, t.YjQuantity)
 				}
-
 				runningBalance += qty
 
-				if t.Flag == 3 && t.YjQuantity > maxUsage {
-					maxUsage = t.YjQuantity
-				}
-
-				// 指定期間内のデータであれば表示用リストに追加
-				if t.TransactionDate >= filters.StartDate && t.TransactionDate <= filters.EndDate {
-					transactionsInPeriod = append(transactionsInPeriod, model.LedgerTransaction{
-						TransactionRecord: *t,
-						RunningBalance:    runningBalance,
-					})
-				}
+				transactionsInPeriod = append(transactionsInPeriod, model.LedgerTransaction{
+					TransactionRecord: *t,
+					RunningBalance:    runningBalance,
+				})
 			}
 
-			// E. 最終在庫の確定
-			// runningBalance は、論理的には「現在在庫」と一致するはず
-			// (startingBalance - backCalc + forwardCalc = startingBalance + forward_from_stock_date)
+			// =================================================================================
+			// ステップ D: 最終結果の格納
+			// =================================================================================
 
 			backorderQty := backordersMap[key]
-			effectiveEndingBalance := runningBalance + backorderQty
+			effectiveEndingBalance := currentTheoreticalStock + backorderQty // 現在在庫 + 発注残
 
 			var precompTotalForPackage float64
 			for _, master := range mastersInPackageGroup {
@@ -216,10 +237,10 @@ func GetStockLedger(conn *sqlx.DB, filters model.AggregationFilters) ([]model.St
 
 			pkg := model.StockLedgerPackageGroup{
 				PackageKey:             key,
-				StartingBalance:        periodStartingBalance,
-				EndingBalance:          runningBalance,
-				Transactions:           transactionsInPeriod,
-				NetChange:              runningBalance - periodStartingBalance,
+				StartingBalance:        periodStartingBalance,   // 画面表示用（90日前）
+				EndingBalance:          currentTheoreticalStock, // 現在在庫（計算の正解）
+				Transactions:           transactionsInPeriod,    // 表示用リスト
+				NetChange:              netChangeInPeriod,
 				Masters:                mastersInPackageGroup,
 				EffectiveEndingBalance: effectiveEndingBalance,
 				MaxUsage:               maxUsage,

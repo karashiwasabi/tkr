@@ -3,31 +3,27 @@ package database
 
 import (
 	"fmt"
-	"log" // log パッケージをインポート
+	"log"
 	"tkr/model"
-	"tkr/units" // TKRのunitsパッケージをインポート
+	"tkr/units"
 
 	"github.com/jmoiron/sqlx"
 )
 
-// ▼▼▼【ここを修正】シグネチャに excludeZeroStock を追加 ▼▼▼
 // GetDeadStockList は、指定された期間に処方(flag=3)されていない在庫品目（不動在庫）のリストを取得します。
 func GetDeadStockList(db *sqlx.DB, startDate, endDate string, excludeZeroStock bool) ([]model.DeadStockItem, error) {
-	// ▲▲▲【修正ここまで】▲▲▲
 
 	// B: 期間内に処方(flag=3)された package_key のリストを作成
 	const movedKeysQuery = `
 		SELECT DISTINCT 
-			T.yj_code ||
-'|' || 
+			T.yj_code || '|' || 
 			COALESCE(T.package_form, '不明') || '|' || 
 			PRINTF('%g', COALESCE(T.jan_pack_inner_qty, 0)) || '|' ||
-COALESCE(U.name, T.yj_unit_name, '不明') AS package_key
+			COALESCE(U.name, T.yj_unit_name, '不明') AS package_key
 		FROM transaction_records AS T
 		LEFT JOIN units AS U ON T.yj_unit_name = U.code
 		WHERE T.flag = 3 
-		  AND T.transaction_date BETWEEN ?
-AND ?
+		  AND T.transaction_date BETWEEN ? AND ?
 	`
 
 	// A: product_master から構築した全 package_key
@@ -35,14 +31,12 @@ AND ?
 		SELECT
 			P.yj_code || '|' || 
 			COALESCE(P.package_form, '不明') || '|' ||
-PRINTF('%g', COALESCE(P.jan_pack_inner_qty, 0)) || '|' || 
+			PRINTF('%g', COALESCE(P.jan_pack_inner_qty, 0)) || '|' || 
 			COALESCE(U.name, P.yj_unit_name, '不明') AS package_key,
 			P.yj_code,
 			MIN(P.kana_name) as kana_name, 
 			MIN(P.usage_classification) as usage_classification,
-			-- ▼▼▼【ここに追加】代表の内包装数量を取得 ▼▼▼
 			MIN(P.jan_pack_inner_qty) as jan_pack_inner_qty
-			-- ▲▲▲【追加ここまで】▲▲▲
 		FROM product_master AS P
 		LEFT JOIN units AS U ON P.yj_unit_name = U.code
 		WHERE P.yj_code != "" 
@@ -52,15 +46,14 @@ PRINTF('%g', COALESCE(P.jan_pack_inner_qty, 0)) || '|' ||
 	// C: 全期間の理論在庫（通算在庫）を集計
 	const theoreticalStockQuery = `
 		SELECT 
-			T.yj_code ||
-'|' || 
+			T.yj_code || '|' || 
 			COALESCE(T.package_form, '不明') || '|' || 
 			PRINTF('%g', COALESCE(T.jan_pack_inner_qty, 0)) || '|' ||
-COALESCE(U.name, T.yj_unit_name, '不明') AS package_key,
+			COALESCE(U.name, T.yj_unit_name, '不明') AS package_key,
 			SUM(CASE 
-				WHEN T.flag = 1 THEN T.yj_quantity  -- 納品 (+)
-				WHEN T.flag = 3 THEN -T.yj_quantity -- 処方 (-)
-				WHEN T.flag = 2 THEN -T.yj_quantity -- 返品 (-)
+				WHEN T.flag = 1 THEN T.yj_quantity
+				WHEN T.flag = 3 THEN -T.yj_quantity
+				WHEN T.flag = 2 THEN -T.yj_quantity
 				ELSE 0 
 			END) AS theoretical_stock
 		FROM transaction_records AS T
@@ -75,18 +68,15 @@ COALESCE(U.name, T.yj_unit_name, '不明') AS package_key,
 			A.package_key, 
 			A.yj_code, 
 			COALESCE(PS.stock_quantity_yj, C.theoretical_stock, 0) AS stock_quantity_yj,
-			A.kana_name,             -- ソート用
-			A.usage_classification,   -- ソート用
-			-- ▼▼▼【ここに追加】内包装数量 ▼▼▼
+			A.kana_name,
+			A.usage_classification,
 			A.jan_pack_inner_qty
-			-- ▲▲▲【追加ここまで】▲▲▲
 		FROM (
 			` + allMasterKeysQuery + `
 		) AS A
 		LEFT JOIN (
 			` + movedKeysQuery + `
-		) AS B ON A.package_key 
-= B.package_key
+		) AS B ON A.package_key = B.package_key
 		LEFT JOIN package_stock AS PS ON A.package_key = PS.package_key -- D: 棚卸在庫
 		LEFT JOIN (
 			` + theoreticalStockQuery + `
@@ -94,15 +84,12 @@ COALESCE(U.name, T.yj_unit_name, '不明') AS package_key,
 		WHERE 
 			B.package_key IS NULL -- 期間内に動きがなかったもの
 	`
-	// ▼▼▼【ここに追加】在庫ゼロ除外オプション ▼▼▼
 	if excludeZeroStock {
 		query += ` AND COALESCE(PS.stock_quantity_yj, C.theoretical_stock, 0) > 0`
 	}
-	// ▲▲▲【追加ここまで】▲▲▲
 
 	query += `
 		ORDER BY 
-			-- ▼▼▼【ここから修正】「内外歯注機他」の順序に変更 ▼▼▼
 			CASE COALESCE(A.usage_classification, '他')
 				WHEN '内' THEN 1
 				WHEN '外' THEN 2
@@ -112,7 +99,6 @@ COALESCE(U.name, T.yj_unit_name, '不明') AS package_key,
 				WHEN '他' THEN 6
 				ELSE 7
 			END,
-			-- ▲▲▲【修正ここまで】▲▲▲
 			A.kana_name,
 			A.package_key
 	`
@@ -126,49 +112,80 @@ COALESCE(U.name, T.yj_unit_name, '不明') AS package_key,
 		return []model.DeadStockItem{}, nil
 	}
 
-	// 各不動在庫品目の詳細（品名、ロット）を取得
+	// 2. 詳細情報取得のための準備
+	yjCodesMap := make(map[string]bool)
+	for _, item := range items {
+		if item.YjCode != "" {
+			yjCodesMap[item.YjCode] = true
+		}
+	}
+	var yjCodes []string
+	for yj := range yjCodesMap {
+		yjCodes = append(yjCodes, yj)
+	}
+
+	// ▼▼▼【修正】既存の関数を組み合わせてマスタを取得 ▼▼▼
+	// 対象のYJコードに関連する全JANコードを取得
+	productCodes, err := GetProductCodesByYjCodes(db, yjCodes)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get product codes for dead stock details: %w", err)
+	}
+	// JANコードからマスタマップを取得
+	mastersMap, err := GetProductMastersByCodesMap(db, productCodes)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get product masters map for dead stock details: %w", err)
+	}
+	var masters []*model.ProductMaster
+	for _, m := range mastersMap {
+		masters = append(masters, m)
+	}
+	// ▲▲▲【修正ここまで】▲▲▲
+
+	// マスタを PackageKey ごとにグルーピングし、JANコードリストを作成
+	janCodesByPackageKey := make(map[string][]string)
+	masterInfoByPackageKey := make(map[string]*model.ProductMaster)
+
+	for _, m := range masters {
+		key := GeneratePackageKey(m) // 共通ロジックを使用
+		janCodesByPackageKey[key] = append(janCodesByPackageKey[key], m.ProductCode)
+
+		// 表示用の代表マスタ情報を保持 (JCSHMS優先)
+		if current, exists := masterInfoByPackageKey[key]; !exists {
+			masterInfoByPackageKey[key] = m
+		} else if current.Origin != "JCSHMS" && m.Origin == "JCSHMS" {
+			masterInfoByPackageKey[key] = m
+		}
+	}
+
+	// 3. 各不動在庫品目の詳細（品名、ロット）を設定
 	for i := range items {
 		item := &items[i]
 
-		// ▼▼▼【ここに追加】YJ在庫 -> JAN在庫 への換算 ▼▼▼
+		// YJ在庫 -> JAN在庫 への換算
 		if item.JanPackInnerQty > 0 {
 			item.StockQuantityJan = item.StockQuantityYj / item.JanPackInnerQty
 		} else {
-			item.StockQuantityJan = 0 // 内包装数量がなければ 0
-		}
-		// ▲▲▲【追加ここまで】▲▲▲
-
-		// 代表品名と包装仕様を取得
-		var masterInfo struct {
-			ProductName   string  `db:"product_name"`
-			PackageForm   string  `db:"package_form"`
-			YjUnitName    string  `db:"yj_unit_name"`
-			YjPackUnitQty float64 `db:"yj_pack_unit_qty"`
-		}
-		err := db.Get(&masterInfo, `
-			SELECT product_name, package_form, yj_unit_name, yj_pack_unit_qty 
-			FROM product_master 
-			WHERE yj_code = ? 
-			ORDER BY origin = 'JCSHMS' DESC, product_code ASC LIMIT 1`,
-			item.YjCode)
-
-		if err == nil {
-			item.ProductName = masterInfo.ProductName
-			item.PackageSpec = fmt.Sprintf("%s %g%s",
-				masterInfo.PackageForm,
-				masterInfo.YjPackUnitQty,
-				units.ResolveName(masterInfo.YjUnitName)) // ※表示用の仕様は units.ResolveName を使う
+			item.StockQuantityJan = 0
 		}
 
-		// ▼▼▼【ここを修正】YJ在庫 -> JAN在庫 で判定 ▼▼▼
-		// 在庫が 0 より大きい品目のみロット・期限を取得
-		if item.StockQuantityJan > 0 {
-			// ▲▲▲【修正ここまで】▲▲▲
-			err = db.Select(&item.LotDetails, `
+		// 代表品名と包装仕様の設定
+		if master, ok := masterInfoByPackageKey[item.PackageKey]; ok {
+			item.ProductName = master.ProductName
+			item.PackageSpec = fmt.Sprintf("%s %g%s", master.PackageForm, master.YjPackUnitQty, units.ResolveName(master.YjUnitName))
+			if master.JanPackInnerQty > 0 {
+				item.PackageSpec += fmt.Sprintf(" (%g%s×%g%s)",
+					master.JanPackInnerQty, units.ResolveName(master.YjUnitName), master.JanPackUnitQty, units.ResolveName(fmt.Sprintf("%d", master.JanUnitCode)))
+			}
+		}
+
+		// ロット詳細の取得
+		targetJanCodes := janCodesByPackageKey[item.PackageKey]
+
+		if item.StockQuantityJan > 0 && len(targetJanCodes) > 0 {
+			q := `
 				SELECT 
 					T.jan_code, 
-					COALESCE(P.gs1_code, '') AS 
-gs1_code, 
+					COALESCE(P.gs1_code, '') AS gs1_code, 
 					T.package_spec, 
 					T.expiry_date, 
 					T.lot_number, 
@@ -176,23 +193,29 @@ gs1_code,
 					T.jan_unit_name
 				FROM transaction_records AS T
 				LEFT JOIN product_master AS P ON T.jan_code = P.product_code
-				WHERE T.yj_code = ?
-AND T.flag = 0 
+				WHERE T.jan_code IN (?) 
+				  AND T.flag = 0 
 				  AND T.transaction_date = (
 					  SELECT MAX(last_inventory_date) 
 					  FROM package_stock 
-					  WHERE yj_code = ?
+					  WHERE package_key = ? 
 				  )
 				ORDER BY T.expiry_date, T.lot_number
-			`, item.YjCode, item.YjCode)
-
+			`
+			query, args, err := sqlx.In(q, targetJanCodes, item.PackageKey)
 			if err != nil {
-				// 明細取得に失敗してもエラーにせず、リストは返す
-				log.Printf("WARN: Failed to get lot details for dead stock YJ %s: %v", item.YjCode, err)
+				log.Printf("WARN: Failed to build IN query for dead stock details: %v", err)
+				item.LotDetails = []model.LotDetail{}
+				continue
+			}
+			query = db.Rebind(query)
+
+			err = db.Select(&item.LotDetails, query, args...)
+			if err != nil {
+				log.Printf("WARN: Failed to get lot details for dead stock PackageKey %s: %v", item.PackageKey, err)
 				item.LotDetails = []model.LotDetail{}
 			}
 		} else {
-			// 在庫が0の品目はロット検索をスキップ
 			item.LotDetails = []model.LotDetail{}
 		}
 	}
