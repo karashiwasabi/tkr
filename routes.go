@@ -161,4 +161,8 @@ func SetupRoutes(mux *http.ServeMux, dbConn *sqlx.DB) {
 	mux.HandleFunc("/api/pricing/update", pricing.BulkUpdateHandler(dbConn))
 	mux.HandleFunc("/api/pricing/direct_import", pricing.DirectImportHandler(dbConn))
 	mux.HandleFunc("/api/pricing/backup_export", pricing.BackupExportHandler(dbConn))
+
+	// ▼▼▼【追加】返品リスト用ルート ▼▼▼
+	mux.HandleFunc("/api/returns/candidates", reorder.GenerateReturnCandidatesHandler(dbConn))
+	// ▲▲▲【追加ここまで】▲▲▲
 }

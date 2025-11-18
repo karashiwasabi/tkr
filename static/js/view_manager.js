@@ -1,7 +1,5 @@
 // C:\Users\wasab\OneDrive\デスクトップ\TKR\static\js\view_manager.js
-// (新規作成)
 
-// ▼▼▼ app.js からビュー初期化関数をすべて移管 ▼▼▼
 import { initDatUpload, fetchAndRenderDat } from './dat.js';
 import { initMasterEditView } from './masteredit.js';
 import { initConfigView, loadConfigAndWholesalers } from './config.js';
@@ -14,11 +12,11 @@ import { initReorderView, fetchAndRenderReorder } from './reorder.js';
 import { initBackorderView } from './backorder.js';
 import { initValuationView } from './valuation.js';
 import { initPricingView } from './pricing.js';
-// ▲▲▲ 移管ここまで ▲▲▲
+// ▼▼▼ 追加: 返品リストモジュール ▼▼▼
+import { initReturnListView } from './return_list.js';
 
 let views;
 
-// ▼▼▼ app.js から initializedViews を移管 ▼▼▼
 const initializedViews = {
     dat: false,
     usage: false,
@@ -29,11 +27,12 @@ const initializedViews = {
     deadstock: false,
     precomp: false,
     reorder: false,
+    // ▼▼▼ 追加: 初期化フラグ ▼▼▼
+    returnList: false,
     backorder: false,
     valuation: false,
     pricing: false,
 };
-// ▲▲▲ 移管ここまで ▲▲▲
 
 /**
  * app.jsの起動時にDOM要素(views)をキャッシュします。
@@ -42,7 +41,6 @@ export function initViewManager() {
     views = document.querySelectorAll('.view');
 }
 
-// ▼▼▼ app.js から setActiveView を移管 ▼▼▼
 /**
  * 指定されたビューをアクティブにし、必要に応じて初期化します。
  * @param {string} targetId - アクティブにするビューのID
@@ -117,15 +115,24 @@ export function setActiveView(targetId) {
             resetPrecompView();
             break;
         case 'reorder-view':
-             if (!initializedViews.reorder) {
+            if (!initializedViews.reorder) {
                 console.log("Initializing Reorder view...");
                 initReorderView(); 
                 initializedViews.reorder = true;
             }
-           fetchAndRenderReorder(); 
+            fetchAndRenderReorder(); 
             break;
+        // ▼▼▼ 追加: 返品リストビューの処理 ▼▼▼
+        case 'return-list-view':
+            if (!initializedViews.returnList) {
+                console.log("Initializing Return List view...");
+                initReturnListView();
+                initializedViews.returnList = true;
+            }
+            break;
+        // ▲▲▲ 追加ここまで ▲▲▲
         case 'backorder-view': 
-             if (!initializedViews.backorder) {
+            if (!initializedViews.backorder) {
                 console.log("Initializing Backorder view...");
                 initBackorderView(); 
                 initializedViews.backorder = true;
@@ -153,4 +160,3 @@ export function setActiveView(targetId) {
         targetView.dispatchEvent(new CustomEvent('show'));
     }
 }
-// ▲▲▲ 移管ここまで ▲▲▲

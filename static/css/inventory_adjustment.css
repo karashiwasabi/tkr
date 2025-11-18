@@ -1,14 +1,5 @@
 /* C:\Users\wasab\OneDrive\デスクトップ\TKR\static\css\inventory_adjustment.css */
 
-/* ▼▼▼【削除】固有の背景色指定を削除 ▼▼▼ */
-/*
-#inventory-adjustment-view .filter-container {
-    background-color: #f0f8ff; 
-    border: 1px solid #cce;
-}
-*/
-/* ▲▲▲【削除ここまで】▲▲▲ */
-
 /* 共通フォーム内の input/select へのスタイル指定 */
 #inventory-adjustment-view .filter-container .form-group input,
 #inventory-adjustment-view .filter-container .form-group select {
@@ -89,7 +80,7 @@
     margin-top: 20px;
 }
 .adj-date-group {
-    display: flex; 
+    display: flex;
     gap: 20px; 
     align-items: flex-end;
 }
@@ -97,7 +88,7 @@
     padding: 3px;
 }
 .adj-barcode-form {
-    flex-grow: 1; 
+    flex-grow: 1;
     margin: 0;
 }
 .adj-barcode-form input {
@@ -117,9 +108,11 @@
     font-size: 10px; 
     margin-bottom: 5px;
 }
-.reference-table th.col-ref-product { width: 40%; }
+.reference-table th.col-ref-product { width: 40%;
+}
 .reference-table th.col-ref-qty     { width: 15%; }
-.reference-table th.col-ref-expiry  { width: 20%; }
+.reference-table th.col-ref-expiry  { width: 20%;
+}
 .reference-table th.col-ref-lot     { width: 25%; }
 
 
@@ -148,7 +141,8 @@
 .user-input-area {
     font-size: 12px;
     padding: 10px;
-    background-color: #fffbdd; /* 薄い黄色 */
+    background-color: #fffbdd;
+    /* 薄い黄色 */
     border: 1px solid #e6db55;
     border-radius: 3px;
 }
@@ -233,11 +227,71 @@
 .physical-stock-display {
     display: inline-block;
     padding: 4px 8px;
-    background-color: #DC3545; /* 赤系の背景 */
-    color: white;             /* 白文字 */
+    /* ▼▼▼ デフォルトはグレー（一致） ▼▼▼ */
+    background-color: #e9ecef;
+    color: #333;
     font-weight: bold;
     border-radius: 4px;
     min-width: 60px;
     text-align: right;
-    border: 1px solid #a02834;
+    border: 1px solid #ced4da;
+    transition: background-color 0.3s ease;
 }
+
+/* ▼▼▼ 不一致の場合のスタイル（緑） ▼▼▼ */
+.physical-stock-display.stock-mismatch {
+    background-color: #198754; /* 緑色 */
+    color: white;
+    border-color: #157347;
+    animation: pulse-green 0.5s;
+}
+
+@keyframes pulse-green {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.1); }
+    100% { transform: scale(1); }
+}
+
+/* プレースホルダー（目安数量）のスタイル */
+.final-input-tbody input::placeholder {
+    color: #999;        /* 薄いグレー */
+    font-style: italic;
+    font-size: 0.9em;
+    opacity: 1;
+}
+
+/* 入力確定後のスタイル */
+.final-input-tbody input:not(:placeholder-shown) {
+    color: #000;
+    font-weight: bold;
+}
+
+/* ▼▼▼ 期限切れ: 赤 ▼▼▼ */
+.expiry-input.status-expired {
+    background-color: #fbeeee;
+    color: #dc3545;
+    border-color: #dc3545;
+    font-weight: bold;
+}
+
+/* ▼▼▼ 残り1ヶ月: 青 ▼▼▼ */
+.expiry-input.status-near {
+    background-color: #e7f1ff;
+    color: #0d6efd;
+    border-color: #0d6efd;
+    font-weight: bold;
+}
+
+/* ▼▼▼ 追加: 参照リスト(td)用の期限色スタイル ▼▼▼ */
+td.status-expired {
+    color: #dc3545; /* 赤文字 */
+    font-weight: bold;
+    background-color: #fbeeee; /* 薄い赤背景 */
+}
+
+td.status-near {
+    color: #0d6efd; /* 青文字 */
+    font-weight: bold;
+    background-color: #e7f1ff; /* 薄い青背景 */
+}
+/* ▲▲▲ 追加ここまで ▲▲▲ */

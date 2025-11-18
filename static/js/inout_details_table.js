@@ -22,9 +22,9 @@ function createInoutRowsHTML(record = {}) {
     const yjQuantity = janQuantity * janPackInnerQty;
     const subtotal = yjQuantity * nhiPrice;
     const transactionType = record.flag ? (transactionTypeMap[record.flag] || '') : '';
-    console.log('Record flag:', record.flag, 'Type:', typeof record.flag, 'Mapped type:', transactionType); // デバッグ用ログ
+    // console.log('Record flag:', record.flag, 'Type:', typeof record.flag, 'Mapped type:', transactionType); // デバッグ用ログ
 
-    // ▼▼▼【修正】TKRのテーブル定義 (  ) に合わせる (空白列を削除し、col-* クラスを付与) ▼▼▼
+    // ▼▼▼【修正】TKRのテーブル定義 (table.css) に合わせる (空白列を削除し、col-* クラスを付与) ▼▼▼
     const upperRow = `
         <tr data-row-id="${rowId}">
             <td rowspan="2" class="col-action center"><button class="delete-row-btn btn">削除</button></td>
@@ -150,7 +150,7 @@ export function initDetailsTable() {
     // ▼▼▼【修正】TKR の common_table.js を使用 ▼▼▼
     tableContainer.innerHTML = renderTransactionTableHTML([], "<tbody></tbody>");
     // ▲▲▲【修正ここまで】▲▲▲
-    
+
     tableBody = tableContainer.querySelector('tbody');
     clearDetailsTable();
 
@@ -174,12 +174,13 @@ export function initDetailsTable() {
         }
         if (e.target.classList.contains('product-name-cell')) {
             const activeRow = e.target.closest('tr');
+     
             // ▼▼▼【修正】TKR の品目検索APIを呼び出す ▼▼▼
             showModal(activeRow, (selectedProduct, targetRow) => {
                 
                 // TKRのProductMasterView (selectedProduct) をデータとして保存
                 targetRow.dataset.product = JSON.stringify(selectedProduct);
-         
+        
                 const lowerRow = targetRow.nextElementSibling;
 
                 targetRow.querySelector('.display-yj-code').textContent = selectedProduct.yjCode;
@@ -200,7 +201,8 @@ export function initDetailsTable() {
                 quantityInput.select();
                 recalculateRow(targetRow);
             }, {
-                searchMode: 'inout' // JCSHMS統合検索モードを指定
+                searchMode: 'inout', // JCSHMS統合検索モードを指定
+                allowAdopted: true   // ★追加: 採用済み品目も選択可能にする
             });
             // ▲▲▲【修正ここまで】▲▲▲
         }

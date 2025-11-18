@@ -5,7 +5,7 @@
     flex-wrap: wrap;
     gap: 10px 16px;
     padding: 10px;
-border: 1px solid #ccc;
+    border: 1px solid #ccc;
     background-color: #f7f7f7;
     align-items: flex-end;
     margin-bottom: 15px;
@@ -14,7 +14,7 @@ border: 1px solid #ccc;
 .deadstock-controls .form-group {
     display: flex;
     flex-direction: column;
-gap: 4px;
+    gap: 4px;
 }
 .deadstock-controls .form-group label {
     font-size: 10px;
@@ -32,37 +32,57 @@ gap: 4px;
     margin-left: auto;
 }
 
-/* ▼▼▼【追加】アップロード専用エリアのスタイル ▼▼▼ */
+/* アップロード専用エリアのスタイル */
 .deadstock-upload-area {
     background-color: #f0f4f8; 
     border-color: #cce;
     margin-top: -10px;
 }
-/* ▲▲▲【追加ここまで】▲▲▲ */
 
 /* 不動在庫テーブル */
 #deadstock-table {
     margin-top: 10px;
 }
 
-/* ▼▼▼【ここから修正】列幅を調整 ▼▼▼ */
-#deadstock-table th.col-ds-action { width: 8%;
-} /* ★ 10% -> 8% */
-#deadstock-table th.col-ds-key { width: 24%; } /* ★ 20% -> 24% */
-#deadstock-table th.col-ds-name { width: 25%;
-} /* 変更なし */
-#deadstock-table th.col-ds-qty { width: 8%; } /* ★ 10% -> 8% */
-#deadstock-table th.col-ds-details { width: 35%;
-} /* 変更なし */
-/* ▲▲▲【修正ここまで】▲▲▲ */
+/* 列幅の調整 */
+#deadstock-table th.col-ds-action { 
+    width: 5%; 
+} 
+#deadstock-table th.col-ds-product { 
+    width: 35%; 
+}
+#deadstock-table th.col-ds-qty { 
+    width: 7%; 
+} 
+#deadstock-table th.col-ds-details { 
+    width: 53%; 
+} 
+
+/* 製品情報セルのスタイル */
+#deadstock-table .col-ds-product .product-name {
+    font-weight: bold;
+}
+#deadstock-table .col-ds-product .package-key-sub {
+    font-size: 0.85em;
+    color: #666;
+}
+
+/* 詳細情報セルのスタイル (折り返し許可) */
+#deadstock-table td.col-ds-details {
+    white-space: normal;
+    word-break: break-all;
+    vertical-align: top;
+    padding: 4px;
+}
 
 #deadstock-table .lot-details-list {
     font-size: 0.9em;
     padding-left: 15px;
     margin: 0;
+    white-space: normal; /* リスト内も折り返し許可 */
 }
 
-/* ▼▼▼【ここから追加】ボタンのスタイル ▼▼▼ */
+/* ボタンのスタイル */
 #deadstock-table .adjust-inventory-btn {
     padding: 1px 4px;
     font-size: 9px;
@@ -74,4 +94,20 @@ gap: 4px;
     background-color: #17a2b8;
     color: #fff;
 }
-/* ▲▲▲【追加ここまで】▲▲▲ */
+
+/* ▼▼▼ 追加: 期限切れ・期限間近の色分けスタイル ▼▼▼ */
+.status-expired {
+    color: #dc3545; /* 赤文字 */
+    font-weight: bold;
+    background-color: #fbeeee; /* 背景色で強調 */
+    padding: 0 2px;
+    border-radius: 2px;
+}
+
+.status-near {
+    color: #0d6efd; /* 青文字 */
+    font-weight: bold;
+    background-color: #e7f1ff; /* 背景色で強調 */
+    padding: 0 2px;
+    border-radius: 2px;
+}

@@ -1,7 +1,5 @@
 // C:\Users\wasab\OneDrive\デスクトップ\TKR\static\js\utils.js
-// ▼▼▼【ここから追加】common_table.js から関数をインポート ▼▼▼
 import { renderTransactionTableHTML, renderEmptyTableHTML } from './common_table.js';
-// ▲▲▲【追加ここまで】▲▲▲
 
 export function hiraganaToKatakana(str) {
 	if (!str) return '';
@@ -11,16 +9,13 @@ export function hiraganaToKatakana(str) {
 	});
 }
 
-// ▼▼▼【ここから修正】引数(date)を尊重するように修正 ▼▼▼
 export function getLocalDateString(date = null) {
 	const today = date instanceof Date ? date : new Date();
-	// 引数がなければ new Date() を使う
 	const yyyy = today.getFullYear();
 	const mm = String(today.getMonth() + 1).padStart(2, '0');
 	const dd = String(today.getDate()).padStart(2, '0');
 	return `${yyyy}-${mm}-${dd}`;
 }
-// ▲▲▲【修正ここまで】▲▲▲
 
 export function parseBarcode(code) {
 	const length = code.length;
@@ -44,6 +39,7 @@ export function parseBarcode(code) {
 	}
 	throw new Error('不明なバーコード形式です');
 }
+
 function parseAIString(code) {
 	let rest = code;
 	const data = { gtin14: '', expiryDate: '', lotNumber: '' };
@@ -102,24 +98,65 @@ export async function fetchProductMasterByBarcode(barcode) {
 	return await res.json();
 }
 
-// (master_data.js に移管したため削除)
-// export async function fetchWholesalers() { ... }
-// export async function fetchWholesalerMap() { ... }
-
 export function toHalfWidthKatakana(str) {
-// ... (中略: toHalfWidthKatakana は変更なし) ...
+    if (!str) return '';
+    const kanaMap = {
+        'ガ': 'ｶﾞ', 'ギ': 'ｷﾞ', 'グ': 'ｸﾞ', 'ゲ': 'ｹﾞ', 'ゴ': 'ｺﾞ',
+        'ザ': 'ｻﾞ', 'ジ': 'ｼﾞ', 'ズ': 'ｽﾞ', 'ゼ': 'ｾﾞ', 'ゾ': 'ｿﾞ',
+        'ダ': 'ﾀﾞ', 'ヂ': 'ﾁﾞ', 'ヅ': 'ﾂﾞ', 'デ': 'ﾃﾞ', 'ド': 'ﾄﾞ',
+        'バ': 'ﾊﾞ', 'ビ': 'ﾋﾞ', 'ブ': 'ﾌﾞ', 'ベ': 'ﾍﾞ', 'ボ': 'ﾎﾞ',
+        'パ': 'ﾊﾟ', 'ピ': 'ﾋﾟ', 'プ': 'ﾌﾟ', 'ペ': 'ﾍﾟ', 'ポ': 'ﾎﾟ',
+        'ヴ': 'ｳﾞ', 'ア': 'ｱ', 'イ': 'ｲ', 'ウ': 'ｳ', 'エ': 'ｴ', 'オ': 'ｵ',
+        'カ': 'ｶ', 'キ': 'ｷ', 'ク': 'ｸ', 'ケ': 'ｹ', 'コ': 'ｺ',
+        'サ': 'ｻ', 'シ': 'ｼ', 'ス': 'ｽ', 'セ': 'ｾ', 'ソ': 'ｿ',
+        'タ': 'ﾀ', 'チ': 'ﾁ', 'ツ': 'ﾂ', 'テ': 'ﾃ', 'ト': 'ﾄ',
+        'ナ': 'ﾅ', 'ニ': 'ﾆ', 'ヌ': 'ﾇ', 'ネ': 'ﾈ', 'ノ': 'ﾉ',
+        'ハ': 'ﾊ', 'ヒ': 'ﾋ', 'フ': 'ﾌ', 'ヘ': 'ﾍ', 'ホ': 'ﾎ',
+        'マ': 'ﾏ', 'ミ': 'ﾐ', 'ム': 'ﾑ', 'メ': 'ﾒ', 'モ': 'ﾓ',
+        'ヤ': 'ﾔ', 'ユ': 'ﾕ', 'ヨ': 'ﾖ',
+        'ラ': 'ﾗ', 'リ': 'ﾘ', 'ル': 'ﾙ', 'レ': 'ﾚ', 'ロ': 'ﾛ',
+        'ワ': 'ﾜ', 'ヲ': 'ｦ', 'ン': 'ﾝ',
+        'ァ': 'ｧ', 'ィ': 'ｨ', 'ゥ': 'ｩ', 'ェ': 'ｪ', 'ォ': 'ｫ',
+        'ッ': 'ｯ', 'ャ': 'ｬ', 'ュ': 'ｭ', 'ョ': 'ｮ',
+        'ー': 'ｰ', '。': '｡', '、': '､', '「': '｢', '」': '｣', '・': '･'
+    };
+    return str.replace(/[ァ-ンー。、「」・]/g, function(s) {
+        return kanaMap[s] || s;
+    });
 }
 
-// ▼▼▼【ここから修正】共通ファイルアップロード関数 (Go APIがJSONを返す前提に変更) ▼▼▼
 /**
- * ファイルアップロードを処理する共通関数
- * @param {string} apiEndpoint - アップロード先のAPI URL (例: '/api/dat/upload')
- * @param {FileList} files - <input type="file"> から取得したファイルリスト
- * @param {HTMLElement} fileInput - ファイル入力要素 (処理後にリセットするため)
- * @param {HTMLElement} uploadResultContainer - 処理結果のサマリーを表示するコンテナ
- * @param {HTMLElement} dataTable - 処理結果のテーブルを表示するコンテナ
- * @param {string} loadingMessage - ローディング中に表示するメッセージ (例: 'DATファイルを処理中...')
+ * 日付文字列(YYYYMM or YYYYMMDD)を受け取り、期限状態を判定する
+ * 戻り値: 'status-expired' (赤), 'status-near' (青), '' (なし)
  */
+export function getExpiryStatus(dateStr) {
+    if (!dateStr) return '';
+    
+    let year, month;
+    // YYYYMM または YYYYMMDD に対応
+    if (dateStr.length >= 6) {
+        year = parseInt(dateStr.substring(0, 4), 10);
+        month = parseInt(dateStr.substring(4, 6), 10);
+    } else {
+        return '';
+    }
+
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth() + 1;
+
+    // 月差分を計算 (マイナスなら過去、0なら今月、1なら来月)
+    const monthDiff = (year - currentYear) * 12 + (month - currentMonth);
+
+    if (monthDiff < 0) {
+        return 'status-expired'; // 期限切れ (赤)
+    } else if (monthDiff <= 1) {
+        return 'status-near';    // 残り1ヶ月以内 (青)
+    }
+
+    return ''; // 安全 (緑などは付けない)
+}
+
 export async function handleFileUpload(apiEndpoint, files, fileInput, uploadResultContainer, dataTable, loadingMessage) {
     if (!files || files.length === 0) {
       return;
@@ -131,30 +168,25 @@ export async function handleFileUpload(apiEndpoint, files, fileInput, uploadResu
 
     const formData = new FormData();
     for (const file of files) {
-        formData.append('file', file);
+      formData.append('file', file);
     }
 
     try {
         const response = await fetch(apiEndpoint, {
-            method: 'POST',
+           method: 'POST',
             body: formData,
         });
         
-        // ▼▼▼【ここから修正】JSONパース失敗に備える ▼▼▼
         const responseText = await response.text();
         let result;
         try {
-            result = JSON.parse(responseText);
+          result = JSON.parse(responseText);
         } catch (jsonError) {
-            // JSONパースに失敗した場合 (サーバーがプレーンテキストのエラーを返した)
             if (!response.ok) {
-                // サーバーエラー (400, 500) かつ JSON ではない
                 throw new Error(responseText || `サーバーエラー (HTTP ${response.status})`);
             }
-            // サーバー 200 OK だが JSON ではない (通常ありえないが念のため)
             result = { message: responseText };
         }
-        // ▲▲▲【修正ここまで】▲▲▲
 
         if (!response.ok) {
             throw new Error(result.message || `サーバーエラー (HTTP ${response.status})`);
@@ -177,13 +209,12 @@ export async function handleFileUpload(apiEndpoint, files, fileInput, uploadResu
             summaryHtml += '</ul>';
         }
         if (uploadResultContainer) uploadResultContainer.innerHTML = summaryHtml;
-        // ▼▼▼【修正】result.tableHTML を削除し、result.records を共通関数に渡す ▼▼▼
+        
         if (dataTable && result.records && result.records.length > 0) { 
             dataTable.innerHTML = renderTransactionTableHTML(result.records);
         } else if (dataTable) {
             dataTable.innerHTML = renderEmptyTableHTML();
         }
-        // ▲▲▲【修正ここまで】▲▲▲
         
         window.showNotification(result.message || 'ファイルの処理が完了しました。', 'success');
     } catch (error) {
@@ -198,4 +229,3 @@ export async function handleFileUpload(apiEndpoint, files, fileInput, uploadResu
         if (fileInput) fileInput.value = '';
     }
 }
-// ▲▲▲【修正ここまで】▲▲▲

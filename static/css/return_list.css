@@ -1,0 +1,46 @@
+/* C:\Users\wasab\OneDrive\デスクトップ\TKR\static\css\return_list.css */
+
+/* 入力フォームのスタイル */
+#return-shelf-number {
+    width: 150px;
+}
+
+#return-coefficient {
+    width: 80px;
+    padding: 3px;
+}
+
+#generate-return-candidates-btn {
+    background-color: #dc3545;
+    color: white;
+}
+#generate-return-candidates-btn:hover {
+    background-color: #c82333;
+}
+
+/* テーブル内のスタイル */
+#return-candidates-output .data-table th:nth-child(1) { width: 30%; } /* 製品名 */
+#return-candidates-output .data-table th:nth-child(2) { width: 20%; } /* メーカー */
+#return-candidates-output .data-table th:nth-child(3) { width: 10%; } /* 最小JAN包装 */
+#return-candidates-output .data-table th:nth-child(4) { width: 10%; } /* 理論在庫 */
+#return-candidates-output .data-table th:nth-child(5) { width: 10%; } /* 閾値 */
+#return-candidates-output .data-table th:nth-child(6) { width: 10%; } /* 返品推奨数 */
+#return-candidates-output .data-table th:nth-child(7) { width: 10%; } /* 単位 */
+
+#return-candidates-output .data-table td.excess-qty {
+    color: #dc3545;
+    font-weight: bold;
+}
+
+/* JSで生成する要素用のクラス */
+.return-list-condition {
+    margin-bottom: 10px;
+    text-align: right;
+    font-size: 0.9em;
+    color: #555;
+}
+
+.spec-info {
+    font-size: 0.9em;
+    color: #666;
+}
