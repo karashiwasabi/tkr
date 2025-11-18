@@ -1,15 +1,6 @@
 /* C:\Users\wasab\OneDrive\デスクトップ\TKR\static\css\masteredit.css */
 
-/* ▼▼▼【削除】masterListTable は使用しなくなったため不要 ▼▼▼ */
-/*
-#masterListTable .edit-master-btn {
-    padding: 1px 4px;
-    font-size: 9px;
-}
-*/
-/* ▲▲▲【削除ここまで】▲▲▲ */
-
-/* ▼▼▼ master_edit_view.html のインラインスタイルをクラス化 ▼▼▼ */
+/* 既存のスタイルは維持 */
 
 /* 編集モーダル固有のレイアウト */
 #masterEditModalOverlay .readonly-group {
@@ -29,3 +20,48 @@
 #masterEditModalOverlay .form-group.flex-200 { flex-basis: 200px; }
 #masterEditModalOverlay .form-group.flex-300 { flex-basis: 300px; }
 #masterEditModalOverlay .form-group.flex-full { flex-basis: 100%; }
+
+
+/* ▼▼▼ 追加: 棚番連続登録モーダル用スタイル ▼▼▼ */
+#shelf-scan-list .scanned-item {
+    padding: 8px 10px;
+    border-bottom: 1px solid #eee;
+    background-color: #fff;
+    display: flex;
+    flex-direction: column;
+    animation: flash-highlight 1s; /* 追加時に光るアニメーション */
+}
+
+/* 新規作成されたアイテムを目立たせる */
+#shelf-scan-list .scanned-item.is-new {
+    background-color: #e6fffa; /* 薄い青緑 */
+    border-left: 4px solid #20c997;
+}
+
+#shelf-scan-list .item-main {
+    display: flex;
+    justify-content: space-between;
+    font-weight: bold;
+}
+
+#shelf-scan-list .item-sub {
+    font-size: 0.85em;
+    color: #666;
+    display: flex;
+    justify-content: space-between;
+}
+
+#shelf-scan-list .new-badge {
+    background-color: #20c997;
+    color: white;
+    font-size: 0.75em;
+    padding: 1px 4px;
+    border-radius: 3px;
+    margin-right: 5px;
+}
+
+@keyframes flash-highlight {
+    0% { background-color: #fff3cd; } /* 黄色っぽく光る */
+    100% { background-color: transparent; }
+}
+/* ▲▲▲ 追加ここまで ▲▲▲ */

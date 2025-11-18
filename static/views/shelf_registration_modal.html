@@ -1,0 +1,39 @@
+{{ define "shelf_registration_modal" }}
+<div id="shelfRegistrationModal" class="modal-overlay hidden">
+    <div class="modal-content" style="width: 600px; max-width: 95%;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; border-bottom: 1px solid #ccc; padding-bottom: 5px;">
+            <h2 style="margin: 0; border: none;">棚番連続登録</h2>
+            <button id="closeShelfRegModalBtn" class="btn">閉じる</button>
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 15px;">
+            <div style="background-color: #e7f1ff; padding: 10px; border: 1px solid #b6d4fe; border-radius: 4px;">
+                <label for="shelf-reg-number" style="font-weight: bold; font-size: 1.1em;">登録する棚番:</label>
+                <input type="text" id="shelf-reg-number" autocomplete="off" style="font-size: 1.2em; padding: 5px; width: 150px; font-weight: bold;" placeholder="例: A-01">
+                <span style="font-size: 0.9em; color: #555; margin-left: 10px;">※ここに入力した棚番が、スキャンした全商品に適用されます。</span>
+            </div>
+
+            <div>
+                <form id="shelf-reg-barcode-form">
+                    <label for="shelf-reg-barcode" style="font-weight: bold;">バーコードスキャン (連続):</label>
+                    <input type="text" id="shelf-reg-barcode" autocomplete="off" style="width: 100%; padding: 8px; font-size: 1.2em;" placeholder="JAN/GS1をスキャン...">
+                </form>
+                <p style="font-size: 0.85em; color: #666; margin-top: 3px;">※未登録のJANコードは自動的に仮登録され、リストに追加されます。</p>
+            </div>
+
+            <div style="flex: 1; border: 1px solid #ccc; background: #f9f9f9; padding: 0; min-height: 300px; max-height: 50vh; overflow-y: auto; display: flex; flex-direction: column;">
+                <div style="padding: 5px 10px; background: #eee; border-bottom: 1px solid #ccc; display: flex; justify-content: space-between; font-weight: bold; font-size: 0.9em; position: sticky; top: 0;">
+                    <span>スキャン済みリスト (<span id="shelf-reg-count">0</span>件)</span>
+                    <button id="shelf-reg-clear-btn" class="btn" style="font-size: 0.8em; padding: 1px 5px;">リストクリア</button>
+                </div>
+                <div id="shelf-scan-list" style="display: flex; flex-direction: column;">
+                    </div>
+            </div>
+
+            <div style="text-align: right; padding-top: 10px; border-top: 1px dashed #ccc;">
+                <button id="shelf-reg-execute-btn" class="btn" style="background-color: #28a745; color: white; font-weight: bold; padding: 10px 20px; font-size: 1.1em;">一括登録実行</button>
+            </div>
+        </div>
+    </div>
+</div>
+{{ end }}

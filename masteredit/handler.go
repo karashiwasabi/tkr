@@ -73,11 +73,6 @@ func renderMasterListHTML(masters []model.ProductMaster, statusMessage string) s
             <th class="col-yj">YJコード</th>
             <th class="col-gs1">GS1コード</th>
             <th class="col-jan">JANコード</th>
-          
-   
-
-
-
             <th class="col-product">製品名</th>
             <th class="col-kana">カナ名</th>
             <th class="col-maker">メーカー</th>
@@ -95,10 +90,7 @@ func renderMasterListHTML(masters []model.ProductMaster, statusMessage string) s
 		for _, master := range masters {
 			sb.WriteString(fmt.Sprintf(`<tr data-product-code="%s">`,
 				master.ProductCode))
-			sb.WriteString(fmt.Sprintf(`<td 
-
-class="center col-action"><button class="edit-master-btn 
- btn" data-code="%s">編集</button></td>`, master.ProductCode))
+			sb.WriteString(fmt.Sprintf(`<td class="center col-action"><button class="edit-master-btn btn" data-code="%s">編集</button></td>`, master.ProductCode))
 			sb.WriteString(fmt.Sprintf(`<td class="col-yj">%s</td>`, master.YjCode))
 			sb.WriteString(fmt.Sprintf(`<td class="col-gs1">%s</td>`,
 				master.Gs1Code))
@@ -116,7 +108,6 @@ class="center col-action"><button class="edit-master-btn
 	return sb.String()
 }
 
-// ▼▼▼【ここを修正】UpdateMasterHandler に「新規作成」ロジックを追加 ▼▼▼
 func UpdateMasterHandler(db *sqlx.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
@@ -214,11 +205,10 @@ func UpdateMasterHandler(db *sqlx.DB) http.HandlerFunc {
 
 				input.UserNotes = fmt.Sprintf("(自動記録: 旧Key [%s] から在庫振替要) %s", oldKey, input.UserNotes)
 
-				log.Printf("UpdateMasterHandler: PackageKey changed for %s.OldKey [%s] NewKey [%s]. Alert set.",
+				log.Printf("UpdateMasterHandler: PackageKey changed for %s. OldKey [%s] NewKey [%s]. Alert set.",
 					input.ProductCode, oldKey, newKey)
 			}
 		}
-		// ▲▲▲【修正ここまで】▲▲▲
 
 		// 6. マスタをDBに保存
 		if _, err := mastermanager.UpsertProductMasterSqlx(tx, input); err != nil {
@@ -246,10 +236,6 @@ func UpdateMasterHandler(db *sqlx.DB) http.HandlerFunc {
 		json.NewEncoder(w).Encode(response)
 	}
 }
-
-// ▲▲▲【修正ここまで】▲▲▲
-
-// ▼▼▼【ここから追加】(WASABI: masteredit/handler.go より移植) ▼▼▼
 
 type SetOrderStoppedRequest struct {
 	ProductCode string `json:"productCode"`
@@ -310,6 +296,65 @@ func SetOrderStoppedHandler(conn *sqlx.DB) http.HandlerFunc {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{"message": "更新しました。"})
+	}
+}
+
+// ▼▼▼【追加】棚番一括更新用ハンドラ ▼▼▼
+type BulkShelfRequest struct {
+	ProductCodes []string `json:"productCodes"`
+	ShelfNumber  string   `json:"shelfNumber"`
+}
+
+func BulkUpdateShelfHandler(conn *sqlx.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		var req BulkShelfRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "Invalid request body", http.StatusBadRequest)
+			return
+		}
+
+		if len(req.ProductCodes) == 0 {
+			http.Error(w, "No products selected", http.StatusBadRequest)
+			return
+		}
+
+		tx, err := conn.Beginx()
+		if err != nil {
+			http.Error(w, "Failed to start transaction", http.StatusInternalServerError)
+			return
+		}
+		defer tx.Rollback()
+
+		// sqlx.In を使って一括更新
+		query, args, err := sqlx.In(`UPDATE product_master SET shelf_number = ? WHERE product_code IN (?)`, req.ShelfNumber, req.ProductCodes)
+		if err != nil {
+			http.Error(w, "Failed to construct update query: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		query = tx.Rebind(query)
+
+		res, err := tx.Exec(query, args...)
+		if err != nil {
+			http.Error(w, "Failed to execute update: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		rowsAffected, _ := res.RowsAffected()
+
+		if err := tx.Commit(); err != nil {
+			http.Error(w, "Failed to commit transaction", http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{
+			"message": fmt.Sprintf("%d件の棚番を「%s」に更新しました。", rowsAffected, req.ShelfNumber),
+		})
 	}
 }
 

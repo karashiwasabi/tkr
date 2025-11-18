@@ -69,6 +69,9 @@ func SetupRoutes(mux *http.ServeMux, dbConn *sqlx.DB) {
 	mux.HandleFunc("/api/masters/update", masteredit.UpdateMasterHandler(dbConn))
 
 	mux.HandleFunc("/api/master/set_order_stopped", masteredit.SetOrderStoppedHandler(dbConn))
+	// ▼▼▼【追加】棚番一括更新用ルート ▼▼▼
+	mux.HandleFunc("/api/masters/bulk_update_shelf", masteredit.BulkUpdateShelfHandler(dbConn))
+	// ▲▲▲【追加ここまで】▲▲▲
 
 	mux.HandleFunc("/api/inventory/adjust/data", inventoryadjustment.GetInventoryDataHandler(dbConn))
 	mux.HandleFunc("/api/inventory/adjust/save", inventoryadjustment.SaveInventoryDataHandler(dbConn))
@@ -152,6 +155,8 @@ func SetupRoutes(mux *http.ServeMux, dbConn *sqlx.DB) {
 	mux.HandleFunc("/api/backorders/bulk_delete_by_id", backorder.BulkDeleteBackordersByIDHandler(dbConn))
 	mux.HandleFunc("/api/backorders/bulk_delete_by_date", backorder.BulkDeleteBackordersByDateHandler(dbConn))
 
+	mux.HandleFunc("/api/returns/candidates", reorder.GenerateReturnCandidatesHandler(dbConn))
+
 	mux.HandleFunc("/api/valuation", valuation.GetValuationHandler(dbConn))
 	mux.HandleFunc("/api/valuation/export_csv", valuation.ExportValuationCSVHandler(dbConn))
 
@@ -161,8 +166,4 @@ func SetupRoutes(mux *http.ServeMux, dbConn *sqlx.DB) {
 	mux.HandleFunc("/api/pricing/update", pricing.BulkUpdateHandler(dbConn))
 	mux.HandleFunc("/api/pricing/direct_import", pricing.DirectImportHandler(dbConn))
 	mux.HandleFunc("/api/pricing/backup_export", pricing.BackupExportHandler(dbConn))
-
-	// ▼▼▼【追加】返品リスト用ルート ▼▼▼
-	mux.HandleFunc("/api/returns/candidates", reorder.GenerateReturnCandidatesHandler(dbConn))
-	// ▲▲▲【追加ここまで】▲▲▲
 }
