@@ -167,7 +167,7 @@
     flex-wrap: wrap;
     gap: 10px 16px;
     padding: 10px;
-border: 1px solid #ccc;
+    border: 1px solid #ccc;
     background-color: #f7f7f7;
     align-items: flex-end;
     margin-bottom: 15px;
@@ -176,7 +176,7 @@ border: 1px solid #ccc;
 .deadstock-controls .form-group {
     display: flex;
     flex-direction: column;
-gap: 4px;
+    gap: 4px;
 }
 .deadstock-controls .form-group label {
     font-size: 10px;
@@ -194,37 +194,57 @@ gap: 4px;
     margin-left: auto;
 }
 
-/* ▼▼▼【追加】アップロード専用エリアのスタイル ▼▼▼ */
+/* アップロード専用エリアのスタイル */
 .deadstock-upload-area {
     background-color: #f0f4f8; 
     border-color: #cce;
     margin-top: -10px;
 }
-/* ▲▲▲【追加ここまで】▲▲▲ */
 
 /* 不動在庫テーブル */
 #deadstock-table {
     margin-top: 10px;
 }
 
-/* ▼▼▼【ここから修正】列幅を調整 ▼▼▼ */
-#deadstock-table th.col-ds-action { width: 8%;
-} /* ★ 10% -> 8% */
-#deadstock-table th.col-ds-key { width: 24%; } /* ★ 20% -> 24% */
-#deadstock-table th.col-ds-name { width: 25%;
-} /* 変更なし */
-#deadstock-table th.col-ds-qty { width: 8%; } /* ★ 10% -> 8% */
-#deadstock-table th.col-ds-details { width: 35%;
-} /* 変更なし */
-/* ▲▲▲【修正ここまで】▲▲▲ */
+/* 列幅の調整 */
+#deadstock-table th.col-ds-action { 
+    width: 5%; 
+} 
+#deadstock-table th.col-ds-product { 
+    width: 35%; 
+}
+#deadstock-table th.col-ds-qty { 
+    width: 7%; 
+} 
+#deadstock-table th.col-ds-details { 
+    width: 53%; 
+} 
+
+/* 製品情報セルのスタイル */
+#deadstock-table .col-ds-product .product-name {
+    font-weight: bold;
+}
+#deadstock-table .col-ds-product .package-key-sub {
+    font-size: 0.85em;
+    color: #666;
+}
+
+/* 詳細情報セルのスタイル (折り返し許可) */
+#deadstock-table td.col-ds-details {
+    white-space: normal;
+    word-break: break-all;
+    vertical-align: top;
+    padding: 4px;
+}
 
 #deadstock-table .lot-details-list {
     font-size: 0.9em;
     padding-left: 15px;
     margin: 0;
+    white-space: normal; /* リスト内も折り返し許可 */
 }
 
-/* ▼▼▼【ここから追加】ボタンのスタイル ▼▼▼ */
+/* ボタンのスタイル */
 #deadstock-table .adjust-inventory-btn {
     padding: 1px 4px;
     font-size: 9px;
@@ -236,7 +256,23 @@ gap: 4px;
     background-color: #17a2b8;
     color: #fff;
 }
-/* ▲▲▲【追加ここまで】▲▲▲ */
+
+/* ▼▼▼ 追加: 期限切れ・期限間近の色分けスタイル ▼▼▼ */
+.status-expired {
+    color: #dc3545; /* 赤文字 */
+    font-weight: bold;
+    background-color: #fbeeee; /* 背景色で強調 */
+    padding: 0 2px;
+    border-radius: 2px;
+}
+
+.status-near {
+    color: #0d6efd; /* 青文字 */
+    font-weight: bold;
+    background-color: #e7f1ff; /* 背景色で強調 */
+    padding: 0 2px;
+    border-radius: 2px;
+}
 
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\css\inout.css -----
 /* C:\Users\wasab\OneDrive\デスクトップ\TKR\static\css\inout.css */
@@ -285,15 +321,6 @@ gap: 4px;
 
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\css\inventory_adjustment.css -----
 /* C:\Users\wasab\OneDrive\デスクトップ\TKR\static\css\inventory_adjustment.css */
-
-/* ▼▼▼【削除】固有の背景色指定を削除 ▼▼▼ */
-/*
-#inventory-adjustment-view .filter-container {
-    background-color: #f0f8ff; 
-    border: 1px solid #cce;
-}
-*/
-/* ▲▲▲【削除ここまで】▲▲▲ */
 
 /* 共通フォーム内の input/select へのスタイル指定 */
 #inventory-adjustment-view .filter-container .form-group input,
@@ -375,7 +402,7 @@ gap: 4px;
     margin-top: 20px;
 }
 .adj-date-group {
-    display: flex; 
+    display: flex;
     gap: 20px; 
     align-items: flex-end;
 }
@@ -383,7 +410,7 @@ gap: 4px;
     padding: 3px;
 }
 .adj-barcode-form {
-    flex-grow: 1; 
+    flex-grow: 1;
     margin: 0;
 }
 .adj-barcode-form input {
@@ -403,9 +430,11 @@ gap: 4px;
     font-size: 10px; 
     margin-bottom: 5px;
 }
-.reference-table th.col-ref-product { width: 40%; }
+.reference-table th.col-ref-product { width: 40%;
+}
 .reference-table th.col-ref-qty     { width: 15%; }
-.reference-table th.col-ref-expiry  { width: 20%; }
+.reference-table th.col-ref-expiry  { width: 20%;
+}
 .reference-table th.col-ref-lot     { width: 25%; }
 
 
@@ -434,7 +463,8 @@ gap: 4px;
 .user-input-area {
     font-size: 12px;
     padding: 10px;
-    background-color: #fffbdd; /* 薄い黄色 */
+    background-color: #fffbdd;
+    /* 薄い黄色 */
     border: 1px solid #e6db55;
     border-radius: 3px;
 }
@@ -519,28 +549,79 @@ gap: 4px;
 .physical-stock-display {
     display: inline-block;
     padding: 4px 8px;
-    background-color: #DC3545; /* 赤系の背景 */
-    color: white;             /* 白文字 */
+    /* ▼▼▼ デフォルトはグレー（一致） ▼▼▼ */
+    background-color: #e9ecef;
+    color: #333;
     font-weight: bold;
     border-radius: 4px;
     min-width: 60px;
     text-align: right;
-    border: 1px solid #a02834;
+    border: 1px solid #ced4da;
+    transition: background-color 0.3s ease;
 }
+
+/* ▼▼▼ 不一致の場合のスタイル（緑） ▼▼▼ */
+.physical-stock-display.stock-mismatch {
+    background-color: #198754; /* 緑色 */
+    color: white;
+    border-color: #157347;
+    animation: pulse-green 0.5s;
+}
+
+@keyframes pulse-green {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.1); }
+    100% { transform: scale(1); }
+}
+
+/* プレースホルダー（目安数量）のスタイル */
+.final-input-tbody input::placeholder {
+    color: #999;        /* 薄いグレー */
+    font-style: italic;
+    font-size: 0.9em;
+    opacity: 1;
+}
+
+/* 入力確定後のスタイル */
+.final-input-tbody input:not(:placeholder-shown) {
+    color: #000;
+    font-weight: bold;
+}
+
+/* ▼▼▼ 期限切れ: 赤 ▼▼▼ */
+.expiry-input.status-expired {
+    background-color: #fbeeee;
+    color: #dc3545;
+    border-color: #dc3545;
+    font-weight: bold;
+}
+
+/* ▼▼▼ 残り1ヶ月: 青 ▼▼▼ */
+.expiry-input.status-near {
+    background-color: #e7f1ff;
+    color: #0d6efd;
+    border-color: #0d6efd;
+    font-weight: bold;
+}
+
+/* ▼▼▼ 追加: 参照リスト(td)用の期限色スタイル ▼▼▼ */
+td.status-expired {
+    color: #dc3545; /* 赤文字 */
+    font-weight: bold;
+    background-color: #fbeeee; /* 薄い赤背景 */
+}
+
+td.status-near {
+    color: #0d6efd; /* 青文字 */
+    font-weight: bold;
+    background-color: #e7f1ff; /* 薄い青背景 */
+}
+/* ▲▲▲ 追加ここまで ▲▲▲ */
 
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\css\masteredit.css -----
 /* C:\Users\wasab\OneDrive\デスクトップ\TKR\static\css\masteredit.css */
 
-/* ▼▼▼【削除】masterListTable は使用しなくなったため不要 ▼▼▼ */
-/*
-#masterListTable .edit-master-btn {
-    padding: 1px 4px;
-    font-size: 9px;
-}
-*/
-/* ▲▲▲【削除ここまで】▲▲▲ */
-
-/* ▼▼▼ master_edit_view.html のインラインスタイルをクラス化 ▼▼▼ */
+/* 既存のスタイルは維持 */
 
 /* 編集モーダル固有のレイアウト */
 #masterEditModalOverlay .readonly-group {
@@ -560,6 +641,51 @@ gap: 4px;
 #masterEditModalOverlay .form-group.flex-200 { flex-basis: 200px; }
 #masterEditModalOverlay .form-group.flex-300 { flex-basis: 300px; }
 #masterEditModalOverlay .form-group.flex-full { flex-basis: 100%; }
+
+
+/* ▼▼▼ 追加: 棚番連続登録モーダル用スタイル ▼▼▼ */
+#shelf-scan-list .scanned-item {
+    padding: 8px 10px;
+    border-bottom: 1px solid #eee;
+    background-color: #fff;
+    display: flex;
+    flex-direction: column;
+    animation: flash-highlight 1s; /* 追加時に光るアニメーション */
+}
+
+/* 新規作成されたアイテムを目立たせる */
+#shelf-scan-list .scanned-item.is-new {
+    background-color: #e6fffa; /* 薄い青緑 */
+    border-left: 4px solid #20c997;
+}
+
+#shelf-scan-list .item-main {
+    display: flex;
+    justify-content: space-between;
+    font-weight: bold;
+}
+
+#shelf-scan-list .item-sub {
+    font-size: 0.85em;
+    color: #666;
+    display: flex;
+    justify-content: space-between;
+}
+
+#shelf-scan-list .new-badge {
+    background-color: #20c997;
+    color: white;
+    font-size: 0.75em;
+    padding: 1px 4px;
+    border-radius: 3px;
+    margin-right: 5px;
+}
+
+@keyframes flash-highlight {
+    0% { background-color: #fff3cd; } /* 黄色っぽく光る */
+    100% { background-color: transparent; }
+}
+/* ▲▲▲ 追加ここまで ▲▲▲ */
 
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\css\modal.css -----
 /* C:\Users\wasab\OneDrive\デスクトップ\TKR\static\css\modal.css */
@@ -802,6 +928,54 @@ gap: 4px;
 }
 
 /* (スキャン済みリストのスタイル .scanned-item などは styles.css で定義) */
+
+----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\css\return_list.css -----
+/* C:\Users\wasab\OneDrive\デスクトップ\TKR\static\css\return_list.css */
+
+/* 入力フォームのスタイル */
+#return-shelf-number {
+    width: 150px;
+}
+
+#return-coefficient {
+    width: 80px;
+    padding: 3px;
+}
+
+#generate-return-candidates-btn {
+    background-color: #dc3545;
+    color: white;
+}
+#generate-return-candidates-btn:hover {
+    background-color: #c82333;
+}
+
+/* テーブル内のスタイル */
+#return-candidates-output .data-table th:nth-child(1) { width: 30%; } /* 製品名 */
+#return-candidates-output .data-table th:nth-child(2) { width: 20%; } /* メーカー */
+#return-candidates-output .data-table th:nth-child(3) { width: 10%; } /* 最小JAN包装 */
+#return-candidates-output .data-table th:nth-child(4) { width: 10%; } /* 理論在庫 */
+#return-candidates-output .data-table th:nth-child(5) { width: 10%; } /* 閾値 */
+#return-candidates-output .data-table th:nth-child(6) { width: 10%; } /* 返品推奨数 */
+#return-candidates-output .data-table th:nth-child(7) { width: 10%; } /* 単位 */
+
+#return-candidates-output .data-table td.excess-qty {
+    color: #dc3545;
+    font-weight: bold;
+}
+
+/* JSで生成する要素用のクラス */
+.return-list-condition {
+    margin-bottom: 10px;
+    text-align: right;
+    font-size: 0.9em;
+    color: #555;
+}
+
+.spec-info {
+    font-size: 0.9em;
+    color: #666;
+}
 
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\css\search_form_group.css -----
 /* C:\Users\wasab\OneDrive\デスクトップ\TKR\static\css\search_form_group.css */
@@ -1960,12 +2134,12 @@ type="date" id="ds-end-date">
     <div class="filter-container">
         <fieldset>
         <legend>品目検索</legend>
-        {{ template "generic_search_form" .
-}}
+        {{ template "generic_search_form" . }}
 
         <div class="search-form-container" style="margin-top: 10px; border-top: 1px dashed #ccc; padding-top: 10px;">
             <div class="search-filter-row">
                 <span style="font-size: 10px; font-weight: bold; margin-right: auto;">新規マスタ作成:</span>
+                <button id="openShelfRegBtn" class="btn" style="background-color: #6f42c1; color: white; margin-right: 10px;">棚番連続登録</button>
                 <button id="masterAdoptJCSHMSBtn" class="btn" style="background-color: #17a2b8; color: white;">JCSHMSから採用...</button>
                 <button id="masterCreateNewBtn" class="btn" style="background-color: #28a745; color: white;">その他 新規作成</button>
             </div>
@@ -1992,155 +2166,132 @@ type="date" id="ds-end-date">
                 <div class="form-group flex-120">
                     <label for="edit-yj-code">YJコード (編集不可: JCSHMS)</label>
                     <input type="text" id="edit-yj-code" class="readonly-field" readonly>
-     
-           </div>
+               </div>
                 <div class="form-group flex-120">
                     <label for="view-product-code">JANコード (キー)</label>
                     <input type="text" id="view-product-code" class="readonly-field" readonly>
                     <input type="hidden" id="edit-product-code">
-   
-             </div>
+                </div>
                 <div class="form-group flex-120">
                     <label for="edit-gs1-code">GS1コード (編集不可: JCSHMS)</label>
                     <input type="text" id="edit-gs1-code" class="readonly-field" readonly>
-                </div>
-      
-          <div class="form-group flex-100">
+               </div>
+              <div class="form-group flex-100">
                     <label for="edit-origin">由来 (編集不可)</label>
                     <input type="text" id="edit-origin" class="readonly-field" readonly>
                 </div>
-            </div>
+           </div>
             
-  
           <div class="form-row">
                 <div class="form-group flex-300">
                     <label for="edit-product-name">製品名 (JCSHMS):</label>
                     <input type="text" id="edit-product-name">
-                </div>
-           
-     <div class="form-group flex-300">
+              </div>
+                <div class="form-group flex-300">
                     <label for="edit-kana-name">カナ名 (JCSHMS):</label>
                     <input type="text" id="edit-kana-name">
                 </div>
                 <div class="form-group flex-200">
-               
-     <label for="edit-kana-name-short">カナ名短縮 (JCSHMS):</label>
+                    <label for="edit-kana-name-short">カナ名短縮 (JCSHMS):</label>
                     <input type="text" id="edit-kana-name-short">
                 </div>
             </div>
             <div class="form-row">
-                <div class="form-group flex-300">
-            
-        <label for="edit-generic-name">一般名 (JCSHMS):</label>
+               <div class="form-group flex-300">
+                <label for="edit-generic-name">一般名 (JCSHMS):</label>
                     <input type="text" id="edit-generic-name">
                 </div>
                 <div class="form-group flex-300">
-                    <label for="edit-maker-name">メーカー名 (JCSHMS):</label>
-            
-        <input type="text" id="edit-maker-name">
+                   <label for="edit-maker-name">メーカー名 (JCSHMS):</label>
+                <input type="text" id="edit-maker-name">
                 </div>
             </div>
             <div class="form-row">
                 <div class="form-group flex-200">
-                    <label for="edit-specification">規格 (JCSHMS):</label>
-         
-           <input type="text" id="edit-specification">
+                  <label for="edit-specification">規格 (JCSHMS):</label>
+                  <input type="text" id="edit-specification">
                 </div>
                 <div class="form-group flex-150">
                     <label for="edit-package-form">包装剤型 (JCSHMS):</label>
-                    <input type="text" id="edit-package-form">
-         
-       </div>
+                  <input type="text" id="edit-package-form">
+               </div>
                 <div class="form-group flex-100">
                     <label for="edit-usage-classification">内外注区分 (JCSHMS):</label>
                     <input type="text" id="edit-usage-classification">
-                </div>
+              </div>
             </div>
    
          <div class="form-row">
                 <div class="form-group flex-100">
                     <label for="edit-yj-unit-name">YJ単位名 (JCSHMS):</label>
                     <input type="text" id="edit-yj-unit-name">
-                </div>
-            
-    <div class="form-group flex-100">
+               </div>
+            <div class="form-group flex-100">
                     <label for="edit-yj-pack-unit-qty">YJ包装単位数量 (JCSHMS):</label>
                     <input type="number" id="edit-yj-pack-unit-qty">
                 </div>
             </div>
-            <div class="form-row">
-         
-       <div class="form-group flex-100">
+             <div class="form-row">
+               <div class="form-group flex-100">
                     <label for="edit-jan-pack-inner-qty">JAN包装内数量 (JCSHMS):</label>
                     <input type="number" id="edit-jan-pack-inner-qty">
                 </div>
                 <div class="form-group flex-100">
-             
-       <label for="edit-jan-unit-code">JAN単位コード (JCSHMS):</label>
+                    <label for="edit-jan-unit-code">JAN単位コード (JCSHMS):</label>
                     <input type="number" id="edit-jan-unit-code">
                 </div>
                 <div class="form-group flex-100">
-                    <label for="edit-jan-pack-unit-qty">JAN包装単位数量 (JCSHMS):</label>
-             
-       <input type="number" id="edit-jan-pack-unit-qty">
+                  <label for="edit-jan-pack-unit-qty">JAN包装単位数量 (JCSHMS):</label>
+                   <input type="number" id="edit-jan-pack-unit-qty">
                 </div>
             </div>
             <div class="form-row">
                 <div class="form-group flex-100">
-                    <label for="edit-nhi-price">薬価 (JCSHMS):</label>
-          
-          <input type="number" id="edit-nhi-price" step="0.01">
+                   <label for="edit-nhi-price">薬価 (JCSHMS):</label>
+                  <input type="number" id="edit-nhi-price" step="0.01">
                 </div>
                 <div class="form-group flex-100">
                     <label for="edit-purchase-price">仕入単価 (ユーザー):</label>
-                    <input type="number" id="edit-purchase-price" step="0.01">
-        
+                  <input type="number" id="edit-purchase-price" step="0.01">
         </div>
             </div>
             <div class="form-row">
                 <div class="form-group"><label for="edit-flag-poison">毒</label><input type="number" id="edit-flag-poison"></div>
                 <div class="form-group"><label for="edit-flag-deleterious">劇</label><input type="number" id="edit-flag-deleterious"></div>
                 <div class="form-group"><label for="edit-flag-narcotic">麻</label><input type="number" id="edit-flag-narcotic"></div>
-       
-         <div class="form-group"><label for="edit-flag-psychotropic">向</label><input type="number" id="edit-flag-psychotropic"></div>
+                <div class="form-group"><label for="edit-flag-psychotropic">向</label><input type="number" id="edit-flag-psychotropic"></div>
                 <div class="form-group"><label for="edit-flag-stimulant">覚</label><input type="number" id="edit-flag-stimulant"></div>
                 <div class="form-group"><label for="edit-flag-stimulant-raw">覚原</label><input type="number" id="edit-flag-stimulant-raw"></div>
                 <div class="form-group"><label for="edit-is-order-stopped">発注停止</label><input type="number" id="edit-is-order-stopped"></div>
-            </div>
+          </div>
             <div class="form-row">
-  
               <div class="form-group flex-150">
                     <label for="edit-supplier-wholesale">主要卸 (ユーザー):</label>
                     <select id="edit-supplier-wholesale"></select>
                 </div>
                 <div class="form-group flex-150">
-       
              <label for="edit-group-code">グループコード (ユーザー):</label>
                     <input type="text" id="edit-group-code">
                 </div>
                 <div class="form-group flex-150">
-                    <label for="edit-shelf-number">棚番 (ユーザー):</label>
-       
+            <label for="edit-shelf-number">棚番 (ユーザー):</label>
              <input type="text" id="edit-shelf-number">
                 </div>
                 <div class="form-group flex-150">
                     <label for="edit-category">分類 (ユーザー):</label>
-                    <input type="text" id="edit-category">
-       
+            <input type="text" id="edit-category">
          </div>
             </div>
             <div class="form-row">
                 <div class="form-group flex-full">
                     <label for="edit-user-notes">メモ (ユーザー):</label>
-                    <input type="text" id="edit-user-notes">
-    
+            <input type="text" id="edit-user-notes">
             </div>
             </div>
             <div class="form-actions">
                 <button type="button" id="saveMasterBtn" class="btn">保存</button>
                 <button type="button" id="referenceJCSHMSBtn" class="btn">参照</button>
                 <button type="button" id="cancelEditMasterBtn" class="btn">閉じる</button>
-      
       </div>
         </form>
     </div>
@@ -2326,6 +2477,50 @@ type="date" id="ds-end-date">
     </div>
 </div>
 
+----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\views\return_list_view.html -----
+<div id="return-list-view" class="view">
+    <h1>返品推奨リスト</h1>
+    
+    <div class="filter-container">
+        <fieldset>
+            <legend>返品候補 検索条件</legend>
+            <div class="search-form-container">
+                <div class="search-filter-row">
+                    <div class="form-group">
+                        <label for="return-kanaName">品名・カナ名 (部分一致):</label>
+                        <input type="text" id="return-kanaName" class="search-filter-input" autocomplete="off">
+                    </div>
+                    <div class="form-group">
+                        <label for="return-dosageForm">剤型:</label>
+                        <select id="return-dosageForm" class="search-filter-input">
+                            <option value="">すべて</option>
+                            <option value="内">内</option>
+                            <option value="外">外</option>
+                            <option value="歯">歯</option>
+                            <option value="注">注</option>
+                            <option value="機">機</option>
+                            <option value="他">他</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="return-shelf-number">棚番 (部分一致):</label>
+                        <input type="text" id="return-shelf-number" class="search-filter-input" autocomplete="off">
+                    </div>
+                    <div class="form-group">
+                        <label for="return-coefficient">返品係数 (発注点×N):</label>
+                        <input type="number" id="return-coefficient" value="1.5" step="0.1">
+                    </div>
+                    <button id="generate-return-candidates-btn" class="btn search-submit-button">返品候補を表示</button>
+                </div>
+            </div>
+        </fieldset>
+    </div>
+
+    <div id="return-candidates-output" class="table-container">
+        <p>「返品候補を表示」ボタンを押してください。</p>
+    </div>
+</div>
+
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\views\search_form_group.html -----
 // C:\Users\wasab\OneDrive\デスクトップ\TKR\static\views\search_form_group.html
 {{ define "generic_search_form" }}
@@ -2389,6 +2584,47 @@ type="date" id="ds-end-date">
             <button id="{{ $btnID }}" class="btn search-submit-button">{{ $btnText }}</button>
         </div>
     </div>
+{{ end }}
+
+----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\views\shelf_registration_modal.html -----
+{{ define "shelf_registration_modal" }}
+<div id="shelfRegistrationModal" class="modal-overlay hidden">
+    <div class="modal-content" style="width: 600px; max-width: 95%;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; border-bottom: 1px solid #ccc; padding-bottom: 5px;">
+            <h2 style="margin: 0; border: none;">棚番連続登録</h2>
+            <button id="closeShelfRegModalBtn" class="btn">閉じる</button>
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 15px;">
+            <div style="background-color: #e7f1ff; padding: 10px; border: 1px solid #b6d4fe; border-radius: 4px;">
+                <label for="shelf-reg-number" style="font-weight: bold; font-size: 1.1em;">登録する棚番:</label>
+                <input type="text" id="shelf-reg-number" autocomplete="off" style="font-size: 1.2em; padding: 5px; width: 150px; font-weight: bold;" placeholder="例: A-01">
+                <span style="font-size: 0.9em; color: #555; margin-left: 10px;">※ここに入力した棚番が、スキャンした全商品に適用されます。</span>
+            </div>
+
+            <div>
+                <form id="shelf-reg-barcode-form">
+                    <label for="shelf-reg-barcode" style="font-weight: bold;">バーコードスキャン (連続):</label>
+                    <input type="text" id="shelf-reg-barcode" autocomplete="off" style="width: 100%; padding: 8px; font-size: 1.2em;" placeholder="JAN/GS1をスキャン...">
+                </form>
+                <p style="font-size: 0.85em; color: #666; margin-top: 3px;">※未登録のJANコードは自動的に仮登録され、リストに追加されます。</p>
+            </div>
+
+            <div style="flex: 1; border: 1px solid #ccc; background: #f9f9f9; padding: 0; min-height: 300px; max-height: 50vh; overflow-y: auto; display: flex; flex-direction: column;">
+                <div style="padding: 5px 10px; background: #eee; border-bottom: 1px solid #ccc; display: flex; justify-content: space-between; font-weight: bold; font-size: 0.9em; position: sticky; top: 0;">
+                    <span>スキャン済みリスト (<span id="shelf-reg-count">0</span>件)</span>
+                    <button id="shelf-reg-clear-btn" class="btn" style="font-size: 0.8em; padding: 1px 5px;">リストクリア</button>
+                </div>
+                <div id="shelf-scan-list" style="display: flex; flex-direction: column;">
+                    </div>
+            </div>
+
+            <div style="text-align: right; padding-top: 10px; border-top: 1px dashed #ccc;">
+                <button id="shelf-reg-execute-btn" class="btn" style="background-color: #28a745; color: white; font-weight: bold; padding: 10px 20px; font-size: 1.1em;">一括登録実行</button>
+            </div>
+        </div>
+    </div>
+</div>
 {{ end }}
 
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\views\usage_view.html -----
@@ -2463,95 +2699,71 @@ type="date" id="ds-end-date">
     <title>TKR アプリケーション</title>
     <link rel="stylesheet" href="/static/css/styles.css">
     <link rel="stylesheet" href="/static/css/table.css">
-  
     <link rel="stylesheet" href="/static/css/masteredit.css">
-  
-     <link rel="stylesheet" href="/static/css/config.css">
+    <link rel="stylesheet" href="/static/css/config.css">
     <link rel="stylesheet" href="/static/css/inventory_adjustment.css">
     <link rel="stylesheet" href="/static/css/search_modal.css">
     <link rel="stylesheet" href="/static/css/search_form_group.css">
-  
- <link rel="stylesheet" href="/static/css/modal.css">
+    <link rel="stylesheet" href="/static/css/modal.css">
     <link rel="stylesheet" href="/static/css/inout.css">
     <link rel="stylesheet" href="/static/css/deadstock.css">
     <link rel="stylesheet" href="/static/css/reorder.css">
     <link rel="stylesheet" href="/static/css/backorder.css">
     <link rel="stylesheet" href="/static/css/valuation.css">
     <link rel="stylesheet" href="/static/css/pricing.css">
-    </head>
+    <link rel="stylesheet" href="/static/css/return_list.css">
+</head>
 <body>
   
-  <header id="main-header">
+    <header id="main-header">
         <button id="datViewBtn" class="btn">DAT取込</button>
         <button id="usageViewBtn" class="btn">USAGE取込</button>
         <button id="inOutViewBtn" class="btn">入出庫</button>
-       
-         <button id="inventoryAdjustmentViewBtn" class="btn">棚卸調整</button>
-        <button id="deadStockViewBtn" 
-class="btn">不動在庫</button>
+        <button id="inventoryAdjustmentViewBtn" class="btn">棚卸調整</button>
+        <button id="deadStockViewBtn" class="btn">不動在庫</button>
         <button id="reorderViewBtn" class="btn">発注</button>
+        <button id="returnListViewBtn" class="btn">返品リスト</button>
         <button id="backorderViewBtn" class="btn">発注残管理</button>
         <button id="valuationViewBtn" class="btn">在庫評価</button>
         <button id="pricingViewBtn" class="btn">見積・価格設定</button>
         <button id="masterEditViewBtn" class="btn">マスタ編集</button>
-     
-       <button id="precompViewBtn" class="btn">予製管理</button>
+        <button id="precompViewBtn" class="btn">予製管理</button>
         <button id="reprocessBtn" class="btn">全取引再計算</button>
         <button id="configViewBtn" class="btn">設定</button>
-    
-</header>
+    </header>
 
     <main>
-      
-  {{if .Views}}
-    
-     
-      
+        {{if .Views}}
             {{range .Views}}
                  {{.}}
-       
-     {{end}}
-        
-   
-             {{else}}
+            {{end}}
+        {{else}}
             <div id="dat-upload-view" class="view active">DATビュー</div>
- 
-         
-   
-      
-  <div id="usage-upload-view" class="view">USAGEビュー</div>
-         
-   <div id="inventory-adjustment-view" class="view">棚卸調整ビュー</div>
-   
-             <div id="master-edit-view" class="view">マスタ編集ビュー</div>
-           
-             <div id="config-view" class="view">設定ビュー</div>
-     
-             <div id="deadstock-view" class="view">不動在庫ビュー</div>
- 
-           
-  
-             <div id="reorder-view" class="view">発注ビュー</div>
-             <div id="backorder-view" class="view">発注残管理ビュー</div>
-             <div id="valuation-view" class="view">在庫評価ビュー</div>
-             <div id="pricing-view" class="view">見積・価格設定ビュー</div>
-             {{end}}
-     
-   </main>
+            <div id="usage-upload-view" class="view">USAGEビュー</div>
+            <div id="inventory-adjustment-view" class="view">棚卸調整ビュー</div>
+            <div id="master-edit-view" class="view">マスタ編集ビュー</div>
+            <div id="config-view" class="view">設定ビュー</div>
+            <div id="deadstock-view" class="view">不動在庫ビュー</div>
+            <div id="reorder-view" class="view">発注ビュー</div>
+            <div id="return-list-view" class="view">返品リストビュー</div>
+            <div id="backorder-view" class="view">発注残管理ビュー</div>
+            <div id="valuation-view" class="view">在庫評価ビュー</div>
+            <div id="pricing-view" class="view">見積・価格設定ビュー</div>
+        {{end}}
+    </main>
 
     <div id="loading-overlay" class="hidden">
         <div class="spinner"></div>
         <span id="loading-message">処理中...</span>
     </div>
     
-<div id="notification-box"></div>
+    <div id="notification-box"></div>
 
- {{ template "common_search_modal" .
-}}
- {{ template "common_input_modal" .
-}}
+    {{ template "common_search_modal" . }}
+    {{ template "common_input_modal" . }}
+    {{ template "shelf_registration_modal" . }}
     <script src="/static/js/lib/encoding.min.js"></script>
-    <script type="module" src="/static/js/app.js?v=2025110701"></script>
-    </body>
+    <script type="module" src="/static/js/app.js?v=2025110703"></script>
+</body>
 </html>
 

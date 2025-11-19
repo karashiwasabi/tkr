@@ -5482,11 +5482,6 @@ func renderMasterListHTML(masters []model.ProductMaster, statusMessage string) s
             <th class="col-yj">YJコード</th>
             <th class="col-gs1">GS1コード</th>
             <th class="col-jan">JANコード</th>
-          
-   
-
-
-
             <th class="col-product">製品名</th>
             <th class="col-kana">カナ名</th>
             <th class="col-maker">メーカー</th>
@@ -5504,10 +5499,7 @@ func renderMasterListHTML(masters []model.ProductMaster, statusMessage string) s
 		for _, master := range masters {
 			sb.WriteString(fmt.Sprintf(`<tr data-product-code="%s">`,
 				master.ProductCode))
-			sb.WriteString(fmt.Sprintf(`<td 
-
-class="center col-action"><button class="edit-master-btn 
- btn" data-code="%s">編集</button></td>`, master.ProductCode))
+			sb.WriteString(fmt.Sprintf(`<td class="center col-action"><button class="edit-master-btn btn" data-code="%s">編集</button></td>`, master.ProductCode))
 			sb.WriteString(fmt.Sprintf(`<td class="col-yj">%s</td>`, master.YjCode))
 			sb.WriteString(fmt.Sprintf(`<td class="col-gs1">%s</td>`,
 				master.Gs1Code))
@@ -5525,7 +5517,6 @@ class="center col-action"><button class="edit-master-btn
 	return sb.String()
 }
 
-// ▼▼▼【ここを修正】UpdateMasterHandler に「新規作成」ロジックを追加 ▼▼▼
 func UpdateMasterHandler(db *sqlx.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
@@ -5623,11 +5614,10 @@ func UpdateMasterHandler(db *sqlx.DB) http.HandlerFunc {
 
 				input.UserNotes = fmt.Sprintf("(自動記録: 旧Key [%s] から在庫振替要) %s", oldKey, input.UserNotes)
 
-				log.Printf("UpdateMasterHandler: PackageKey changed for %s.OldKey [%s] NewKey [%s]. Alert set.",
+				log.Printf("UpdateMasterHandler: PackageKey changed for %s. OldKey [%s] NewKey [%s]. Alert set.",
 					input.ProductCode, oldKey, newKey)
 			}
 		}
-		// ▲▲▲【修正ここまで】▲▲▲
 
 		// 6. マスタをDBに保存
 		if _, err := mastermanager.UpsertProductMasterSqlx(tx, input); err != nil {
@@ -5655,10 +5645,6 @@ func UpdateMasterHandler(db *sqlx.DB) http.HandlerFunc {
 		json.NewEncoder(w).Encode(response)
 	}
 }
-
-// ▲▲▲【修正ここまで】▲▲▲
-
-// ▼▼▼【ここから追加】(WASABI: masteredit/handler.go より移植) ▼▼▼
 
 type SetOrderStoppedRequest struct {
 	ProductCode string `json:"productCode"`
@@ -5719,6 +5705,65 @@ func SetOrderStoppedHandler(conn *sqlx.DB) http.HandlerFunc {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{"message": "更新しました。"})
+	}
+}
+
+// ▼▼▼【追加】棚番一括更新用ハンドラ ▼▼▼
+type BulkShelfRequest struct {
+	ProductCodes []string `json:"productCodes"`
+	ShelfNumber  string   `json:"shelfNumber"`
+}
+
+func BulkUpdateShelfHandler(conn *sqlx.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		var req BulkShelfRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "Invalid request body", http.StatusBadRequest)
+			return
+		}
+
+		if len(req.ProductCodes) == 0 {
+			http.Error(w, "No products selected", http.StatusBadRequest)
+			return
+		}
+
+		tx, err := conn.Beginx()
+		if err != nil {
+			http.Error(w, "Failed to start transaction", http.StatusInternalServerError)
+			return
+		}
+		defer tx.Rollback()
+
+		// sqlx.In を使って一括更新
+		query, args, err := sqlx.In(`UPDATE product_master SET shelf_number = ? WHERE product_code IN (?)`, req.ShelfNumber, req.ProductCodes)
+		if err != nil {
+			http.Error(w, "Failed to construct update query: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		query = tx.Rebind(query)
+
+		res, err := tx.Exec(query, args...)
+		if err != nil {
+			http.Error(w, "Failed to execute update: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		rowsAffected, _ := res.RowsAffected()
+
+		if err := tx.Commit(); err != nil {
+			http.Error(w, "Failed to commit transaction", http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{
+			"message": fmt.Sprintf("%d件の棚番を「%s」に更新しました。", rowsAffected, req.ShelfNumber),
+		})
 	}
 }
 
@@ -8574,6 +8619,169 @@ func PlaceOrderHandler(conn *sqlx.DB) http.HandlerFunc {
 }
 
 
+----- C:\Users\wasab\OneDrive\デスクトップ\TKR\reorder\return_handler.go -----
+// C:\Users\wasab\OneDrive\デスクトップ\TKR\reorder\return_handler.go
+package reorder
+
+import (
+	"encoding/json"
+	"math"
+	"net/http"
+	"strconv"
+	"time"
+	"tkr/aggregation"
+	"tkr/config"
+	"tkr/model"
+	"tkr/units"
+
+	"github.com/jmoiron/sqlx"
+)
+
+type ReturnCandidate struct {
+	YjCode           string                  `json:"yjCode"`
+	ProductName      string                  `json:"productName"`
+	PackageKey       string                  `json:"packageKey"`
+	Representative   model.ProductMasterView `json:"representative"`
+	TheoreticalStock float64                 `json:"theoreticalStock"`
+	Threshold        float64                 `json:"threshold"`
+	ExcessQuantity   float64                 `json:"excessQuantity"`
+	MinJanPackQty    float64                 `json:"minJanPackQty"`
+	UnitName         string                  `json:"unitName"`
+	ReturnableBoxes  int                     `json:"returnableBoxes"`
+}
+
+func GenerateReturnCandidatesHandler(conn *sqlx.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		q := r.URL.Query()
+		kanaName := q.Get("kanaName")
+		dosageForm := q.Get("dosageForm")
+		shelfNumber := q.Get("shelfNumber")
+
+		// 返品係数
+		coefficientStr := q.Get("coefficient")
+		coefficient, err := strconv.ParseFloat(coefficientStr, 64)
+		if err != nil {
+			coefficient = 1.5
+		}
+
+		cfg, err := config.LoadConfig()
+		if err != nil {
+			http.Error(w, "設定ファイルの読み込みに失敗: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		now := time.Now()
+		endDate := "99991231"
+		startDate := now.AddDate(0, 0, -cfg.CalculationPeriodDays)
+
+		filters := model.AggregationFilters{
+			StartDate:   startDate.Format("20060102"),
+			EndDate:     endDate,
+			KanaName:    kanaName,
+			DosageForm:  dosageForm,
+			ShelfNumber: shelfNumber,
+			Coefficient: coefficient,
+		}
+
+		yjGroups, err := aggregation.GetStockLedger(conn, filters)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		var candidates []ReturnCandidate
+
+		for _, group := range yjGroups {
+			for _, pkg := range group.PackageLedgers {
+
+				// 理論在庫
+				currentStock, ok := pkg.EndingBalance.(float64)
+				if !ok {
+					currentStock = 0
+				}
+
+				// 最小の包装単位数量（1箱のバラ数）を探す
+				minPackUnitQty := math.MaxFloat64
+				var repMaster *model.ProductMaster
+
+				for _, m := range pkg.Masters {
+					if repMaster == nil || (repMaster.Origin != "JCSHMS" && m.Origin == "JCSHMS") {
+						repMaster = m
+					}
+
+					var packQty float64
+					// YJ包装単位数量を優先
+					if m.YjPackUnitQty > 0 {
+						packQty = m.YjPackUnitQty
+					} else if m.JanPackUnitQty > 0 {
+						packQty = m.JanPackUnitQty
+					}
+
+					if packQty > 0 {
+						if packQty < minPackUnitQty {
+							minPackUnitQty = packQty
+						}
+					}
+				}
+
+				if minPackUnitQty == math.MaxFloat64 {
+					minPackUnitQty = 0
+				}
+
+				// 1. 保持すべき在庫 (KeepStock) = (係数×発注点 + 予製)
+				keepStock := pkg.ReorderPoint
+
+				// 2. リストアップ判定用閾値 = KeepStock + 最小包装単位(1箱)
+				// ※「1箱以上余っているか」を判定するため、ここでは +1箱 する
+				thresholdForListing := keepStock + minPackUnitQty
+
+				// 判定: 理論在庫 >= 判定用閾値
+				if currentStock >= thresholdForListing {
+
+					// 3. 返品可能総数 = 理論在庫 - 保持すべき在庫
+					// ※返すときは「KeepStock」を超えた分をすべて対象にする（+1箱を残す必要はない）
+					rawExcess := currentStock - keepStock
+
+					if minPackUnitQty > 0 {
+						// 箱数計算 (切り捨て)
+						returnableBoxes := math.Floor(rawExcess / minPackUnitQty)
+
+						// 返品推奨数 = 箱数 × 入数
+						excessQuantity := returnableBoxes * minPackUnitQty
+
+						if excessQuantity > 0 {
+							var repView model.ProductMasterView
+							if repMaster != nil {
+								repView = model.ProductMasterView{
+									ProductMaster: *repMaster,
+									JanUnitName:   units.ResolveName(repMaster.YjUnitName),
+								}
+							}
+
+							candidates = append(candidates, ReturnCandidate{
+								YjCode:           group.YjCode,
+								ProductName:      group.ProductName,
+								PackageKey:       pkg.PackageKey,
+								Representative:   repView,
+								TheoreticalStock: currentStock,
+								Threshold:        thresholdForListing, // 画面には「リストに載る基準」を表示
+								ExcessQuantity:   excessQuantity,
+								MinJanPackQty:    minPackUnitQty,
+								UnitName:         group.YjUnitName,
+								ReturnableBoxes:  int(returnableBoxes),
+							})
+						}
+					}
+				}
+			}
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(candidates)
+	}
+}
+
+
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\reprocess\reprocess.go -----
 // C:\Users\wasab\OneDrive\デスクトップ\TKR\reprocess\reprocess.go
 package reprocess
@@ -10264,6 +10472,9 @@ func SetupRoutes(mux *http.ServeMux, dbConn *sqlx.DB) {
 	mux.HandleFunc("/api/masters/update", masteredit.UpdateMasterHandler(dbConn))
 
 	mux.HandleFunc("/api/master/set_order_stopped", masteredit.SetOrderStoppedHandler(dbConn))
+	// ▼▼▼【追加】棚番一括更新用ルート ▼▼▼
+	mux.HandleFunc("/api/masters/bulk_update_shelf", masteredit.BulkUpdateShelfHandler(dbConn))
+	// ▲▲▲【追加ここまで】▲▲▲
 
 	mux.HandleFunc("/api/inventory/adjust/data", inventoryadjustment.GetInventoryDataHandler(dbConn))
 	mux.HandleFunc("/api/inventory/adjust/save", inventoryadjustment.SaveInventoryDataHandler(dbConn))
@@ -10346,6 +10557,8 @@ func SetupRoutes(mux *http.ServeMux, dbConn *sqlx.DB) {
 	mux.HandleFunc("/api/backorders/delete", backorder.DeleteBackorderHandler(dbConn))
 	mux.HandleFunc("/api/backorders/bulk_delete_by_id", backorder.BulkDeleteBackordersByIDHandler(dbConn))
 	mux.HandleFunc("/api/backorders/bulk_delete_by_date", backorder.BulkDeleteBackordersByDateHandler(dbConn))
+
+	mux.HandleFunc("/api/returns/candidates", reorder.GenerateReturnCandidatesHandler(dbConn))
 
 	mux.HandleFunc("/api/valuation", valuation.GetValuationHandler(dbConn))
 	mux.HandleFunc("/api/valuation/export_csv", valuation.ExportValuationCSVHandler(dbConn))

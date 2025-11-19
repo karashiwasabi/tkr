@@ -10,81 +10,45 @@
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\js\app.js -----
 // C:\Users\wasab\OneDrive\デスクトップ\TKR\static\js\app.js
 
-// ▼▼▼【ここから修正】ビューのインポートを削除し、UI/Manager/共通機能をインポート ▼▼▼
 import { initSearchModal } from './search_modal.js';
 import { loadMasterData } from './master_data.js';
 import { initUI, showLoading, hideLoading, showNotification } from './common_ui.js';
 import { initViewManager, setActiveView } from './view_manager.js';
-// ▲▲▲【修正ここまで】▲▲▲
 
-
-// ▼▼▼【削除】グローバル/モジュール変数を common_ui.js, view_manager.js に移管 ▼▼▼
-// let loadingOverlay, loadingMessage, notificationBox;
-// let views, datViewBtn, ... , pricingViewBtn;
-// const initializedViews = { ... };
-// ▲▲▲【削除ここまで】▲▲▲
-
-// ▼▼▼【ここから修正】グローバル関数を window オブジェクトに登録 ▼▼▼
 window.showLoading = showLoading;
 window.hideLoading = hideLoading;
 window.showNotification = showNotification;
-// ▲▲▲【修正ここまで】▲▲▲
 
-// ▼▼▼【削除】showLoading, hideLoading, showNotification, setActiveView を common_ui.js, view_manager.js に移管 ▼▼▼
-/*
-window.showLoading = (message = '処理中...') => { ... };
-window.hideLoading = () => { ... };
-window.showNotification = (message, type = 'success') => { ... };
-function setActiveView(targetId) { ... }
-*/
-// ▲▲▲【削除ここまで】▲▲▲
-
-async function 
-handleReprocessAll() {
+async function handleReprocessAll() {
     if (!confirm('全ての取引データを、最新のマスター情報に基づいて再計算します。\nこの処理はデータ量に応じて時間がかかります。\n実行しますか？')) {
         return;
-}
+    }
 
     window.showLoading('全取引データを再計算中... (時間がかかる場合があります)');
-    try 
-{
- 
-       const response = await fetch('/api/reprocess/all', {
-       
-     
-method: 
-'POST', 
+    try {
+        const response = await fetch('/api/reprocess/all', {
+            method: 'POST', 
         });
         const result = await response.json();
         if (!response.ok) {
-    
-  
-   
-   throw new Error(result.message || `サーバーエラー (HTTP ${response.status})`);
+           throw new Error(result.message || `サーバーエラー (HTTP ${response.status})`);
         }
 
-        window.showNotification(result.message || '全取引データの再計算が完了しました。', 
-'success');
-} catch (error) {
- 
-       console.error('Reprocessing failed:', error);
+        window.showNotification(result.message || '全取引データの再計算が完了しました。', 'success');
+    } catch (error) {
+        console.error('Reprocessing failed:', error);
         window.showNotification(`再計算エラー: ${error.message}`, 'error');
     } finally {
-    
-    
-window.hideLoading();
+        window.hideLoading();
     }
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
     console.log('TKR App Initialized.');
 
-    // ▼▼▼【ここから修正】UIとViewManagerを初期化 ▼▼▼
     initUI();
     initViewManager();
-    // ▲▲▲【修正ここまで】▲▲▲
 
-    // ▼▼▼【ここから修正】ボタンのDOM取得をローカル変数に変更 ▼▼▼
     const datViewBtn = document.getElementById('datViewBtn');
     const usageViewBtn = document.getElementById('usageViewBtn');
     const inventoryAdjustmentViewBtn = document.getElementById('inventoryAdjustmentViewBtn');
@@ -95,79 +59,59 @@ document.addEventListener('DOMContentLoaded', async () => {
     const deadStockViewBtn = document.getElementById('deadStockViewBtn');
     const precompViewBtn = document.getElementById('precompViewBtn');
     const reorderViewBtn = document.getElementById('reorderViewBtn');
+    // ▼▼▼ 追加: 返品リストボタン ▼▼▼
+    const returnListViewBtn = document.getElementById('returnListViewBtn');
+    // ▲▲▲ 追加ここまで ▲▲▲
     const backorderViewBtn = document.getElementById('backorderViewBtn');
     const valuationViewBtn = document.getElementById('valuationViewBtn');
     const pricingViewBtn = document.getElementById('pricingViewBtn');
-    // ▲▲▲【修正ここまで】▲▲▲
  
     await loadMasterData();
     initSearchModal();
 
     if (datViewBtn) {
-        datViewBtn.addEventListener('click', () => 
-setActiveView('dat-upload-view'));
+        datViewBtn.addEventListener('click', () => setActiveView('dat-upload-view'));
     }
- 
-   if (usageViewBtn) {
-   
-     usageViewBtn.addEventListener('click', () => setActiveView('usage-upload-view'));
+    if (usageViewBtn) {
+        usageViewBtn.addEventListener('click', () => setActiveView('usage-upload-view'));
     }
     if (inventoryAdjustmentViewBtn) {
- 
-   
-    inventoryAdjustmentViewBtn.addEventListener('click', 
-() => setActiveView('inventory-adjustment-view'));
+        inventoryAdjustmentViewBtn.addEventListener('click', () => setActiveView('inventory-adjustment-view'));
     }
-    if (masterEditViewBtn) 
-    {
-     
-   masterEditViewBtn.addEventListener('click', 
-() => 
-setActiveView('master-edit-view'));
+    if (masterEditViewBtn) {
+        masterEditViewBtn.addEventListener('click', () => setActiveView('master-edit-view'));
     }
     if (configViewBtn) {
         configViewBtn.addEventListener('click', () => setActiveView('config-view'));
     }
- 
-   if 
-(inoutViewBtn) 
-{
+    if (inoutViewBtn) {
         inoutViewBtn.addEventListener('click', () => setActiveView('inout-view'));
     }
     if (reprocessBtn) {
-   
-  
-   reprocessBtn.addEventListener('click', 
-handleReprocessAll);
+        reprocessBtn.addEventListener('click', handleReprocessAll);
     }
     if (deadStockViewBtn) {
         deadStockViewBtn.addEventListener('click', () => setActiveView('deadstock-view'));
     }
- 
-
-   if (precompViewBtn) {
-  
+    if (precompViewBtn) {
       precompViewBtn.addEventListener('click', () => setActiveView('precomp-view'));
     }
     if (reorderViewBtn) {
- 
-  
-     reorderViewBtn.addEventListener('click', () => 
-setActiveView('reorder-view'));
+        reorderViewBtn.addEventListener('click', () => setActiveView('reorder-view'));
     }
+    // ▼▼▼ 追加: 返品リストボタンイベント ▼▼▼
+    if (returnListViewBtn) {
+        returnListViewBtn.addEventListener('click', () => setActiveView('return-list-view'));
+    }
+    // ▲▲▲ 追加ここまで ▲▲▲
     if (backorderViewBtn) { 
-      
-  backorderViewBtn.addEventListener('click', () => setActiveView('backorder-view'));
+      backorderViewBtn.addEventListener('click', () => setActiveView('backorder-view'));
     }
-    
-  if (valuationViewBtn) {
-       
- valuationViewBtn.addEventListener('click', () => setActiveView('valuation-view'));
+    if (valuationViewBtn) {
+       valuationViewBtn.addEventListener('click', () => setActiveView('valuation-view'));
     }
- 
-   if (pricingViewBtn) {
-     
-   pricingViewBtn.addEventListener('click', () => setActiveView('pricing-view'));
+    if (pricingViewBtn) {
+        pricingViewBtn.addEventListener('click', () => setActiveView('pricing-view'));
     }
     
     setActiveView('dat-upload-view');
@@ -1688,8 +1632,7 @@ export function initDeadStockEventListeners() {
 
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\js\deadstock_ui.js -----
 // C:\Users\wasab\OneDrive\デスクトップ\TKR\static\js\deadstock_ui.js
-// (新規作成)
-import { getLocalDateString } from './utils.js';
+import { getLocalDateString, getExpiryStatus } from './utils.js';
 
 // DOM要素のキャッシュ
 let startDateInput, endDateInput, csvDateInput, resultContainer, excludeZeroStockCheckbox;
@@ -1735,35 +1678,40 @@ export function renderDeadStockTable(items) {
 
     const header = `
      <table id="deadstock-table" class="data-table">
-            <thead>
+         <thead>
            <tr>
-                    <th class="col-ds-action">操作</th>
-                    <th class="col-ds-key">PackageKey</th>
-                 <th class="col-ds-name">製品名</th>
-                    <th class="col-ds-qty">現在庫(JAN)</th>
-                    <th class="col-ds-details">棚卸明細 (JAN / 包装仕様 / 在庫数 / 単位 / 期限 / ロット)</th>
-                 </tr>
-            </thead>
-            <tbody>
+             <th class="col-ds-action">操作</th>
+             <th class="col-ds-product">製品情報 (PackageKey)</th>
+             <th class="col-ds-qty">現在庫</th>
+             <th class="col-ds-details">棚卸明細 (JAN / 包装仕様 / 在庫数 / 単位 / 期限 / ロット)</th>
+           </tr>
+         </thead>
+         <tbody>
     `;
+    
     const body = items.map(item => {
-        let lotHtml = ''; 
-        if (item.lotDetails && item.lotDetails.length > 0) {
-            lotHtml = '<ul class="lot-details-list">';
-            lotHtml += item.lotDetails.map(lot => {
-                const janQty = (lot.JanQuantity || 0).toFixed(2);
-                const janCode = lot.JanCode || '(JANなし)';
-                const pkgSpec = lot.PackageSpec || '(仕様なし)';
-                const lotNum = lot.LotNumber || '(ロットなし)';
-                const expiry = lot.ExpiryDate || '(期限なし)';
-                const unitName = lot.JanUnitName || ''; 
-                
-                return `<li>${janCode} / ${pkgSpec} / ${janQty} ${unitName} / ${expiry} / ${lotNum}</li>`;
-            }).join('');
-            lotHtml += '</ul>';
-        } else if (item.stockQuantityJan > 0) {
-            lotHtml = '<span class="status-error">在庫あり (明細なし)</span>';
-        }
+         let lotHtml = ''; 
+         if (item.lotDetails && item.lotDetails.length > 0) {
+             lotHtml = '<ul class="lot-details-list">';
+             lotHtml += item.lotDetails.map(lot => {
+                 const janQty = (lot.JanQuantity || 0).toFixed(2);
+                 const janCode = lot.JanCode || '(JANなし)';
+                 const pkgSpec = lot.PackageSpec || '(仕様なし)';
+                 const lotNum = lot.LotNumber || '(ロットなし)';
+                 const expiry = lot.ExpiryDate || '(期限なし)';
+                 const unitName = lot.JanUnitName || ''; 
+                 
+                 // ▼▼▼ 追加: 期限の状態判定とクラス付与 ▼▼▼
+                 const statusClass = getExpiryStatus(lot.ExpiryDate);
+                 const expiryDisplay = statusClass ? `<span class="${statusClass}">${expiry}</span>` : expiry;
+                 // ▲▲▲ 追加ここまで ▲▲▲
+
+                 return `<li>${janCode} / ${pkgSpec} / ${janQty} ${unitName} / ${expiryDisplay} / ${lotNum}</li>`;
+             }).join('');
+             lotHtml += '</ul>';
+         } else if (item.stockQuantityJan > 0) {
+             lotHtml = '<span class="status-error">在庫あり (明細なし)</span>';
+         }
 
         const stockQty = (item.stockQuantityJan || 0).toFixed(2);
         
@@ -1772,12 +1720,14 @@ export function renderDeadStockTable(items) {
 
         return `
            <tr>
-                <td class="center col-ds-action">${buttonHtml}</td>
-                 <td class="left">${item.packageKey}</td>
-                <td class="left">${item.productName || '(品名不明)'}</td>
-                <td class="right col-ds-qty">${stockQty}</td>
-                 <td class="left">${lotHtml}</td>
-            </tr>
+              <td class="center col-ds-action">${buttonHtml}</td>
+              <td class="left col-ds-product">
+                  <span class="product-name">${item.productName || '(品名不明)'}</span><br>
+                  <span class="package-key-sub">${item.packageKey}</span>
+              </td>
+              <td class="right col-ds-qty">${stockQty}</td>
+              <td class="left col-ds-details">${lotHtml}</td>
+           </tr>
          `;
     }).join('');
 
@@ -1864,9 +1814,9 @@ function createInoutRowsHTML(record = {}) {
     const yjQuantity = janQuantity * janPackInnerQty;
     const subtotal = yjQuantity * nhiPrice;
     const transactionType = record.flag ? (transactionTypeMap[record.flag] || '') : '';
-    console.log('Record flag:', record.flag, 'Type:', typeof record.flag, 'Mapped type:', transactionType); // デバッグ用ログ
+    // console.log('Record flag:', record.flag, 'Type:', typeof record.flag, 'Mapped type:', transactionType); // デバッグ用ログ
 
-    // ▼▼▼【修正】TKRのテーブル定義 (  ) に合わせる (空白列を削除し、col-* クラスを付与) ▼▼▼
+    // ▼▼▼【修正】TKRのテーブル定義 (table.css) に合わせる (空白列を削除し、col-* クラスを付与) ▼▼▼
     const upperRow = `
         <tr data-row-id="${rowId}">
             <td rowspan="2" class="col-action center"><button class="delete-row-btn btn">削除</button></td>
@@ -1992,7 +1942,7 @@ export function initDetailsTable() {
     // ▼▼▼【修正】TKR の common_table.js を使用 ▼▼▼
     tableContainer.innerHTML = renderTransactionTableHTML([], "<tbody></tbody>");
     // ▲▲▲【修正ここまで】▲▲▲
-    
+
     tableBody = tableContainer.querySelector('tbody');
     clearDetailsTable();
 
@@ -2016,12 +1966,13 @@ export function initDetailsTable() {
         }
         if (e.target.classList.contains('product-name-cell')) {
             const activeRow = e.target.closest('tr');
+     
             // ▼▼▼【修正】TKR の品目検索APIを呼び出す ▼▼▼
             showModal(activeRow, (selectedProduct, targetRow) => {
                 
                 // TKRのProductMasterView (selectedProduct) をデータとして保存
                 targetRow.dataset.product = JSON.stringify(selectedProduct);
-         
+        
                 const lowerRow = targetRow.nextElementSibling;
 
                 targetRow.querySelector('.display-yj-code').textContent = selectedProduct.yjCode;
@@ -2042,7 +1993,8 @@ export function initDetailsTable() {
                 quantityInput.select();
                 recalculateRow(targetRow);
             }, {
-                searchMode: 'inout' // JCSHMS統合検索モードを指定
+                searchMode: 'inout', // JCSHMS統合検索モードを指定
+                allowAdopted: true   // ★追加: 採用済み品目も選択可能にする
             });
             // ▲▲▲【修正ここまで】▲▲▲
         }
@@ -2730,7 +2682,6 @@ tbody = document.querySelector(`.final-input-tbody[data-product-code="${productC
 
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\js\inventory_adjustment_logic.js -----
 // C:\Users\wasab\OneDrive\デスクトップ\TKR\static\js\inventory_adjustment_logic.js
-// (新規作成)
 import { getLocalDateString } from './utils.js';
 
 let lastLoadedDataCache = null;
@@ -2739,12 +2690,15 @@ let currentYjCode = null;
 export function setCache(data) {
     lastLoadedDataCache = data;
 }
+
 export function getCache() {
     return lastLoadedDataCache;
 }
+
 export function setCurrentYjCode(yjCode) {
     currentYjCode = yjCode;
 }
+
 export function getCurrentYjCode() {
     return currentYjCode;
 }
@@ -2786,7 +2740,8 @@ export function reverseCalculateStock() {
     const todayStr = getLocalDateString().replace(/-/g, '');
     const precompTotalsByProduct = {};
     const calculationErrorByProduct = {};
-    
+
+    // 1. 画面上の予製チェックボックスから、本日有効な予製数を集計
     document.querySelectorAll('.precomp-active-check:checked').forEach(cb => {
         const productCode = cb.dataset.productCode;
         const master = findMaster(productCode);
@@ -2800,57 +2755,83 @@ export function reverseCalculateStock() {
             calculationErrorByProduct[productCode] = '包装数量(内)未設定';
         }
     });
-    
+
     updatePrecompTotalDisplay();
 
+    // 2. キャッシュされている取引履歴から、本日の変動数（NetChange）を集計
     const todayNetChangeByProduct = {};
     if (lastLoadedDataCache && lastLoadedDataCache.transactionLedger) {
         lastLoadedDataCache.transactionLedger.forEach(yjGroup => {
             if (yjGroup.packageLedgers) {
-                 yjGroup.packageLedgers.forEach(pkg => {
+                yjGroup.packageLedgers.forEach(pkg => {
                     if (pkg.transactions) {
-                         pkg.transactions.forEach(tx => {
-                             if (tx.transactionDate === todayStr && tx.flag !== 0) {
-                                 let janQty = tx.janQuantity || 0;
-                                 if (janQty === 0 && tx.yjQuantity) {
-                                     if (tx.janPackInnerQty > 0) {
-                                         janQty = tx.yjQuantity / tx.janPackInnerQty;
-                                     } else if (tx.yjQuantity !== 0) {
-                                         calculationErrorByProduct[tx.janCode] = '包装数量(内)未設定';
-                                     }
-                                 }
-                                 const signedJanQty = janQty * (tx.flag === 1 ? 1 : (tx.flag === 3 ? -1 : 0));
-todayNetChangeByProduct[tx.janCode] = (todayNetChangeByProduct[tx.janCode] || 0) + signedJanQty;
+                        pkg.transactions.forEach(tx => {
+                            // 日付が本日で、かつ棚卸(0)ではないレコードが対象
+                            if (tx.transactionDate === todayStr && tx.flag !== 0) {
+
+                                let janQty = tx.janQuantity || 0;
+                                // JAN数量がなくYJ数量のみある場合の換算
+                                if (janQty === 0 && tx.yjQuantity) {
+                                    if (tx.janPackInnerQty > 0) {
+                                        janQty = tx.yjQuantity / tx.janPackInnerQty;
+                                    } else if (tx.yjQuantity !== 0) {
+                                        calculationErrorByProduct[tx.janCode] = '包装数量(内)未設定';
+                                    }
+                                }
+
+                                // 符号判定
+                                let sign = 0;
+                                // 在庫が増える取引: 納品(1), 入庫(11)
+                                if (tx.flag === 1 || tx.flag === 11) {
+                                    sign = 1;
+                                }
+                                // 在庫が減る取引: 返品(2), 処方(3), 出庫(12)
+                                else if (tx.flag === 2 || tx.flag === 3 || tx.flag === 12) {
+                                    sign = -1;
+                                }
+
+                                const signedJanQty = janQty * sign;
+                                todayNetChangeByProduct[tx.janCode] = (todayNetChangeByProduct[tx.janCode] || 0) + signedJanQty;
                             }
-                         });
+                        });
                     }
                 });
             }
-         });
+        });
     }
 
+    // 3. 画面表示の更新: 実在庫 - 変動 = 前日在庫（理論値）
     document.querySelectorAll('.physical-stock-display').forEach(displaySpan => {
         const productCode = displaySpan.dataset.productCode;
         const calculatedSpan = document.querySelector(`.calculated-previous-day-stock[data-product-code="${productCode}"]`);
-        
+
         if (calculationErrorByProduct[productCode]) {
             if (calculatedSpan) calculatedSpan.innerHTML = `<span class="status-error">${calculationErrorByProduct[productCode]}</span>`;
             updateFinalInventoryTotal(productCode);
             return;
         }
-        
+
+        // ① 実在庫（ユーザー入力値）
         const physicalStockToday = parseFloat(displaySpan.textContent) || 0;
-        const precompStock = precompTotalsByProduct[productCode] || 0;
-        const totalStockToday = physicalStockToday + precompStock;
-        const netChangeToday = todayNetChangeByProduct[productCode] || 0;
-        const calculatedPreviousDayStock = totalStockToday - netChangeToday;
         
+        // ② 予製分
+        const precompStock = precompTotalsByProduct[productCode] || 0;
+        
+        // 合計在庫（本日時点）
+        const totalStockToday = physicalStockToday + precompStock;
+
+        // ③ 本日の変動
+        const netChangeToday = todayNetChangeByProduct[productCode] || 0;
+
+        // ④ 前日在庫（逆算値）
+        const calculatedPreviousDayStock = totalStockToday - netChangeToday;
+
         if (calculatedSpan) calculatedSpan.textContent = calculatedPreviousDayStock.toFixed(2);
     });
 }
 
 /**
- * ロット・期限入力の合計を「① 実在庫数量」に反映します。
+ * ロット・期限入力の合計を「① 実在庫数量」に反映し、理論在庫との不一致をチェックします。
  */
 export function updateFinalInventoryTotal(productCode) {
     const tbody = document.querySelector(`.final-input-tbody[data-product-code="${productCode}"]`);
@@ -2859,11 +2840,22 @@ export function updateFinalInventoryTotal(productCode) {
     tbody.querySelectorAll('.final-inventory-input, .lot-quantity-input').forEach(input => {
         totalQuantity += parseFloat(input.value) || 0;
     });
+    
     const physicalStockDisplay = document.querySelector(`.physical-stock-display[data-product-code="${productCode}"]`);
     if (physicalStockDisplay) {
+        // 合計を表示
         physicalStockDisplay.textContent = totalQuantity.toFixed(2);
+
+        // 理論在庫との比較 (不一致なら緑色、一致ならグレー)
+        const theoretical = parseFloat(physicalStockDisplay.dataset.theoretical) || 0;
+        if (Math.abs(totalQuantity - theoretical) > 0.01) {
+            physicalStockDisplay.classList.add('stock-mismatch'); // 緑になる
+        } else {
+            physicalStockDisplay.classList.remove('stock-mismatch'); // グレーに戻る
+        }
     }
-    
+
+    // 実在庫が変わったので、逆算値を再計算
     reverseCalculateStock();
 }
 
@@ -3028,13 +3020,13 @@ barcodeForm.addEventListener('submit', (e) => handleBarcodeScan(e, loadAndRender
 
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\js\inventory_adjustment_ui.js -----
 // C:\Users\wasab\OneDrive\デスクトップ\TKR\static\js\inventory_adjustment_ui.js
-import { getLocalDateString } from './utils.js';
+import { getLocalDateString, getExpiryStatus } from './utils.js';
 import { renderTransactionTableHTML } from './common_table.js';
 import { clientMap } from './master_data.js';
 
 let unitMap = {};
 const transactionTypeMap = {
-	0: "棚卸", 1: "納品", 2: "返品", 3: "処方",
+    0: "棚卸", 1: "納品", 2: "返品", 3: "処方",
     5: "予製",
     11: "入庫", 12: "出庫"
 };
@@ -3043,12 +3035,13 @@ export function setUnitMap(map) {
     unitMap = map;
 }
 
+/**
+ * 1. 全体サマリー（在庫元帳）のHTMLを生成
+ */
 function generateSummaryLedgerHtml(yjGroup, yesterdaysTotal, cache) {
     const endDate = getLocalDateString();
     const startDate = new Date();
-    // ▼▼▼【修正】表示期間を -30 から -90 に変更 ▼▼▼
-    startDate.setDate(startDate.getDate() - 90);
-    // ▲▲▲【修正ここまで】▲▲▲
+    startDate.setDate(startDate.getDate() - 90); // 90日前から表示
     const startDateStr = startDate.toISOString().slice(0, 10);
     
     let packageLedgerHtml = (yjGroup.packageLedgers || []).map(pkg => {
@@ -3060,7 +3053,7 @@ function generateSummaryLedgerHtml(yjGroup, yesterdaysTotal, cache) {
         if(cache && cache.yesterdaysStock && cache.yesterdaysStock.packageLedgers){
             const prevPkg = cache.yesterdaysStock.packageLedgers.find(p => p.packageKey === pkg.packageKey);
             if(prevPkg) {
-                 yesterdaysPkgStock = prevPkg.endingBalance || 0;
+                yesterdaysPkgStock = prevPkg.endingBalance || 0;
             }
         }
         
@@ -3068,9 +3061,9 @@ function generateSummaryLedgerHtml(yjGroup, yesterdaysTotal, cache) {
 
         const pkgHeader = `
             <div class="agg-pkg-header adj-pkg-margin">
-                 <span>包装: ${pkg.packageKey}</span>
-                 <span class="balance-info">
-                     理論在庫(包装計): ${balanceDisplay} ${yjGroup.yjUnitName}
+                <span>包装: ${pkg.packageKey}</span>
+                <span class="balance-info">
+                   理論在庫(包装計): ${balanceDisplay} ${yjGroup.yjUnitName}
                  </span>
             </div>
          `;
@@ -3081,12 +3074,15 @@ function generateSummaryLedgerHtml(yjGroup, yesterdaysTotal, cache) {
     return `<div class="summary-section">
         <h3 class="view-subtitle">1. 全体サマリー</h3>
         <div class="report-section-header">
-             <h4>在庫元帳 (期間: ${startDateStr} ～ ${endDate})</h4>
+            <h4>在庫元帳 (期間: ${startDateStr} ～ ${endDate})</h4>
         </div>
         ${packageLedgerHtml}
     </div>`;
 }
 
+/**
+ * 予製払出明細のHTMLを生成
+ */
 function generateSummaryPrecompHtml(precompDetails) {
     const precompTransactions = (precompDetails || []).map(p => ({
         ...p,
@@ -3096,22 +3092,15 @@ function generateSummaryPrecompHtml(precompDetails) {
     }));
     
     const renderTKRPrecompTable = (records) => {
-        const transactionTypeMap = {
-            0: "棚卸", 1: "納品", 2: "返品", 3: "処方",
-            5: "予製",
-            11: "入庫", 12: "出庫"
-        };
-        
         const header = `<thead>
              <tr><th rowspan="2" class="col-action">有効</th><th class="col-date">日付</th><th class="col-yj">YJ</th><th colspan="2" class="col-product">製品名</th><th class="col-count">個数</th><th class="col-yjqty">YJ数量</th><th class="col-yjpackqty">YJ包装数</th><th class="col-yjunit">YJ単位</th><th class="col-unitprice">単価</th><th class="col-expiry">期限</th><th class="col-wholesaler">患者</th><th class="col-line">行</th></tr>
             <tr><th class="col-flag">種別</th><th class="col-jan">JAN</th><th class="col-package">包装</th><th class="col-maker">メーカー</th><th class="col-form">剤型</th><th class="col-janqty">JAN数量</th><th class="col-janpackqty">JAN包装数</th><th class="col-janunit">JAN単位</th><th class="col-amount">金額</th><th class="col-lot">ロット</th><th class="col-receipt">伝票番号</th><th class="col-ma">MA</th></tr></thead>`;
         
         let bodyHtml = `<tbody>${(!records || records.length === 0) ?
             '<tr><td colspan="13">対象データがありません。</td></tr>' : records.map(rec => {
-            
-            const top = `<tr><td rowspan="2" class="col-action center"><input type="checkbox" 
+                const top = `<tr><td rowspan="2" class="col-action center"><input type="checkbox" 
                  class="precomp-active-check" data-quantity="${rec.yjQuantity}" data-product-code="${rec.janCode}" checked></td>
-                  <td class="col-date">${rec.transactionDate || ''}</td><td class="yj-jan-code col-yj">${rec.yjCode || ''}</td><td class="left col-product" colspan="2">${rec.productName || ''}</td>
+                 <td class="col-date">${rec.transactionDate || ''}</td><td class="yj-jan-code col-yj">${rec.yjCode || ''}</td><td class="left col-product" colspan="2">${rec.productName || ''}</td>
                  <td class="right col-count">${rec.datQuantity?.toFixed(2) || ''}</td><td class="right col-yjqty">${rec.yjQuantity?.toFixed(2) || ''}</td><td class="right col-yjpackqty">${rec.yjPackUnitQty || ''}</td><td class="col-yjunit">${rec.yjUnitName || ''}</td>
                  <td class="right col-unitprice">${rec.unitPrice?.toFixed(4) || ''}</td><td class="col-expiry">${rec.expiryDate || ''}</td><td class="left col-wholesaler">${rec.clientCodeDisplay}</td><td class="right col-line">${rec.lineNumber || ''}</td></tr>`;
             
@@ -3129,7 +3118,11 @@ function generateSummaryPrecompHtml(precompDetails) {
         ${renderTKRPrecompTable(precompTransactions)}</div>`;
 }
 
-export function createFinalInputRow(master, deadStockRecord = null, isPrimary = false) {
+/**
+ * 実在庫入力行（1行分）のHTMLを生成
+ * isPrimary=true の場合、theoreticalStock をプレースホルダーに表示し、valueは空にする。
+ */
+export function createFinalInputRow(master, deadStockRecord = null, isPrimary = false, theoreticalStock = '') {
     const actionButtons = isPrimary ?
         `
           <button type="button" class="btn add-deadstock-row-btn" data-product-code="${master.productCode}">＋</button>
@@ -3137,15 +3130,35 @@ export function createFinalInputRow(master, deadStockRecord = null, isPrimary = 
         ` : `<button type="button" class="btn delete-deadstock-row-btn">－</button>`;
     const quantityInputClass = isPrimary ?
         'final-inventory-input' : 'lot-quantity-input';
-    const quantityPlaceholder = isPrimary ? '目安をここに転記' : 'ロット数量';
-    const quantity = deadStockRecord ? deadStockRecord.stockQuantityJan : '';
+    
+    // 保存済みデータがある場合のみ値をセット。それ以外は空欄。
+    let quantity = '';
+    if (deadStockRecord) {
+        quantity = deadStockRecord.stockQuantityJan;
+    }
+
+    // プレースホルダーに理論在庫(目安)を表示
+    let quantityPlaceholder;
+    if (isPrimary) {
+        if (theoreticalStock !== '' && theoreticalStock !== null) {
+            quantityPlaceholder = `目安: ${theoreticalStock}`;
+        } else {
+            quantityPlaceholder = '実在庫数を入力';
+        }
+    } else {
+        quantityPlaceholder = 'ロット数量';
+    }
+
     const expiry = deadStockRecord ? deadStockRecord.expiryDate : '';
     const lot = deadStockRecord ? deadStockRecord.lotNumber : '';
 
+    // 期限状態を取得してクラスに追加 (input要素用)
+    const expiryStatusClass = getExpiryStatus(expiry);
+
     const topRow = `<tr class="inventory-row"><td rowspan="2" class="col-action"><div class="action-buttons">${actionButtons}</div></td>
-        <td class="col-date">(棚卸日)</td><td class="yj-jan-code col-yj">${master.yjCode}</td><td class="left col-product" colspan="2">${master.productName}</td>
+         <td class="col-date">(棚卸日)</td><td class="yj-jan-code col-yj">${master.yjCode}</td><td class="left col-product" colspan="2">${master.productName}</td>
          <td class="col-count"></td><td class="right col-yjqty"></td><td class="right col-yjpackqty">${master.yjPackUnitQty || ''}</td><td class="col-yjunit">${master.yjUnitName || ''}</td>
-        <td class="right col-unitprice">${master.nhiPrice?.toFixed(4) || ''}</td><td class="col-expiry"><input type="text" class="expiry-input" placeholder="YYYYMM" value="${expiry}"></td><td class="col-wholesaler"></td><td class="col-line"></td></tr>`;
+        <td class="right col-unitprice">${master.nhiPrice?.toFixed(4) || ''}</td><td class="col-expiry"><input type="text" class="expiry-input ${expiryStatusClass}" placeholder="YYYYMM" value="${expiry}"></td><td class="col-wholesaler"></td><td class="col-line"></td></tr>`;
     
     const bottomRow = `<tr class="inventory-row"><td class="col-flag">棚卸</td><td class="yj-jan-code col-jan">${master.productCode}</td>
         <td class="col-package">${master.formattedPackageSpec || ''}</td><td class="col-maker">${master.makerName || ''}</td><td class="col-form">${master.usageClassification || ''}</td>
@@ -3155,6 +3168,9 @@ export function createFinalInputRow(master, deadStockRecord = null, isPrimary = 
     return topRow + bottomRow;
 }
 
+/**
+ * 2. 棚卸入力セクション全体のHTMLを生成
+ */
 function generateInputSectionsHtml(packageLedgers, yjUnitName = '単位', cache, yesterdaysTotal) {
     const packageGroupsHtml = (packageLedgers || []).map(pkgLedger => {
         let yesterdaysPkgStock = 0;
@@ -3166,7 +3182,9 @@ function generateInputSectionsHtml(packageLedgers, yjUnitName = '単位', cache,
         }
         
         let totalStockDisplay = `${(pkgLedger.endingBalance || 0).toFixed(2)} ${yjUnitName}`;
-        let yesterdaysTotalStockDisplay = `${yesterdaysPkgStock.toFixed(2)} ${yjUnitName}`;
+        
+        // 理論在庫(JAN)の計算用変数
+        let theoreticalJanStockForInput = 0;
 
         if (pkgLedger.masters && pkgLedger.masters.length > 0) {
             const firstMaster = pkgLedger.masters[0];
@@ -3176,53 +3194,59 @@ function generateInputSectionsHtml(packageLedgers, yjUnitName = '単位', cache,
                 const totalJanStock = (pkgLedger.endingBalance || 0) / janPackInnerQty;
                 totalStockDisplay = `${totalJanStock.toFixed(2)} ${janUnitName}`;
                 
-                const yesterdaysTotalJanStock = yesterdaysPkgStock / janPackInnerQty;
-                yesterdaysTotalStockDisplay = `${yesterdaysTotalJanStock.toFixed(2)} ${janUnitName}`;
+                // JAN単位の理論在庫を計算
+                theoreticalJanStockForInput = parseFloat(totalJanStock.toFixed(2));
             }
         }
         let html = `
          <div class="package-input-group">
              <div class="agg-pkg-header">
-                 <span>包装: ${pkgLedger.packageKey}</span>
+                  <span>包装: ${pkgLedger.packageKey}</span>
              </div>`;
+             
         html += (pkgLedger.masters || []).map(master => {
             if (!master) return '';
             const janUnitName = master.janUnitName;
+            
+            // data-theoretical 属性を追加し、理論在庫を埋め込む
             const userInputArea = `
-                 <div class="user-input-area">
-                     <div class="form-group">
-                         <label>① 本日の実在庫数量（予製除く）:</label>
-                         <span
-                             class="physical-stock-display" 
-                             data-product-code="${master.productCode}">0.00</span>
-                         <span>(${janUnitName})</span>
-                         <span class="info-text">本日理論在庫(包装計): ${totalStockDisplay}</span>
-                     </div>
+                <div class="user-input-area">
+                    <div class="form-group">
+                       <label>① 本日の実在庫数量（予製除く）:</label>
+                        <span class="physical-stock-display" 
+                           data-product-code="${master.productCode}"
+                           data-theoretical="${theoreticalJanStockForInput}">0.00</span>
+                        <span>(${janUnitName})</span>
+                       <span class="info-text">本日理論在庫(包装計): ${totalStockDisplay}</span>
+                    </div>
                      <div class="form-group">
                          <label>② 前日在庫(逆算値):</label>
                          <span class="calculated-previous-day-stock" data-product-code="${master.productCode}">0.00</span>
                          <span>(${janUnitName})</span>
-                         <span class="info-text stock-info">(この数値が棚卸データとして登録されます)</span>
-                     </div>
+                        <span class="info-text stock-info">(この数値が棚卸データとして登録されます)</span>
+                    </div>
                  </div>`;
+                 
             const relevantDeadStock = (cache.deadStockDetails || []).filter(ds => ds.productCode === master.productCode);
             let finalInputTbodyHtml;
+            
+            // 保存済みデータがある場合はそれを使用。ない場合は理論在庫をプレースホルダーにセットして空欄。
             if (relevantDeadStock.length > 0) {
                 finalInputTbodyHtml = relevantDeadStock.map((rec, index) => createFinalInputRow(master, rec, index === 0)).join('');
             } else {
-                finalInputTbodyHtml = createFinalInputRow(master, null, true);
+                finalInputTbodyHtml = createFinalInputRow(master, null, true, theoreticalJanStockForInput);
             }
-            
+
             const finalInputTable = renderTransactionTableHTML(
                 [], 
                 `<tbody class="final-input-tbody" data-product-code="${master.productCode}">${finalInputTbodyHtml}</tbody>`
             );
             return `<div class="product-input-group">
-                 ${userInputArea}
+                ${userInputArea}
                  <div>
-                     <p class="lot-input-header">ロット・期限を個別入力</p>
-                     ${finalInputTable}
-                 </div>
+                      <p class="lot-input-header">ロット・期限を個別入力</p>
+                    ${finalInputTable}
+                  </div>
             </div>`;
         }).join('');
         html += `</div>`;
@@ -3230,46 +3254,49 @@ function generateInputSectionsHtml(packageLedgers, yjUnitName = '単位', cache,
     }).join('');
     
     return `<div class="input-section">
-        <h3 class="view-subtitle">2. 棚卸入力</h3>
+       <h3 class="view-subtitle">2. 棚卸入力</h3>
         <div class="inventory-input-area">
-             <div class="adj-date-group">
+            <div class="adj-date-group">
                 <div class="form-group">
-                     <label for="inventory-date">棚卸日:</label>
-                     <input type="date" id="inventory-date">
-                 </div>
+                    <label for="inventory-date">棚卸日:</label>
+                    <input type="date" id="inventory-date">
+                </div>
                  <form id="adjustment-barcode-form" class="adj-barcode-form">
-                     <div class="form-group">
-                         <label for="adjustment-barcode-input">バーコードでロット・期限入力</label>
-                         <input type="text" id="adjustment-barcode-input" inputmode="latin" placeholder="GS1-128バーコードをスキャンしてEnter">
-                     </div>
-                 </form>
+                    <div class="form-group">
+                        <label for="adjustment-barcode-input">バーコードでロット・期限入力</label>
+                        <input type="text" id="adjustment-barcode-input" inputmode="latin" placeholder="GS1-128バーコードをスキャンしてEnter">
+                    </div>
+                </form>
              </div>
          </div>
-        ${packageGroupsHtml}
+         ${packageGroupsHtml}
     </div>`;
 }
 
+/**
+ * 3. 参考：現在登録済みのロット・期限情報のHTMLを生成
+ */
 function generateDeadStockReferenceHtml(deadStockRecords, cache) {
     if (!deadStockRecords || deadStockRecords.length === 0) {
         const rowsHtml = '<tr><td colspan="5">品目を選択すると表示されます。</td></tr>';
         return `
             <div class="summary-section input-section">
-                <h3 class="view-subtitle">3. 参考：現在登録済みのロット・期限情報</h3>
-                <p class="reference-section-header">※このリストは参照用です。棚卸情報を保存するには、上の「2. 棚卸入力」の欄に改めて入力してください。</p>
+             <h3 class="view-subtitle">3. 参考：現在登録済みのロット・期限情報</h3>
+             <p class="reference-section-header">※このリストは参照用です。棚卸情報を保存するには、上の「2. 棚卸入力」の欄に改めて入力してください。</p>
                 <table class="data-table reference-table">
-                    <thead>
-                        <tr>
-                            <th class="col-ref-jan">JAN</th>
-                            <th class="col-ref-spec">包装仕様</th>
-                            <th class="col-ref-qty">在庫数量(JAN)</th>
+                 <thead>
+                     <tr>
+                      <th class="col-ref-jan">JAN</th>
+                        <th class="col-ref-spec">包装仕様</th>
+                          <th class="col-ref-qty">在庫数量(JAN)</th>
                             <th class="col-ref-expiry">使用期限</th>
-                            <th class="col-ref-lot">ロット番号</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        ${rowsHtml}
+                              <th class="col-ref-lot">ロット番号</th>
+                    </tr>
+                 </thead>
+              <tbody>
+                   ${rowsHtml}
                     </tbody>
-                </table>
+             </table>
             </div>
         `;
     }
@@ -3278,8 +3305,8 @@ function generateDeadStockReferenceHtml(deadStockRecords, cache) {
     if (cache && cache.transactionLedger) {
         for (const yjGroup of cache.transactionLedger) {
             for (const pkg of yjGroup.packageLedgers) {
-                for (const master of pkg.masters) {
-                    masterMap.set(master.productCode, master);
+               for (const master of pkg.masters) {
+                 masterMap.set(master.productCode, master);
                 }
             }
         }
@@ -3288,39 +3315,46 @@ function generateDeadStockReferenceHtml(deadStockRecords, cache) {
     const rowsHtml = deadStockRecords.map(rec => {
         const master = masterMap.get(rec.productCode);
         const packageSpec = master ? master.formattedPackageSpec : '(仕様不明)';
+        
+        // 期限の状態を取得してクラスに追加 (td要素用)
+        const statusClass = getExpiryStatus(rec.expiryDate);
+
         return `
-            <tr>
+             <tr>
                 <td class="yj-jan-code col-ref-jan">${rec.productCode}</td>
                 <td class="left col-ref-spec">${packageSpec}</td>
                 <td class="right col-ref-qty">${rec.stockQuantityJan.toFixed(2)}</td>
-                <td class="center col-ref-expiry">${rec.expiryDate || ''}</td>
+                <td class="center col-ref-expiry ${statusClass}">${rec.expiryDate || ''}</td>
                 <td class="left col-ref-lot">${rec.lotNumber || ''}</td>
              </tr>
         `;
     }).join('');
     
     return `
-         <div class="summary-section input-section">
+        <div class="summary-section input-section">
              <h3 class="view-subtitle">3. 参考：現在登録済みのロット・期限情報</h3>
              <p class="reference-section-header">※このリストは参照用です。棚卸情報を保存するには、上の「2. 棚卸入力」の欄に改めて入力してください。</p>
              <table class="data-table reference-table">
-                 <thead>
-                     <tr>
-                         <th class="col-ref-jan">JAN</th>
-                         <th class="col-ref-spec">包装仕様</th>
-                         <th class="col-ref-qty">在庫数量(JAN)</th>
-                         <th class="col-ref-expiry">使用期限</th>
-                         <th class="col-ref-lot">ロット番号</th>
+               <thead>
+                  <tr>
+                      <th class="col-ref-jan">JAN</th>
+                      <th class="col-ref-spec">包装仕様</th>
+                      <th class="col-ref-qty">在庫数量(JAN)</th>
+                     <th class="col-ref-expiry">使用期限</th>
+                      <th class="col-ref-lot">ロット番号</th>
                      </tr>
-                </thead>
-                <tbody>
+               </thead>
+               <tbody>
                     ${rowsHtml}
-                 </tbody>
+                </tbody>
              </table>
          </div>
     `;
 }
 
+/**
+ * 全体のHTMLを組み立てるメイン関数
+ */
 export function generateFullHtml(data, cache) {
 
     if (!data || !data.transactionLedger || data.transactionLedger.length === 0) {
@@ -3331,9 +3365,9 @@ export function generateFullHtml(data, cache) {
         const summaryLedgerHtml = '<div class="summary-section"><h3 class="view-subtitle">1. 全体サマリー</h3><p>品目を選択すると表示されます。</p></div>';
         
         const summaryPrecompHtml = `<div class="summary-section" style="margin-top: 15px;">
-           <div class="report-section-header"><h4>予製払出明細 (全体)</h4>
+            <div class="report-section-header"><h4>予製払出明細 (全体)</h4>
            <span class="header-total" id="precomp-active-total">有効合計: 0.00</span></div>
-           <table class="data-table"><thead>
+            <table class="data-table"><thead>
            <tr><th rowspan="2" class="col-action">有効</th><th class="col-date">日付</th><th class="col-yj">YJ</th><th colspan="2" class="col-product">製品名</th><th class="col-count">個数</th><th class="col-yjqty">YJ数量</th><th class="col-yjpackqty">YJ包装数</th><th class="col-yjunit">YJ単位</th><th class="col-unitprice">単価</th><th class="col-expiry">期限</th><th class="col-wholesaler">患者</th><th class="col-line">行</th></tr>
            <tr><th class="col-flag">種別</th><th class="col-jan">JAN</th><th class="col-package">包装</th><th class="col-maker">メーカー</th><th class="col-form">剤型</th><th class="col-janqty">JAN数量</th><th class="col-janpackqty">JAN包装数</th><th class="col-janunit">JAN単位</th><th class="col-amount">金額</th><th class="col-lot">ロット</th><th class="col-receipt">伝票番号</th><th class="col-ma">MA</th></tr></thead>
            <tbody><tr><td colspan="13">品目を選択すると表示されます。</td></tr></tbody></table></div>`;
@@ -3358,7 +3392,7 @@ export function generateFullHtml(data, cache) {
     const deadStockReferenceHtml = generateDeadStockReferenceHtml(data.deadStockDetails, cache);
     
     return `<h2 class="adj-header">【棚卸調整】 ${productName} (YJ: ${yjGroup.yjCode})</h2>
-        ${summaryLedgerHtml}
+         ${summaryLedgerHtml}
          ${summaryPrecompHtml}
         ${inputSectionsHtml}
         ${deadStockReferenceHtml}`;
@@ -4120,16 +4154,26 @@ export function setupWholesalerDropdown() {
 }
 
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\js\masteredit.js -----
+// C:\Users\wasab\OneDrive\デスクトップ\TKR\static\js\masteredit.js
 import { initSearchForm } from './masteredit_search.js';
 import { initEditForm } from './masteredit_form.js';
+// ▼▼▼ 追加 ▼▼▼
+import { initShelfRegistration, openShelfRegistrationModal } from './shelf_registration.js';
+// ▲▲▲ 追加ここまで ▲▲▲
 
 let viewElement, masterListTable;
 let usageClassRadios;
+// ▼▼▼ 追加 ▼▼▼
+let openShelfRegBtn;
+// ▲▲▲ 追加ここまで ▲▲▲
 
 export function initMasterEditView() {
     viewElement = document.getElementById('master-edit-view');
     masterListTable = document.getElementById('masterListTable');
     usageClassRadios = document.querySelectorAll('input[name="master_usage_class"]');
+    // ▼▼▼ 追加 ▼▼▼
+    openShelfRegBtn = document.getElementById('openShelfRegBtn');
+    // ▲▲▲ 追加ここまで ▲▲▲
 
     if (!viewElement || !masterListTable) {
         console.error("Master edit view elements not found.");
@@ -4138,6 +4182,13 @@ export function initMasterEditView() {
 
     initEditForm();
     initSearchForm();
+    
+    // ▼▼▼ 追加 ▼▼▼
+    initShelfRegistration();
+    if (openShelfRegBtn) {
+        openShelfRegBtn.addEventListener('click', openShelfRegistrationModal);
+    }
+    // ▲▲▲ 追加ここまで ▲▲▲
     
     if (masterListTable) {
         masterListTable.innerHTML = '';
@@ -5881,6 +5932,104 @@ export async function fetchAndRenderReorder() {
     if (coefficientInput) coefficientInput.value = '1.5';
 }
 
+----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\js\return_list.js -----
+// C:\Users\wasab\OneDrive\デスクトップ\TKR\static\js\return_list.js
+import { hiraganaToKatakana } from './utils.js';
+
+let outputContainer, kanaNameInput, dosageFormInput, coefficientInput, shelfNumberInput;
+let runBtn;
+
+export function initReturnListView() {
+    outputContainer = document.getElementById('return-candidates-output');
+    kanaNameInput = document.getElementById('return-kanaName');
+    dosageFormInput = document.getElementById('return-dosageForm');
+    coefficientInput = document.getElementById('return-coefficient');
+    shelfNumberInput = document.getElementById('return-shelf-number');
+    runBtn = document.getElementById('generate-return-candidates-btn');
+
+    if (runBtn) {
+        runBtn.addEventListener('click', handleGenerateReturnCandidates);
+    }
+
+    console.log("Return List View Initialized.");
+}
+
+async function handleGenerateReturnCandidates() {
+    window.showLoading('返品候補リストを作成中...');
+    
+    const params = new URLSearchParams({
+        kanaName: hiraganaToKatakana(kanaNameInput.value),
+        dosageForm: dosageFormInput.value,
+        shelfNumber: shelfNumberInput.value,
+        coefficient: coefficientInput.value,
+    });
+
+    try {
+        const res = await fetch(`/api/returns/candidates?${params.toString()}`);
+        if (!res.ok) {
+            const errText = await res.text();
+            throw new Error(errText || 'リストの生成に失敗しました');
+        }
+        const candidates = await res.json();
+        renderReturnTable(candidates);
+    } catch (err) {
+        outputContainer.innerHTML = `<p class="status-error">エラー: ${err.message}</p>`;
+    } finally {
+        window.hideLoading();
+    }
+}
+
+function renderReturnTable(candidates) {
+    if (!candidates || candidates.length === 0) {
+        outputContainer.innerHTML = "<p>返品対象となる品目はありませんでした。</p>";
+        return;
+    }
+
+    // style属性を削除し、classを使用
+    let html = `
+        <div class="return-list-condition">
+            条件: 理論在庫 > ( 返品係数 × 発注点 + 予製 ) + 最小JAN包装数量<br>
+            ※箱単位（包装単位）で返品可能な数量のみ表示しています。
+        </div>
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>製品名 (包装)</th>
+                    <th>メーカー</th>
+                    <th>最小包装単位</th>
+                    <th>理論在庫</th>
+                    <th>閾値</th>
+                    <th>返品推奨数</th>
+                    <th>単位</th>
+                </tr>
+            </thead>
+            <tbody>
+    `;
+
+    candidates.forEach(item => {
+        const master = item.representative;
+        const spec = master.formattedPackageSpec || item.packageKey;
+        
+        // 箱数の表示（style削除、class使用）
+        const boxInfo = item.returnableBoxes ? ` <span class="spec-info">(${item.returnableBoxes}箱)</span>` : '';
+
+        html += `
+            <tr>
+                <td class="left">${item.productName}<br><span class="spec-info">${spec}</span></td>
+                <td class="left">${master.makerName || ''}</td>
+                <td class="right">${item.minJanPackQty}</td>
+                <td class="right">${item.theoreticalStock.toFixed(2)}</td>
+                <td class="right">${item.threshold.toFixed(2)}</td>
+                <td class="right excess-qty">${item.excessQuantity.toFixed(2)}${boxInfo}</td>
+                <td class="center">${item.unitName}</td>
+            </tr>
+        `;
+    });
+
+    html += `</tbody></table>`;
+    outputContainer.innerHTML = html;
+}
+
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\js\search_modal.js -----
 // C:\Users\wasab\OneDrive\デスクトップ\TKR\static\js\search_modal.js
 import { hiraganaToKatakana } from './utils.js';
@@ -6114,6 +6263,178 @@ export function showModal(rowElement, callback, options = {}) {
   }
 }
 
+----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\js\shelf_registration.js -----
+// C:\Users\wasab\OneDrive\デスクトップ\TKR\static\js\shelf_registration.js
+import { parseBarcode, fetchProductMasterByBarcode } from './utils.js';
+
+let modal, closeBtn, barcodeForm, barcodeInput, shelfInput, listContainer, countSpan, executeBtn, clearBtn;
+let scanList = []; // { productCode: string, productName: string, isNew: boolean }
+
+export function initShelfRegistration() {
+    modal = document.getElementById('shelfRegistrationModal');
+    closeBtn = document.getElementById('closeShelfRegModalBtn');
+    barcodeForm = document.getElementById('shelf-reg-barcode-form');
+    barcodeInput = document.getElementById('shelf-reg-barcode');
+    shelfInput = document.getElementById('shelf-reg-number');
+    listContainer = document.getElementById('shelf-scan-list');
+    countSpan = document.getElementById('shelf-reg-count');
+    executeBtn = document.getElementById('shelf-reg-execute-btn');
+    clearBtn = document.getElementById('shelf-reg-clear-btn');
+
+    if (!modal) return;
+
+    closeBtn.addEventListener('click', closeModal);
+    barcodeForm.addEventListener('submit', handleScan);
+    executeBtn.addEventListener('click', handleBulkRegister);
+    clearBtn.addEventListener('click', clearList);
+}
+
+export function openShelfRegistrationModal() {
+    if (modal) {
+        modal.classList.remove('hidden');
+        scanList = [];
+        renderList();
+        shelfInput.value = ''; // 初期化するか維持するかは要件次第だが一旦クリア
+        barcodeInput.value = '';
+        setTimeout(() => shelfInput.focus(), 100); // 最初は棚番入力へフォーカス
+    }
+}
+
+function closeModal() {
+    if (modal) modal.classList.add('hidden');
+}
+
+function clearList() {
+    if (confirm('スキャン済みリストをクリアしますか？')) {
+        scanList = [];
+        renderList();
+        barcodeInput.focus();
+    }
+}
+
+async function handleScan(e) {
+    e.preventDefault();
+    const rawInput = barcodeInput.value.trim();
+    if (!rawInput) return;
+
+    // 棚番が入力されているかチェック（必須ではないが、警告は出さない）
+    // 連続スキャンのリズムを崩さないため、棚番は後からでも入力可とする
+
+    try {
+        // 1. フォーマット検証 (utils.js の parseBarcode を利用)
+        // これにより不正な文字列を弾く
+        parseBarcode(rawInput); 
+        
+        // 2. サーバーへ問い合わせ (既存API利用: FindOrCreateMasterが走る)
+        // これにより未知のJANなら自動的に仮登録される
+        const master = await fetchProductMasterByBarcode(rawInput);
+
+        // 3. リストに追加 (重複チェックはしない、最後にスキャンしたものが一番上に来る仕様)
+        // ただし、全く同じJANが連続している場合は音を鳴らす等のフィードバックがあっても良いが、
+        // ここでは単純に追加する
+        
+        // 新規作成かどうかは、origin が PROVISIONAL かつ、作成日時が直近...などの判定が難しいので
+        // 簡易的に「サーバーから返ってきたが、scanListにまだ無い」ものを強調するわけではなく
+        // サーバーレスポンスに isNew フラグはないため、運用上は「リストに出れば登録準備OK」とする。
+        // UI上、JCSHMS由来かPROVISIONALかで色を変える手はある。
+        const isProvisional = master.origin === 'PROVISIONAL';
+
+        const item = {
+            productCode: master.productCode,
+            productName: master.productName,
+            isProvisional: isProvisional,
+            shelfNumber: master.shelfNumber || '' // 現在の棚番
+        };
+
+        // 先頭に追加
+        scanList.unshift(item);
+        renderList();
+
+        // 成功音の代わりに、入力欄をクリアして次へ
+        barcodeInput.value = '';
+
+    } catch (err) {
+        // エラー音を鳴らす代わりに通知を表示 (連続スキャンなので控えめに)
+        console.error(err);
+        window.showNotification(`エラー: ${err.message}`, 'error');
+        barcodeInput.select(); // エラー時は選択状態にして書き換えやすくする
+    }
+}
+
+function renderList() {
+    if (!listContainer) return;
+    
+    listContainer.innerHTML = scanList.map(item => {
+        const badge = item.isProvisional ? `<span class="new-badge">仮登録</span>` : '';
+        const currentShelf = item.shelfNumber ? `(現: ${item.shelfNumber})` : '(棚番なし)';
+        
+        return `
+            <div class="scanned-item ${item.isProvisional ? 'is-new' : ''}">
+                <div class="item-main">
+                    <span>${badge}${item.productName}</span>
+                </div>
+                <div class="item-sub">
+                    <span>${item.productCode}</span>
+                    <span>${currentShelf}</span>
+                </div>
+            </div>
+        `;
+    }).join('');
+
+    if (countSpan) countSpan.textContent = scanList.length;
+}
+
+async function handleBulkRegister() {
+    const shelfNumber = shelfInput.value.trim();
+    if (!shelfNumber) {
+        window.showNotification('登録する棚番を入力してください。', 'warning');
+        shelfInput.focus();
+        return;
+    }
+
+    if (scanList.length === 0) {
+        window.showNotification('商品がスキャンされていません。', 'warning');
+        barcodeInput.focus();
+        return;
+    }
+
+    // ユニークなJANコードのリストを作成
+    const productCodes = [...new Set(scanList.map(item => item.productCode))];
+
+    if (!confirm(`棚番「${shelfNumber}」を、リストの${productCodes.length}件の品目に一括登録します。\nよろしいですか？`)) {
+        return;
+    }
+
+    window.showLoading('棚番を一括更新中...');
+    try {
+        const res = await fetch('/api/masters/bulk_update_shelf', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                productCodes: productCodes,
+                shelfNumber: shelfNumber
+            })
+        });
+
+        const result = await res.json();
+        if (!res.ok) {
+            throw new Error(result.message || '更新に失敗しました。');
+        }
+
+        window.showNotification(result.message, 'success');
+        
+        // リセット
+        scanList = [];
+        renderList();
+        barcodeInput.focus();
+
+    } catch (err) {
+        window.showNotification(err.message, 'error');
+    } finally {
+        window.hideLoading();
+    }
+}
+
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\js\usage.js -----
 // C:\Users\wasab\OneDrive\デスクトップ\TKR\static\js\usage.js
 // ▼▼▼【修正】handleFileUpload, renderTransactionTableHTML, renderEmptyTableHTML をインポート ▼▼▼
@@ -6172,9 +6493,7 @@ export function initUsageUpload() {
 
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\js\utils.js -----
 // C:\Users\wasab\OneDrive\デスクトップ\TKR\static\js\utils.js
-// ▼▼▼【ここから追加】common_table.js から関数をインポート ▼▼▼
 import { renderTransactionTableHTML, renderEmptyTableHTML } from './common_table.js';
-// ▲▲▲【追加ここまで】▲▲▲
 
 export function hiraganaToKatakana(str) {
 	if (!str) return '';
@@ -6184,16 +6503,13 @@ export function hiraganaToKatakana(str) {
 	});
 }
 
-// ▼▼▼【ここから修正】引数(date)を尊重するように修正 ▼▼▼
 export function getLocalDateString(date = null) {
 	const today = date instanceof Date ? date : new Date();
-	// 引数がなければ new Date() を使う
 	const yyyy = today.getFullYear();
 	const mm = String(today.getMonth() + 1).padStart(2, '0');
 	const dd = String(today.getDate()).padStart(2, '0');
 	return `${yyyy}-${mm}-${dd}`;
 }
-// ▲▲▲【修正ここまで】▲▲▲
 
 export function parseBarcode(code) {
 	const length = code.length;
@@ -6217,6 +6533,7 @@ export function parseBarcode(code) {
 	}
 	throw new Error('不明なバーコード形式です');
 }
+
 function parseAIString(code) {
 	let rest = code;
 	const data = { gtin14: '', expiryDate: '', lotNumber: '' };
@@ -6275,24 +6592,65 @@ export async function fetchProductMasterByBarcode(barcode) {
 	return await res.json();
 }
 
-// (master_data.js に移管したため削除)
-// export async function fetchWholesalers() { ... }
-// export async function fetchWholesalerMap() { ... }
-
 export function toHalfWidthKatakana(str) {
-// ... (中略: toHalfWidthKatakana は変更なし) ...
+    if (!str) return '';
+    const kanaMap = {
+        'ガ': 'ｶﾞ', 'ギ': 'ｷﾞ', 'グ': 'ｸﾞ', 'ゲ': 'ｹﾞ', 'ゴ': 'ｺﾞ',
+        'ザ': 'ｻﾞ', 'ジ': 'ｼﾞ', 'ズ': 'ｽﾞ', 'ゼ': 'ｾﾞ', 'ゾ': 'ｿﾞ',
+        'ダ': 'ﾀﾞ', 'ヂ': 'ﾁﾞ', 'ヅ': 'ﾂﾞ', 'デ': 'ﾃﾞ', 'ド': 'ﾄﾞ',
+        'バ': 'ﾊﾞ', 'ビ': 'ﾋﾞ', 'ブ': 'ﾌﾞ', 'ベ': 'ﾍﾞ', 'ボ': 'ﾎﾞ',
+        'パ': 'ﾊﾟ', 'ピ': 'ﾋﾟ', 'プ': 'ﾌﾟ', 'ペ': 'ﾍﾟ', 'ポ': 'ﾎﾟ',
+        'ヴ': 'ｳﾞ', 'ア': 'ｱ', 'イ': 'ｲ', 'ウ': 'ｳ', 'エ': 'ｴ', 'オ': 'ｵ',
+        'カ': 'ｶ', 'キ': 'ｷ', 'ク': 'ｸ', 'ケ': 'ｹ', 'コ': 'ｺ',
+        'サ': 'ｻ', 'シ': 'ｼ', 'ス': 'ｽ', 'セ': 'ｾ', 'ソ': 'ｿ',
+        'タ': 'ﾀ', 'チ': 'ﾁ', 'ツ': 'ﾂ', 'テ': 'ﾃ', 'ト': 'ﾄ',
+        'ナ': 'ﾅ', 'ニ': 'ﾆ', 'ヌ': 'ﾇ', 'ネ': 'ﾈ', 'ノ': 'ﾉ',
+        'ハ': 'ﾊ', 'ヒ': 'ﾋ', 'フ': 'ﾌ', 'ヘ': 'ﾍ', 'ホ': 'ﾎ',
+        'マ': 'ﾏ', 'ミ': 'ﾐ', 'ム': 'ﾑ', 'メ': 'ﾒ', 'モ': 'ﾓ',
+        'ヤ': 'ﾔ', 'ユ': 'ﾕ', 'ヨ': 'ﾖ',
+        'ラ': 'ﾗ', 'リ': 'ﾘ', 'ル': 'ﾙ', 'レ': 'ﾚ', 'ロ': 'ﾛ',
+        'ワ': 'ﾜ', 'ヲ': 'ｦ', 'ン': 'ﾝ',
+        'ァ': 'ｧ', 'ィ': 'ｨ', 'ゥ': 'ｩ', 'ェ': 'ｪ', 'ォ': 'ｫ',
+        'ッ': 'ｯ', 'ャ': 'ｬ', 'ュ': 'ｭ', 'ョ': 'ｮ',
+        'ー': 'ｰ', '。': '｡', '、': '､', '「': '｢', '」': '｣', '・': '･'
+    };
+    return str.replace(/[ァ-ンー。、「」・]/g, function(s) {
+        return kanaMap[s] || s;
+    });
 }
 
-// ▼▼▼【ここから修正】共通ファイルアップロード関数 (Go APIがJSONを返す前提に変更) ▼▼▼
 /**
- * ファイルアップロードを処理する共通関数
- * @param {string} apiEndpoint - アップロード先のAPI URL (例: '/api/dat/upload')
- * @param {FileList} files - <input type="file"> から取得したファイルリスト
- * @param {HTMLElement} fileInput - ファイル入力要素 (処理後にリセットするため)
- * @param {HTMLElement} uploadResultContainer - 処理結果のサマリーを表示するコンテナ
- * @param {HTMLElement} dataTable - 処理結果のテーブルを表示するコンテナ
- * @param {string} loadingMessage - ローディング中に表示するメッセージ (例: 'DATファイルを処理中...')
+ * 日付文字列(YYYYMM or YYYYMMDD)を受け取り、期限状態を判定する
+ * 戻り値: 'status-expired' (赤), 'status-near' (青), '' (なし)
  */
+export function getExpiryStatus(dateStr) {
+    if (!dateStr) return '';
+    
+    let year, month;
+    // YYYYMM または YYYYMMDD に対応
+    if (dateStr.length >= 6) {
+        year = parseInt(dateStr.substring(0, 4), 10);
+        month = parseInt(dateStr.substring(4, 6), 10);
+    } else {
+        return '';
+    }
+
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth() + 1;
+
+    // 月差分を計算 (マイナスなら過去、0なら今月、1なら来月)
+    const monthDiff = (year - currentYear) * 12 + (month - currentMonth);
+
+    if (monthDiff < 0) {
+        return 'status-expired'; // 期限切れ (赤)
+    } else if (monthDiff <= 1) {
+        return 'status-near';    // 残り1ヶ月以内 (青)
+    }
+
+    return ''; // 安全 (緑などは付けない)
+}
+
 export async function handleFileUpload(apiEndpoint, files, fileInput, uploadResultContainer, dataTable, loadingMessage) {
     if (!files || files.length === 0) {
       return;
@@ -6304,30 +6662,25 @@ export async function handleFileUpload(apiEndpoint, files, fileInput, uploadResu
 
     const formData = new FormData();
     for (const file of files) {
-        formData.append('file', file);
+      formData.append('file', file);
     }
 
     try {
         const response = await fetch(apiEndpoint, {
-            method: 'POST',
+           method: 'POST',
             body: formData,
         });
         
-        // ▼▼▼【ここから修正】JSONパース失敗に備える ▼▼▼
         const responseText = await response.text();
         let result;
         try {
-            result = JSON.parse(responseText);
+          result = JSON.parse(responseText);
         } catch (jsonError) {
-            // JSONパースに失敗した場合 (サーバーがプレーンテキストのエラーを返した)
             if (!response.ok) {
-                // サーバーエラー (400, 500) かつ JSON ではない
                 throw new Error(responseText || `サーバーエラー (HTTP ${response.status})`);
             }
-            // サーバー 200 OK だが JSON ではない (通常ありえないが念のため)
             result = { message: responseText };
         }
-        // ▲▲▲【修正ここまで】▲▲▲
 
         if (!response.ok) {
             throw new Error(result.message || `サーバーエラー (HTTP ${response.status})`);
@@ -6350,13 +6703,12 @@ export async function handleFileUpload(apiEndpoint, files, fileInput, uploadResu
             summaryHtml += '</ul>';
         }
         if (uploadResultContainer) uploadResultContainer.innerHTML = summaryHtml;
-        // ▼▼▼【修正】result.tableHTML を削除し、result.records を共通関数に渡す ▼▼▼
+        
         if (dataTable && result.records && result.records.length > 0) { 
             dataTable.innerHTML = renderTransactionTableHTML(result.records);
         } else if (dataTable) {
             dataTable.innerHTML = renderEmptyTableHTML();
         }
-        // ▲▲▲【修正ここまで】▲▲▲
         
         window.showNotification(result.message || 'ファイルの処理が完了しました。', 'success');
     } catch (error) {
@@ -6371,7 +6723,6 @@ export async function handleFileUpload(apiEndpoint, files, fileInput, uploadResu
         if (fileInput) fileInput.value = '';
     }
 }
-// ▲▲▲【修正ここまで】▲▲▲
 
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\js\valuation.js -----
 // C:\Users\wasab\OneDrive\デスクトップ\TKR\static\js\valuation.js
@@ -6638,9 +6989,7 @@ fetch('/api/master/adopt', {
 
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\js\view_manager.js -----
 // C:\Users\wasab\OneDrive\デスクトップ\TKR\static\js\view_manager.js
-// (新規作成)
 
-// ▼▼▼ app.js からビュー初期化関数をすべて移管 ▼▼▼
 import { initDatUpload, fetchAndRenderDat } from './dat.js';
 import { initMasterEditView } from './masteredit.js';
 import { initConfigView, loadConfigAndWholesalers } from './config.js';
@@ -6653,11 +7002,11 @@ import { initReorderView, fetchAndRenderReorder } from './reorder.js';
 import { initBackorderView } from './backorder.js';
 import { initValuationView } from './valuation.js';
 import { initPricingView } from './pricing.js';
-// ▲▲▲ 移管ここまで ▲▲▲
+// ▼▼▼ 追加: 返品リストモジュール ▼▼▼
+import { initReturnListView } from './return_list.js';
 
 let views;
 
-// ▼▼▼ app.js から initializedViews を移管 ▼▼▼
 const initializedViews = {
     dat: false,
     usage: false,
@@ -6668,11 +7017,12 @@ const initializedViews = {
     deadstock: false,
     precomp: false,
     reorder: false,
+    // ▼▼▼ 追加: 初期化フラグ ▼▼▼
+    returnList: false,
     backorder: false,
     valuation: false,
     pricing: false,
 };
-// ▲▲▲ 移管ここまで ▲▲▲
 
 /**
  * app.jsの起動時にDOM要素(views)をキャッシュします。
@@ -6681,7 +7031,6 @@ export function initViewManager() {
     views = document.querySelectorAll('.view');
 }
 
-// ▼▼▼ app.js から setActiveView を移管 ▼▼▼
 /**
  * 指定されたビューをアクティブにし、必要に応じて初期化します。
  * @param {string} targetId - アクティブにするビューのID
@@ -6756,15 +7105,24 @@ export function setActiveView(targetId) {
             resetPrecompView();
             break;
         case 'reorder-view':
-             if (!initializedViews.reorder) {
+            if (!initializedViews.reorder) {
                 console.log("Initializing Reorder view...");
                 initReorderView(); 
                 initializedViews.reorder = true;
             }
-           fetchAndRenderReorder(); 
+            fetchAndRenderReorder(); 
             break;
+        // ▼▼▼ 追加: 返品リストビューの処理 ▼▼▼
+        case 'return-list-view':
+            if (!initializedViews.returnList) {
+                console.log("Initializing Return List view...");
+                initReturnListView();
+                initializedViews.returnList = true;
+            }
+            break;
+        // ▲▲▲ 追加ここまで ▲▲▲
         case 'backorder-view': 
-             if (!initializedViews.backorder) {
+            if (!initializedViews.backorder) {
                 console.log("Initializing Backorder view...");
                 initBackorderView(); 
                 initializedViews.backorder = true;
@@ -6792,5 +7150,4 @@ export function setActiveView(targetId) {
         targetView.dispatchEvent(new CustomEvent('show'));
     }
 }
-// ▲▲▲ 移管ここまで ▲▲▲
 
