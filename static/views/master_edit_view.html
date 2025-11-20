@@ -4,27 +4,14 @@
         <fieldset>
         <legend>品目検索</legend>
         
-        <div class="search-form-container">
-            <div class="search-barcode-row">
-                 <div class="form-group">
-                     <label for="master-search-gs1-barcode">GS1バーコードスキャン:</label>
-                     <form id="master-barcode-form" class="search-barcode-form">
-                         <input type="text" id="master-search-gs1-barcode" class="search-barcode-input" autocomplete="off" placeholder="GS1/JANをスキャン...">
-                     </form>
-                 </div>
-            </div>
-            <div class="search-filter-row" style="padding-top: 10px; border-top: 1px dashed #ccc; margin-top: 10px;">
-                <p style="font-size: 10px; font-weight: bold; margin: 0 10px 0 0;">または</p>
-                <button id="masterSearchBtn" class="btn search-submit-button" style="margin-left: auto;">既存マスタ検索</button>
-            </div>
-        </div>
+        {{ template "generic_search_form" . }}
+
         <div class="search-form-container" style="margin-top: 10px; border-top: 1px dashed #ccc; padding-top: 10px;">
             <div class="search-filter-row">
                 <span style="font-size: 10px; font-weight: bold; margin-right: auto;">新規マスタ作成:</span>
                 <button id="openShelfRegBtn" class="btn" style="background-color: #6f42c1; color: white; margin-right: 10px;">棚番連続登録</button>
                 <button id="masterAdoptJCSHMSBtn" class="btn" style="background-color: #17a2b8; color: white;">JCSHMSから採用...</button>
-  
-              <button id="masterCreateNewBtn" class="btn" style="background-color: #28a745; color: white;">その他 新規作成</button>
+                <button id="masterCreateNewBtn" class="btn" style="background-color: #28a745; color: white;">その他 新規作成</button>
             </div>
         </div>
         </fieldset>
@@ -33,8 +20,7 @@
         <table id="masterListTable" class="data-table">
             <thead>
             </thead>
-       
-     <tbody>
+            <tbody>
             </tbody>
         </table>
      </div>
@@ -42,164 +28,140 @@
 
 <div id="masterEditModalOverlay" class="modal-overlay hidden">
     <div class="modal-content">
-   
     <h2>製品マスター編集</h2>
         <form id="masterEditForm" autocomplete="off">
- 
              <div class="form-row readonly-group">
                 <div class="form-group flex-120">
-           
-         <label for="edit-yj-code">YJコード (編集不可: JCSHMS)</label>
+                    <label for="edit-yj-code">YJコード (編集不可: JCSHMS)</label>
                     <input type="text" id="edit-yj-code" class="readonly-field" readonly>
                </div>
                 <div class="form-group flex-120">
                     <label for="view-product-code">JANコード (キー)</label>
-         
-           <input type="text" id="view-product-code" class="readonly-field" readonly>
+                    <input type="text" id="view-product-code" class="readonly-field" readonly>
                     <input type="hidden" id="edit-product-code">
                 </div>
                 <div class="form-group flex-120">
                     <label for="edit-gs1-code">GS1コード (編集不可: JCSHMS)</label>
-      
-              <input type="text" id="edit-gs1-code" class="readonly-field" readonly>
-               </div>
+                    <input type="text" id="edit-gs1-code" class="readonly-field" readonly>
+                </div>
               <div class="form-group flex-100">
                     <label for="edit-origin">由来 (編集不可)</label>
                     <input type="text" id="edit-origin" class="readonly-field" readonly>
-     
-           </div>
+               </div>
            </div>
             
           <div class="form-row">
                 <div class="form-group flex-300">
                     <label for="edit-product-name">製品名 (JCSHMS):</label>
-               
-     <input type="text" id="edit-product-name">
-              </div>
+                    <input type="text" id="edit-product-name">
+                </div>
                 <div class="form-group flex-300">
                     <label for="edit-kana-name">カナ名 (JCSHMS):</label>
                     <input type="text" id="edit-kana-name">
                 </div>
- 
-               <div class="form-group flex-200">
+                <div class="form-group flex-200">
                     <label for="edit-kana-name-short">カナ名短縮 (JCSHMS):</label>
                     <input type="text" id="edit-kana-name-short">
                 </div>
             </div>
            
- <div class="form-row">
+            <div class="form-row">
                <div class="form-group flex-300">
                 <label for="edit-generic-name">一般名 (JCSHMS):</label>
                     <input type="text" id="edit-generic-name">
                 </div>
                 <div class="form-group flex-300">
-       
-            <label for="edit-maker-name">メーカー名 (JCSHMS):</label>
-                <input type="text" id="edit-maker-name">
+                    <label for="edit-maker-name">メーカー名 (JCSHMS):</label>
+                    <input type="text" id="edit-maker-name">
                 </div>
             </div>
             <div class="form-row">
                 <div class="form-group flex-200">
-         
-         <label for="edit-specification">規格 (JCSHMS):</label>
-                  <input type="text" id="edit-specification">
+                    <label for="edit-specification">規格 (JCSHMS):</label>
+                    <input type="text" id="edit-specification">
                 </div>
                 <div class="form-group flex-150">
                     <label for="edit-package-form">包装剤型 (JCSHMS):</label>
-             
-     <input type="text" id="edit-package-form">
-               </div>
+                    <input type="text" id="edit-package-form">
+                </div>
                 <div class="form-group flex-100">
                     <label for="edit-usage-classification">内外注区分 (JCSHMS):</label>
                     <input type="text" id="edit-usage-classification">
               </div>
-  
           </div>
    
-         <div class="form-row">
+          <div class="form-row">
                 <div class="form-group flex-100">
                     <label for="edit-yj-unit-name">YJ単位名 (JCSHMS):</label>
                     <input type="text" id="edit-yj-unit-name">
-               
-</div>
+               </div>
             <div class="form-group flex-100">
-                    <label for="edit-yj-pack-unit-qty">YJ包装単位数量 (JCSHMS):</label>
+                <label for="edit-yj-pack-unit-qty">YJ包装単位数量 (JCSHMS):</label>
                     <input type="number" id="edit-yj-pack-unit-qty">
                 </div>
             </div>
-             <div 
-class="form-row">
+             <div class="form-row">
                <div class="form-group flex-100">
                     <label for="edit-jan-pack-inner-qty">JAN包装内数量 (JCSHMS):</label>
                     <input type="number" id="edit-jan-pack-inner-qty">
                 </div>
                 <div class="form-group flex-100">
-     
-               <label for="edit-jan-unit-code">JAN単位コード (JCSHMS):</label>
+                    <label for="edit-jan-unit-code">JAN単位コード (JCSHMS):</label>
                     <input type="number" id="edit-jan-unit-code">
                 </div>
                 <div class="form-group flex-100">
                   <label for="edit-jan-pack-unit-qty">JAN包装単位数量 (JCSHMS):</label>
-       
-            <input type="number" id="edit-jan-pack-unit-qty">
-                </div>
+                  <input type="number" id="edit-jan-pack-unit-qty">
+               </div>
             </div>
             <div class="form-row">
                 <div class="form-group flex-100">
                    <label for="edit-nhi-price">薬価 (JCSHMS):</label>
-      
-            <input type="number" id="edit-nhi-price" step="0.01">
+                   <input type="number" id="edit-nhi-price" step="0.01">
                 </div>
                 <div class="form-group flex-100">
                     <label for="edit-purchase-price">仕入単価 (ユーザー):</label>
                   <input type="number" id="edit-purchase-price" step="0.01">
-        
-</div>
+                </div>
             </div>
-            <div class="form-row">
+             <div class="form-row">
                 <div class="form-group"><label for="edit-flag-poison">毒</label><input type="number" id="edit-flag-poison"></div>
                 <div class="form-group"><label for="edit-flag-deleterious">劇</label><input type="number" id="edit-flag-deleterious"></div>
                 <div class="form-group"><label for="edit-flag-narcotic">麻</label><input type="number" id="edit-flag-narcotic"></div>
-               
- <div class="form-group"><label for="edit-flag-psychotropic">向</label><input type="number" id="edit-flag-psychotropic"></div>
+                <div class="form-group"><label for="edit-flag-psychotropic">向</label><input type="number" id="edit-flag-psychotropic"></div>
                 <div class="form-group"><label for="edit-flag-stimulant">覚</label><input type="number" id="edit-flag-stimulant"></div>
                 <div class="form-group"><label for="edit-flag-stimulant-raw">覚原</label><input type="number" id="edit-flag-stimulant-raw"></div>
                 <div class="form-group"><label for="edit-is-order-stopped">発注停止</label><input type="number" id="edit-is-order-stopped"></div>
           </div>
             <div class="form-row">
-            
-  <div class="form-group flex-150">
+               <div class="form-group flex-150">
                     <label for="edit-supplier-wholesale">主要卸 (ユーザー):</label>
                     <select id="edit-supplier-wholesale"></select>
                 </div>
                 <div class="form-group flex-150">
-             <label for="edit-group-code">グループコード (ユーザー):</label>
-    
-                <input type="text" id="edit-group-code">
+                    <label for="edit-group-code">グループコード (ユーザー):</label>
+                    <input type="text" id="edit-group-code">
                 </div>
                 <div class="form-group flex-150">
             <label for="edit-shelf-number">棚番 (ユーザー):</label>
              <input type="text" id="edit-shelf-number">
                 </div>
-   
-             <div class="form-group flex-150">
+                <div class="form-group flex-150">
                     <label for="edit-category">分類 (ユーザー):</label>
             <input type="text" id="edit-category">
          </div>
             </div>
             <div class="form-row">
-               
- <div class="form-group flex-full">
+                <div class="form-group flex-full">
                     <label for="edit-user-notes">メモ (ユーザー):</label>
             <input type="text" id="edit-user-notes">
             </div>
             </div>
             <div class="form-actions">
                 <button type="button" id="saveMasterBtn" class="btn">保存</button>
-     
-           <button type="button" id="referenceJCSHMSBtn" class="btn">参照</button>
+                <button type="button" id="referenceJCSHMSBtn" class="btn">参照</button>
                 <button type="button" id="cancelEditMasterBtn" class="btn">閉じる</button>
-      </div>
+          </div>
         </form>
     </div>
 </div>

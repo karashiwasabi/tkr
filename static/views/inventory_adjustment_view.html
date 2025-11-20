@@ -1,25 +1,10 @@
 <div id="inventory-adjustment-view" class="view">
     <h1>棚卸調整 (1品目ごと)</h1>
-    <div 
-class="filter-container">
+    <div class="filter-container">
         <fieldset>
         <legend>品目検索</legend>
-            
-            <div class="search-form-container">
-                <div class="search-barcode-row">
-                    <div class="form-group">
-                        <label for="ia-barcode-input">バーコードスキャン:</label>
-                        <form id="ia-barcode-form" class="search-barcode-form">
-                            <input type="text" id="ia-barcode-input" class="search-barcode-input" autocomplete="off" placeholder="GTIN/JAN, ロット情報含む可">
-                        </form>
-                    </div>
-                </div>
-                <div class="search-filter-row" style="padding-top: 10px; border-top: 1px dashed #ccc; margin-top: 10px;">
-                    <p style="font-size: 10px; font-weight: bold; margin: 0 10px 0 0;">または</p>
-                    <button id="ia-search-btn" class="btn search-submit-button" style="margin-left: auto;">品目検索...</button>
-                </div>
-            </div>
-            </fieldset>
+            {{ template "generic_search_form" . }}
+        </fieldset>
     </div>
     <div id="inventory-adjustment-output" class="table-container">
         <p>上記検索条件で品目を指定してください。</p>

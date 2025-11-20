@@ -436,6 +436,273 @@ func getTransactionsByProductCodes(conn *sqlx.DB, productCodes []string) (map[st
 }
 
 
+----- C:\Users\wasab\OneDrive\デスクトップ\TKR\automation\automation.go -----
+// C:\Users\wasab\OneDrive\デスクトップ\TKR\automation\automation.go
+package automation
+
+import (
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+	"time"
+
+	"github.com/go-rod/rod"
+	"github.com/go-rod/rod/lib/input"
+	"github.com/go-rod/rod/lib/launcher"
+)
+
+// DownloadDat はMEDICODE-Webにログインし、DATファイルをダウンロードします。
+func DownloadDat(userId, password, saveDir string) (string, error) {
+	// 保存先ディレクトリの確保
+	if _, err := os.Stat(saveDir); os.IsNotExist(err) {
+		if err := os.MkdirAll(saveDir, 0755); err != nil {
+			return "", fmt.Errorf("保存先フォルダの作成に失敗: %v", err)
+		}
+	}
+
+	// 1. ブラウザ起動
+	// Leakless(false) でセキュリティソフト対策
+	u := launcher.New().
+		Headless(false).
+		Leakless(false).
+		MustLaunch()
+
+	browser := rod.New().ControlURL(u).MustConnect()
+	defer browser.MustClose()
+
+	// 2. ログイン画面へ
+	fmt.Println("MEDICODE-Webにアクセス中...")
+	page := browser.MustPage("https://www.e-mednet.jp/")
+	page.MustWaitStable()
+
+	// 3. ログイン操作
+	fmt.Println("ログイン情報を入力中...")
+
+	if err := rod.Try(func() {
+		page.MustElement("[name='userid']").MustInput(userId)
+	}); err != nil {
+		return "", fmt.Errorf("ユーザーID入力欄が見つかりません: %v", err)
+	}
+
+	if err := rod.Try(func() {
+		page.MustElement("[name='userpsw']").MustInput(password)
+	}); err != nil {
+		return "", fmt.Errorf("パスワード入力欄が見つかりません: %v", err)
+	}
+
+	fmt.Println("ログインボタンをクリック...")
+	loginBtn, err := page.ElementR("input, button, a, img", "ログイン")
+	if err == nil {
+		loginBtn.MustClick()
+	} else {
+		page.KeyActions().Press(input.Enter).MustDo()
+	}
+
+	page.MustWaitStable()
+
+	// 4. メニュー移動
+	fmt.Println("メニュー[納品処理]を検索中...")
+	if err := rod.Try(func() {
+		page.MustElementR("a, span, div, img", "納品処理").MustClick()
+	}); err != nil {
+		return "", fmt.Errorf("メニュー[納品処理]が見つかりません（ログイン失敗の可能性あり）: %v", err)
+	}
+	page.MustWaitStable()
+
+	// 5. サブメニュー
+	fmt.Println("メニュー[納品...受信...JAN]を検索中...")
+	if err := rod.Try(func() {
+		// URLの一部で検索 (最も確実な方法)
+		page.MustElement("a[href*='SrDeliveryJanDownload']").MustClick()
+	}); err != nil {
+		return "", fmt.Errorf("メニュー[納品受信(JAN)]が見つかりません: %v", err)
+	}
+	page.MustWaitStable()
+
+	// 6. ダウンロード準備
+	wait := browser.MustWaitDownload()
+
+	// ダイアログ（アラート）が出たら自動的にOKを押して閉じる設定
+	go page.MustHandleDialog()
+
+	// 7. ボタンクリック
+	fmt.Println("ダウンロードボタンをクリック...")
+	clicked := false
+	selectors := []string{
+		"input[value*='未受信データ']",
+		"input[type='button']",
+		"button",
+	}
+
+	for _, sel := range selectors {
+		if el, err := page.ElementR(sel, "未受信"); err == nil {
+			el.MustClick()
+			clicked = true
+			break
+		}
+	}
+
+	if !clicked {
+		return "", fmt.Errorf("「未受信データ全件受信」ボタンが見つかりませんでした")
+	}
+
+	// 8. 監視ループ (ダウンロード開始 vs 画面メッセージ変化)
+	fmt.Println("ダウンロード待機中...")
+
+	var fileData []byte
+	resultChan := make(chan string)
+
+	// A. ダウンロード監視
+	go func() {
+		// パニック対策
+		defer func() {
+			_ = recover()
+		}()
+		data := wait()
+		fileData = data
+		resultChan <- "downloaded"
+	}()
+
+	// B. 画面メッセージ監視
+	go func() {
+		// 最大30秒待つ
+		for i := 0; i < 60; i++ {
+			time.Sleep(500 * time.Millisecond)
+
+			if body, err := page.Element("body"); err == nil {
+				text, _ := body.Text()
+
+				if strings.Contains(text, "ありませんでした") {
+					resultChan <- "no_data"
+					return
+				}
+			}
+		}
+	}()
+
+	// どちらかが来るのを待つ
+	select {
+	case res := <-resultChan:
+		if res == "no_data" {
+			// 正常終了ステータスを返す
+			return "NO_DATA", nil
+		}
+		// "downloaded" の場合は下に続く
+
+	case <-time.After(60 * time.Second):
+		return "", fmt.Errorf("処理がタイムアウトしました（ダウンロードもメッセージも確認できず）")
+	}
+
+	if len(fileData) == 0 {
+		return "", fmt.Errorf("ダウンロードデータが空です")
+	}
+
+	// 9. ファイル保存
+	fileName := fmt.Sprintf("MEDICODE_%s.DAT", time.Now().Format("20060102150405"))
+	destPath := filepath.Join(saveDir, fileName)
+
+	if err := os.WriteFile(destPath, fileData, 0644); err != nil {
+		return "", fmt.Errorf("ファイルの書き込みに失敗: %v", err)
+	}
+
+	fmt.Printf("ダウンロード完了: %s\n", destPath)
+	return destPath, nil
+}
+
+
+----- C:\Users\wasab\OneDrive\デスクトップ\TKR\automation\handler.go -----
+// C:\Users\wasab\OneDrive\デスクトップ\TKR\automation\handler.go
+package automation
+
+import (
+	"encoding/json"
+	"fmt"
+	"log"
+	"net/http"
+	"os"
+	"path/filepath"
+	"tkr/config"
+	"tkr/dat" // ★ ここで正しく dat パッケージをインポート
+
+	"github.com/jmoiron/sqlx"
+)
+
+func writeJSONError(w http.ResponseWriter, message string, statusCode int) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(statusCode)
+	json.NewEncoder(w).Encode(map[string]string{"message": message})
+}
+
+func DownloadMedicodeDatHandler(db *sqlx.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			writeJSONError(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		cfg, err := config.LoadConfig()
+		if err != nil {
+			writeJSONError(w, "設定の読み込みに失敗しました: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		if cfg.MedicodeUserID == "" || cfg.MedicodePassword == "" {
+			writeJSONError(w, "MEDICODEのIDまたはパスワードが設定されていません。設定画面で入力してください。", http.StatusBadRequest)
+			return
+		}
+
+		saveDir := cfg.DatFolderPath
+		if saveDir == "" {
+			saveDir = os.TempDir()
+			log.Printf("DAT保存先設定がないため、一時フォルダを使用します: %s", saveDir)
+		}
+
+		log.Println("Starting MEDICODE automation...")
+		filePath, err := DownloadDat(cfg.MedicodeUserID, cfg.MedicodePassword, saveDir)
+
+		if err != nil {
+			log.Printf("Automation Error: %v", err)
+			writeJSONError(w, "自動受信エラー: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		if filePath == "NO_DATA" {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]string{
+				"status":  "no_data",
+				"message": "未受信のデータはありませんでした。",
+			})
+			return
+		}
+
+		// ▼▼▼ 共通関数 ImportDatStream を呼び出し ▼▼▼
+		log.Printf("Importing downloaded file via dat.ImportDatStream: %s", filePath)
+		file, err := os.Open(filePath)
+		if err != nil {
+			writeJSONError(w, "ダウンロードファイルのオープンに失敗: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		defer file.Close()
+
+		insertedTransactions, err := dat.ImportDatStream(db, file, filepath.Base(filePath))
+		if err != nil {
+			writeJSONError(w, "DAT取込処理(dat.ImportDatStream)でエラー: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		// ▲▲▲ ここまで ▲▲▲
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"status":   "success",
+			"message":  fmt.Sprintf("ダウンロード＆登録完了: %d件", len(insertedTransactions)),
+			"filePath": filePath,
+			"records":  insertedTransactions,
+		})
+	}
+}
+
+
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\backorder\handler.go -----
 // C:\Users\wasab\OneDrive\デスクトップ\TKR\backorder\handler.go
 package backorder
@@ -896,7 +1163,6 @@ func ImportClientsHandler(db *sqlx.DB) http.HandlerFunc {
 
 
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\config\config.go -----
-// C:\Users\wasab\OneDrive\デスクトップ\TKR\config\config.go
 package config
 
 import (
@@ -906,11 +1172,11 @@ import (
 )
 
 type Config struct {
-	UsageFolderPath string `json:"usageFolderPath"`
-	DatFolderPath   string `json:"datFolderPath"`
-	// ▼▼▼【ここに追加】(WASABI: config.go より) ▼▼▼
-	CalculationPeriodDays int `json:"calculationPeriodDays"`
-	// ▲▲▲【追加ここまで】▲▲▲
+	UsageFolderPath       string `json:"usageFolderPath"`
+	DatFolderPath         string `json:"datFolderPath"`
+	CalculationPeriodDays int    `json:"calculationPeriodDays"`
+	MedicodeUserID        string `json:"medicodeUserID"`
+	MedicodePassword      string `json:"medicodePassword"`
 }
 
 var (
@@ -927,7 +1193,6 @@ func LoadConfig() (Config, error) {
 	file, err := os.ReadFile(configFilePath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			// ▼▼▼【修正】デフォルト値を設定 (WASABI: config.go より) ▼▼▼
 			return Config{
 				CalculationPeriodDays: 90,
 			}, nil
@@ -941,11 +1206,9 @@ func LoadConfig() (Config, error) {
 	}
 	cfg = tempCfg
 
-	// ▼▼▼【ここに追加】ロード時に0ならデフォルト値を設定 ▼▼▼
 	if cfg.CalculationPeriodDays == 0 {
 		cfg.CalculationPeriodDays = 90
 	}
-	// ▲▲▲【追加ここまで】▲▲▲
 
 	return cfg, nil
 }
@@ -954,11 +1217,9 @@ func SaveConfig(newCfg Config) error {
 	mu.Lock()
 	defer mu.Unlock()
 
-	// ▼▼▼【ここに追加】保存時にも0ならデフォルト値を設定 ▼▼▼
 	if newCfg.CalculationPeriodDays == 0 {
 		newCfg.CalculationPeriodDays = 90
 	}
-	// ▲▲▲【追加ここまで】▲▲▲
 
 	file, err := json.MarshalIndent(newCfg, "", "  ")
 	if err != nil {
@@ -1077,6 +1338,7 @@ package dat
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"mime/multipart"
 	"net/http"
@@ -1089,20 +1351,7 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
-// ▼▼▼【ここから削除】dat_utils.go に移管するため ▼▼▼
-/*
-func respondJSONError(w http.ResponseWriter, message string, statusCode int) {
-	log.Println("Error response:", message)
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(statusCode)
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"message": message,
-		"results": []interface{}{},
-	})
-}
-*/
-// ▲▲▲【削除ここまで】▲▲▲
-
+// UploadDatHandler はブラウザからのアップロードを受け付けます
 func UploadDatHandler(db *sqlx.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		log.Println("Received DAT upload request...")
@@ -1113,89 +1362,43 @@ func UploadDatHandler(db *sqlx.DB) http.HandlerFunc {
 			return
 		}
 		defer r.MultipartForm.RemoveAll()
+
 		var processedFiles []string
 		var successfullyInsertedTransactions []model.TransactionRecord
 		var allResults []map[string]interface{}
+
 		for _, fileHeader := range r.MultipartForm.File["file"] {
 			log.Printf("Processing file: %s", fileHeader.Filename)
 			processedFiles = append(processedFiles, fileHeader.Filename)
 			fileResult := map[string]interface{}{"filename": fileHeader.Filename}
+
 			file, openErr := fileHeader.Open()
 			if openErr != nil {
 				log.Printf("Failed to open uploaded file %s: %v", fileHeader.Filename, openErr)
 				fileResult["error"] = fmt.Sprintf("Failed to open file: %v", openErr)
-				allResults =
-					append(allResults,
-						fileResult)
+				allResults = append(allResults, fileResult)
 				continue
 			}
-			parsedRecords,
-				parseErr := parsers.ParseDat(file)
+
+			// ▼▼▼ 共通関数を呼び出す ▼▼▼
+			inserted, err := ImportDatStream(db, file, fileHeader.Filename)
 			file.Close()
-			if parseErr != nil {
-				log.Printf("Failed to parse DAT file %s: %v", fileHeader.Filename, parseErr)
-				fileResult["error"] = fmt.Sprintf("Failed to parse DAT file: %v", parseErr)
-				allResults = append(allResults, fileResult)
-				continue
-			}
-			log.Printf("Parsed %d records from %s", len(parsedRecords), fileHeader.Filename)
-			fileResult["records_parsed"] = len(parsedRecords)
+			// ▲▲▲ 共通関数呼び出し終了 ▲▲▲
 
-			tx, txErr := db.Beginx()
-			if txErr != nil {
-				log.Printf("Failed to start transaction for %s: %v", fileHeader.Filename, txErr)
-				fileResult["error"] = fmt.Sprintf("Failed to start transaction: %v", txErr)
+			if err != nil {
+				log.Printf("Failed to process DAT file %s: %v", fileHeader.Filename, err)
+				fileResult["error"] = fmt.Sprintf("Failed to process: %v", err)
 				allResults = append(allResults, fileResult)
 				continue
 			}
 
-			insertedTransactions, processErr := ProcessDatRecords(tx, parsedRecords)
-			if processErr != nil {
-				log.Printf("Failed to process DAT records for %s: %v", fileHeader.Filename, processErr)
-				fileResult["error"] = fmt.Sprintf("Failed to process records: %v", processErr)
-				allResults = append(allResults, fileResult)
-				tx.Rollback()
-				continue
-			}
-
-			if len(insertedTransactions) > 0 {
-				var deliveredItems []model.Backorder
-				for _, rec := range insertedTransactions {
-					if rec.Flag ==
-						1 {
-						deliveredItems = append(deliveredItems, model.Backorder{
-							YjCode:          rec.YjCode,
-							PackageForm:     rec.PackageForm,
-							JanPackInnerQty: rec.JanPackInnerQty,
-							YjUnitName:      rec.YjUnitName,
-							YjQuantity:      rec.YjQuantity,
-						})
-					}
-				}
-
-				if len(deliveredItems) > 0 {
-					if err := database.ReconcileBackorders(tx, deliveredItems); err != nil {
-						log.Printf("WARN: Failed to reconcile backorders after DAT import: %v", err)
-						fileResult["error"] = fmt.Sprintf("納品登録成功、発注残消込失敗: %v", err)
-					} else {
-						log.Printf("Successfully reconciled %d backorder items for %s.", len(deliveredItems), fileHeader.Filename)
-					}
-				}
-			}
-
-			if commitErr := tx.Commit(); commitErr != nil {
-				log.Printf("Failed to commit transaction for %s: %v", fileHeader.Filename, commitErr)
-				fileResult["error"] = fmt.Sprintf("Failed to commit transaction: %v", commitErr)
-				allResults = append(allResults, fileResult)
-				continue
-			}
-
-			successfullyInsertedTransactions = append(successfullyInsertedTransactions, insertedTransactions...)
-			log.Printf("Successfully inserted %d records from %s", len(insertedTransactions), fileHeader.Filename)
+			successfullyInsertedTransactions = append(successfullyInsertedTransactions, inserted...)
+			log.Printf("Successfully inserted %d records from %s", len(inserted), fileHeader.Filename)
 			fileResult["success"] = true
-			fileResult["records_inserted"] = len(insertedTransactions)
+			fileResult["records_inserted"] = len(inserted)
 			allResults = append(allResults, fileResult)
 		}
+
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"message": fmt.Sprintf("Processed %d DAT file(s). See results for details.", len(processedFiles)),
@@ -1205,6 +1408,55 @@ func UploadDatHandler(db *sqlx.DB) http.HandlerFunc {
 		log.Println("Finished DAT upload request.")
 	}
 }
+
+// ▼▼▼ 追加: 外部から呼び出せる共通関数 ▼▼▼
+func ImportDatStream(db *sqlx.DB, r io.Reader, filename string) ([]model.TransactionRecord, error) {
+	parsedRecords, parseErr := parsers.ParseDat(r)
+	if parseErr != nil {
+		return nil, fmt.Errorf("DAT parse error: %w", parseErr)
+	}
+
+	tx, txErr := db.Beginx()
+	if txErr != nil {
+		return nil, fmt.Errorf("failed to start transaction: %w", txErr)
+	}
+	defer tx.Rollback()
+
+	insertedTransactions, processErr := ProcessDatRecords(tx, parsedRecords)
+	if processErr != nil {
+		return nil, fmt.Errorf("process records error: %w", processErr)
+	}
+
+	// 発注残消込処理
+	if len(insertedTransactions) > 0 {
+		var deliveredItems []model.Backorder
+		for _, rec := range insertedTransactions {
+			if rec.Flag == 1 { // 納品
+				deliveredItems = append(deliveredItems, model.Backorder{
+					YjCode:          rec.YjCode,
+					PackageForm:     rec.PackageForm,
+					JanPackInnerQty: rec.JanPackInnerQty,
+					YjUnitName:      rec.YjUnitName,
+					YjQuantity:      rec.YjQuantity,
+				})
+			}
+		}
+
+		if len(deliveredItems) > 0 {
+			if err := database.ReconcileBackorders(tx, deliveredItems); err != nil {
+				log.Printf("WARN: Failed to reconcile backorders after DAT import (%s): %v", filename, err)
+			}
+		}
+	}
+
+	if commitErr := tx.Commit(); commitErr != nil {
+		return nil, fmt.Errorf("commit error: %w", commitErr)
+	}
+
+	return insertedTransactions, nil
+}
+
+// ▲▲▲ 追加ここまで ▲▲▲
 
 func removeDatDuplicates(records []model.DatRecord) []model.DatRecord {
 	seen := make(map[string]struct{})
@@ -1222,7 +1474,6 @@ func removeDatDuplicates(records []model.DatRecord) []model.DatRecord {
 
 func ProcessDatRecords(tx *sqlx.Tx, parsedRecords []model.DatRecord) ([]model.TransactionRecord, error) {
 	var insertedTransactions []model.TransactionRecord
-	var insertedCount int = 0
 
 	recordsToProcess := removeDatDuplicates(parsedRecords)
 
@@ -1235,8 +1486,7 @@ func ProcessDatRecords(tx *sqlx.Tx, parsedRecords []model.DatRecord) ([]model.Tr
 		ClientCode string
 	})
 	for _, rec := range recordsToProcess {
-		if rec.Flag == 1 ||
-			rec.Flag == 2 {
+		if rec.Flag == 1 || rec.Flag == 2 {
 			receiptKeysToDelete[rec.ReceiptNumber] = struct {
 				Date       string
 				ClientCode string
@@ -1249,8 +1499,7 @@ func ProcessDatRecords(tx *sqlx.Tx, parsedRecords []model.DatRecord) ([]model.Tr
 
 	for receiptNumber, keyInfo := range receiptKeysToDelete {
 		log.Printf("Deleting existing DAT records for Receipt: %s, Date: %s, Client: %s", receiptNumber, keyInfo.Date, keyInfo.ClientCode)
-		const q = `DELETE FROM transaction_records WHERE receipt_number = ?
-AND transaction_date = ? AND client_code = ? AND flag IN (1, 2)`
+		const q = `DELETE FROM transaction_records WHERE receipt_number = ? AND transaction_date = ? AND client_code = ? AND flag IN (1, 2)`
 		_, err := tx.Exec(q, receiptNumber, keyInfo.Date, keyInfo.ClientCode)
 		if err != nil {
 			return nil, fmt.Errorf("failed to delete existing DAT records for receipt %s: %w", receiptNumber, err)
@@ -1306,14 +1555,12 @@ AND transaction_date = ? AND client_code = ? AND flag IN (1, 2)`
 			transaction.Subtotal = transaction.YjQuantity * transaction.UnitPrice
 		}
 
-		mappers.MapMasterToTransaction(&transaction,
-			master)
+		mappers.MapMasterToTransaction(&transaction, master)
 
 		if err := database.InsertTransactionRecord(tx, transaction); err != nil {
 			return nil, fmt.Errorf("transaction insert failed for key %s: %w", key, err)
 		}
 		insertedTransactions = append(insertedTransactions, transaction)
-		insertedCount++
 	}
 	return insertedTransactions, nil
 }
@@ -10082,6 +10329,13 @@ import (
 	"tkr/config"
 )
 
+// ヘルパー関数: エラーをJSONで返す
+func writeJSONError(w http.ResponseWriter, message string, statusCode int) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(statusCode)
+	json.NewEncoder(w).Encode(map[string]string{"message": message})
+}
+
 // GetConfigHandler は現在の設定を返します
 func GetConfigHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -10091,24 +10345,24 @@ func GetConfigHandler() http.HandlerFunc {
 	}
 }
 
-// ▼▼▼【修正】SaveConfigHandler で CalculationPeriodDays も保存する ▼▼▼
+// SaveConfigHandler は設定を保存します
 func SaveConfigHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var newCfg config.Config
 		if err := json.NewDecoder(r.Body).Decode(&newCfg); err != nil {
-			http.Error(w, "リクエストが不正です。", http.StatusBadRequest)
+			writeJSONError(w, "リクエストが不正です。", http.StatusBadRequest)
 			return
 		}
 
 		// フォルダパスの検証 (処方取込パス)
 		if err := validateFolderPath(newCfg.UsageFolderPath); err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
+			writeJSONError(w, err.Error(), http.StatusBadRequest)
 			return
 		}
 
 		// フォルダパスの検証 (伝票取込パス)
 		if err := validateFolderPath(newCfg.DatFolderPath); err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
+			writeJSONError(w, err.Error(), http.StatusBadRequest)
 			return
 		}
 
@@ -10116,7 +10370,7 @@ func SaveConfigHandler() http.HandlerFunc {
 
 		if err := config.SaveConfig(newCfg); err != nil {
 			log.Printf("Error saving config: %v", err)
-			http.Error(w, "設定の保存に失敗しました。", http.StatusInternalServerError)
+			writeJSONError(w, "設定の保存に失敗しました。", http.StatusInternalServerError)
 			return
 		}
 
@@ -10376,7 +10630,6 @@ func openBrowser(url string) {
 
 
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\routes.go -----
-// C:\Users\wasab\OneDrive\デスクトップ\TKR\routes.go
 package main
 
 import (
@@ -10384,6 +10637,7 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"tkr/automation"
 	"tkr/backorder"
 	"tkr/client"
 	"tkr/dat"
@@ -10422,10 +10676,8 @@ func SetupRoutes(mux *http.ServeMux, dbConn *sqlx.DB) {
 			return
 		}
 		if info == nil {
-			log.Printf("JCSHMS info not found for JAN: %s",
-				janCode)
-			http.NotFound(w,
-				r)
+			log.Printf("JCSHMS info not found for JAN: %s", janCode)
+			http.NotFound(w, r)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -10447,9 +10699,7 @@ func SetupRoutes(mux *http.ServeMux, dbConn *sqlx.DB) {
 	mux.HandleFunc("/api/masters/update", masteredit.UpdateMasterHandler(dbConn))
 
 	mux.HandleFunc("/api/master/set_order_stopped", masteredit.SetOrderStoppedHandler(dbConn))
-	// ▼▼▼【追加】棚番一括更新用ルート ▼▼▼
 	mux.HandleFunc("/api/masters/bulk_update_shelf", masteredit.BulkUpdateShelfHandler(dbConn))
-	// ▲▲▲【追加ここまで】▲▲▲
 
 	mux.HandleFunc("/api/inventory/adjust/data", inventoryadjustment.GetInventoryDataHandler(dbConn))
 	mux.HandleFunc("/api/inventory/adjust/save", inventoryadjustment.SaveInventoryDataHandler(dbConn))
@@ -10490,8 +10740,7 @@ func SetupRoutes(mux *http.ServeMux, dbConn *sqlx.DB) {
 	mux.HandleFunc("/api/clients/import", client.ImportClientsHandler(dbConn))
 
 	mux.HandleFunc("/api/clients", func(w http.ResponseWriter, r *http.Request) {
-		clients, err :=
-			database.GetAllClients(dbConn)
+		clients, err := database.GetAllClients(dbConn)
 		if err != nil {
 			http.Error(w, "Failed to get clients", http.StatusInternalServerError)
 			return
@@ -10544,6 +10793,8 @@ func SetupRoutes(mux *http.ServeMux, dbConn *sqlx.DB) {
 	mux.HandleFunc("/api/pricing/update", pricing.BulkUpdateHandler(dbConn))
 	mux.HandleFunc("/api/pricing/direct_import", pricing.DirectImportHandler(dbConn))
 	mux.HandleFunc("/api/pricing/backup_export", pricing.BackupExportHandler(dbConn))
+
+	mux.HandleFunc("/api/automation/medicode/download", automation.DownloadMedicodeDatHandler(dbConn))
 }
 
 

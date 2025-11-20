@@ -9,21 +9,7 @@
     <div class="filter-container">
         <fieldset>
         <legend>品目検索</legend>
-        
-        <div class="search-form-container">
-            <div class="search-barcode-row">
-                 <div class="form-group">
-                     <label for="dat-search-barcode">バーコードスキャン:</label>
-                     <form id="dat-barcode-form" class="search-barcode-form">
-                         <input type="text" id="dat-search-barcode" class="search-barcode-input" autocomplete="off" placeholder="GTIN/JAN, ロット情報含む可">
-                     </form>
-                 </div>
-            </div>
-            <div class="search-filter-row" style="padding-top: 10px; border-top: 1px dashed #ccc; margin-top: 10px;">
-                <p style="font-size: 10px; font-weight: bold; margin: 0 10px 0 0;">または</p>
-                <button id="datOpenSearchModalBtn" class="btn search-submit-button" style="margin-left: auto;">品目検索...</button>
-            </div>
-        </div>
+            {{ template "generic_search_form" . }}
         </fieldset>
     </div>
     

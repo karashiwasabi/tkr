@@ -1771,8 +1771,18 @@ body {
                 <input type="text" id="config-usage-folder-path" autocomplete="off">
             </div>
         </div>
+        <div class="form-row" style="margin-top: 15px; padding-top: 10px; border-top: 1px dashed #ccc;">
+            <div class="form-group">
+                <label for="config-medicode-id" style="color: #0d6efd;">MEDICODE ユーザーID:</label>
+                <input type="text" id="config-medicode-id" autocomplete="off">
+            </div>
+            <div class="form-group">
+                <label for="config-medicode-pass" style="color: #0d6efd;">MEDICODE パスワード:</label>
+                <input type="password" id="config-medicode-pass" autocomplete="off">
+            </div>
+        </div>
         <div class="form-actions">
-            <button id="configSavePathBtn" class="btn">パス保存</button>
+            <button id="configSavePathBtn" class="btn">設定を保存</button>
         </div>
     </div>
 </section>
@@ -1996,9 +2006,10 @@ id="modal-search-generic" autocomplete="off">
 <div id="dat-upload-view" class="view">
     <h1>ファイルアップロード (DAT)</h1>
 
-    <div class="upload-button-container">
+    <div class="upload-button-container" style="display: flex; gap: 10px; align-items: center;">
         <button id="datUploadBtn" class="btn">DATファイル選択</button>
         <input type="file" id="datFileInput" multiple accept=".dat,.DAT" class="hidden">
+        <button id="medicodeDownloadBtn" class="btn" style="background-color: #0d6efd; color: white; border-color: #0d6efd;">MEDICODE自動受信</button>
     </div>
     <div class="filter-container">
         <fieldset>
