@@ -47,6 +47,7 @@
             <button id="add-order-item-from-master-btn" class="btn">品目検索から追加</button>
             <button id="continuous-order-btn" class="btn" style="background-color: #17a2b8; color: white;">連続スキャンで追加</button>
             <button id="createOrderCsvBtn" class="btn" style="background-color: #28a745; color: white;">CSV作成・発注残登録</button>
+            <button id="reservation-order-btn" class="btn" style="background-color: #6f42c1; color: white;">予約発注</button>
         </div>
     </div>
 
@@ -79,8 +80,20 @@
                     <strong>スキャン済み ( <span id="scanned-items-count">0</span> 件)</strong>
                 </div>
                 <div id="scanned-items-list">
-                    </div>
+                </div>
             </div>
+        </div>
+    </div>
+</div>
+
+<div id="reservation-modal" class="modal-overlay hidden">
+    <div class="modal-content" style="width: 400px;">
+        <h3>予約発注日時設定</h3>
+        <p>指定した日時になるまで、発注書は出力されず保留されます。</p>
+        <input type="datetime-local" id="reservation-datetime" style="width: 100%; padding: 5px; font-size: 1.2em;">
+        <div class="form-actions" style="margin-top: 15px;">
+            <button id="cancel-reservation-btn" class="btn">キャンセル</button>
+            <button id="confirm-reservation-btn" class="btn" style="background-color: #6f42c1; color: white;">予約実行</button>
         </div>
     </div>
 </div>

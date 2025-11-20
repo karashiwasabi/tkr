@@ -3,44 +3,48 @@ package reorder
 
 import (
 	"encoding/json"
-	"fmt" // TKRはlogを使う
+	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
-	"tkr/aggregation" // TKRのaggregation
+	"tkr/aggregation"
 	"tkr/config"
-	"tkr/database" // TKRのdatabase
-	"tkr/mappers"  // TKRのmappers
+	"tkr/database"
+	"tkr/mappers"
 	"tkr/model"
-	"tkr/units" // ★★★ units をインポート
+	"tkr/units"
 
 	"github.com/jmoiron/sqlx"
 )
 
-// OrderCandidatesResponse は発注候補画面のレスポンスです。
-// (WASABI: orders/handlee.go より)
 type OrderCandidatesResponse struct {
 	Candidates  []OrderCandidateYJGroup `json:"candidates"`
 	Wholesalers []model.Wholesaler      `json:"wholesalers"`
 }
 
-// OrderCandidateYJGroup は発注候補のYJグループです。
-// (WASABI: orders/handlee.go より)
 type OrderCandidateYJGroup struct {
 	model.StockLedgerYJGroup
 	PackageLedgers []OrderCandidatePackageGroup `json:"packageLedgers"`
 }
 
-// OrderCandidatePackageGroup は発注候補の包装グループです。
-// (WASABI: orders/handlee.go より)
 type OrderCandidatePackageGroup struct {
 	model.StockLedgerPackageGroup
 	Masters            []model.ProductMasterView `json:"masters"`
 	ExistingBackorders []model.Backorder         `json:"existingBackorders"`
 }
 
-// GenerateOrderCandidatesHandler は発注候補リストを生成します。
-// (WASABI: orders/handlee.go を TKR 用に修正)
+// 返品推奨リスト用の構造体
+type ReturnCandidate struct {
+	ProductName     string  `json:"productName"`
+	MakerName       string  `json:"makerName"`
+	PackageForm     string  `json:"packageForm"`
+	LastInDate      string  `json:"lastInDate"`
+	EstimatedExpiry string  `json:"estimatedExpiry"`
+	StockQuantity   float64 `json:"stockQuantity"`
+	NhiPrice        float64 `json:"nhiPrice"`
+}
+
 func GenerateOrderCandidatesHandler(conn *sqlx.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		q := r.URL.Query()
@@ -48,10 +52,54 @@ func GenerateOrderCandidatesHandler(conn *sqlx.DB) http.HandlerFunc {
 		dosageForm := q.Get("dosageForm")
 		shelfNumber := q.Get("shelfNumber")
 		coefficientStr := q.Get("coefficient")
+
+		// 独自のフィルタパラメータは削除済み
+
 		coefficient, err := strconv.ParseFloat(coefficientStr, 64)
 		if err != nil {
-			coefficient = 1.3 // TKRのデフォルト
+			coefficient = 1.5
 		}
+
+		// --- 予約解除ロジック ---
+		func() {
+			tx, err := conn.Beginx()
+			if err != nil {
+				fmt.Printf("WARN: Failed to begin transaction: %v\n", err)
+				return
+			}
+			defer func() {
+				if p := recover(); p != nil {
+					tx.Rollback()
+				}
+			}()
+
+			nowStr := time.Now().Format("20060102150405")
+			// T除去対応済みの関数
+			expiredReservations, err := database.GetExpiredReservationsInTx(tx, nowStr)
+			if err != nil {
+				fmt.Printf("WARN: Failed to get expired reservations: %v\n", err)
+				tx.Rollback()
+				return
+			}
+
+			if len(expiredReservations) > 0 {
+				for _, res := range expiredReservations {
+					// 期限が来たら削除する（＝有効化）
+					if err := database.DeleteBackorderInTx(tx, res.ID); err != nil {
+						fmt.Printf("WARN: Failed to delete reservation ID %d: %v\n", res.ID, err)
+						tx.Rollback()
+						return
+					}
+				}
+				if err := tx.Commit(); err != nil {
+					fmt.Printf("WARN: Failed to commit reservation cleanup: %v\n", err)
+				} else {
+					fmt.Printf("INFO: Released %d expired reservations.\n", len(expiredReservations))
+				}
+			} else {
+				tx.Rollback()
+			}
+		}()
 
 		cfg, err := config.LoadConfig()
 		if err != nil {
@@ -60,40 +108,36 @@ func GenerateOrderCandidatesHandler(conn *sqlx.DB) http.HandlerFunc {
 		}
 
 		now := time.Now()
-		// ▼▼▼【ここを修正】TKRの集計ロジックのEndDateを「本日」から「未来」に変更 ▼▼▼
-		endDate := "99991231" //
+		endDate := "99991231"
 		startDate := now.AddDate(0, 0, -cfg.CalculationPeriodDays)
 
 		filters := model.AggregationFilters{
 			StartDate:   startDate.Format("20060102"),
-			EndDate:     endDate, //
+			EndDate:     endDate,
 			KanaName:    kanaName,
 			DosageForm:  dosageForm,
 			ShelfNumber: shelfNumber,
 			Coefficient: coefficient,
 		}
 
-		// TKRの集計関数を呼ぶ
-		// ★★★ 注意: TKRの aggregation.GetStockLedger は発注残を考慮するよう修正が必要
 		yjGroups, err := aggregation.GetStockLedger(conn, filters)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 
-		// TKRのDB関数を呼ぶ
 		allBackorders, err := database.GetAllBackordersList(conn)
 		if err != nil {
-			http.Error(w, "Failed to get backorder list for candidates", http.StatusInternalServerError)
+			http.Error(w, "Failed to get backorder list", http.StatusInternalServerError)
 			return
 		}
 
-		// TKRの aggregation.go のキー生成ロジック (units.ResolveName) に合わせる
 		backordersByPackageKey := make(map[string][]model.Backorder)
 		for _, bo := range allBackorders {
-			// units.ResolveName を使って単位名を解決する
-			resolvedKey :=
-				fmt.Sprintf("%s|%s|%g|%s", bo.YjCode, bo.PackageForm, bo.JanPackInnerQty, units.ResolveName(bo.YjUnitName))
+			// ★修正: 予約分(_RSV)を除外するコードを削除しました。
+			// これにより、予約分も「発注残」としてカウントされ、発注候補から消えます。
+
+			resolvedKey := fmt.Sprintf("%s|%s|%g|%s", bo.YjCode, bo.PackageForm, bo.JanPackInnerQty, units.ResolveName(bo.YjUnitName))
 			backordersByPackageKey[resolvedKey] = append(backordersByPackageKey[resolvedKey], bo)
 		}
 
@@ -109,12 +153,9 @@ func GenerateOrderCandidatesHandler(conn *sqlx.DB) http.HandlerFunc {
 					newPkgGroup := OrderCandidatePackageGroup{
 						StockLedgerPackageGroup: pkg,
 						Masters:                 []model.ProductMasterView{},
-						// TKRの aggregation.go は Resolved なキーを使っているので、
-						// ここでも Resolved なキー (pkg.PackageKey) でマップを引く
-						ExistingBackorders: backordersByPackageKey[pkg.PackageKey],
+						ExistingBackorders:      backordersByPackageKey[pkg.PackageKey],
 					}
 
-					// TKRの mappers を使って View を生成
 					for _, master := range pkg.Masters {
 						masterView := mappers.ToProductMasterView(master)
 						newPkgGroup.Masters = append(newPkgGroup.Masters, masterView)
@@ -125,7 +166,6 @@ func GenerateOrderCandidatesHandler(conn *sqlx.DB) http.HandlerFunc {
 			}
 		}
 
-		// TKRのDB関数を呼ぶ
 		wholesalers, err := database.GetAllWholesalers(conn)
 		if err != nil {
 			http.Error(w, "Failed to get wholesalers", http.StatusInternalServerError)
@@ -142,8 +182,6 @@ func GenerateOrderCandidatesHandler(conn *sqlx.DB) http.HandlerFunc {
 	}
 }
 
-// PlaceOrderHandler は発注内容を発注残として登録します。
-// (WASABI: orders/handlee.go を TKR 用に修正)
 func PlaceOrderHandler(conn *sqlx.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var payload []model.Backorder
@@ -159,20 +197,48 @@ func PlaceOrderHandler(conn *sqlx.DB) http.HandlerFunc {
 		}
 		defer tx.Rollback()
 
-		// ▼▼▼【ここを修正】日付フォーマットを YYYYMMDDHHMMSS に変更 ▼▼▼
-		today := time.Now().Format("20060102150405") // YYYYMMDDHHMMSS
-		// ▲▲▲【修正ここまで】▲▲▲
+		today := time.Now().Format("20060102150405")
+
+		isReservation := false
+		if len(payload) > 0 && payload[0].OrderDate != "" {
+			// 日付文字列の正規化 (Tなどを除去)
+			userDate := strings.ReplaceAll(payload[0].OrderDate, "-", "")
+			userDate = strings.ReplaceAll(userDate, ":", "")
+			userDate = strings.ReplaceAll(userDate, " ", "")
+			userDate = strings.ReplaceAll(userDate, "T", "")
+
+			if len(userDate) == 12 {
+				userDate += "00"
+			}
+
+			if userDate > today {
+				isReservation = true
+			}
+		}
+
 		for i := range payload {
-			if payload[i].OrderDate == "" {
+			if payload[i].OrderDate != "" {
+				normalized := strings.ReplaceAll(payload[i].OrderDate, "-", "")
+				normalized = strings.ReplaceAll(normalized, ":", "")
+				normalized = strings.ReplaceAll(normalized, " ", "")
+				normalized = strings.ReplaceAll(normalized, "T", "")
+
+				if len(normalized) == 12 {
+					normalized += "00"
+				}
+				payload[i].OrderDate = normalized
+			} else {
 				payload[i].OrderDate = today
 			}
-			// YjQuantity (フロントから来る発注単位数 * 包装単位量) を
-			// OrderQuantity (発注数量) と RemainingQuantity (残数量) にコピー
+
+			if isReservation {
+				payload[i].WholesalerCode += "_RSV"
+			}
+
 			payload[i].OrderQuantity = payload[i].YjQuantity
 			payload[i].RemainingQuantity = payload[i].YjQuantity
 		}
 
-		// TKRのDB関数を呼ぶ
 		if err := database.InsertBackordersInTx(tx, payload); err != nil {
 			http.Error(w, "Failed to save backorders", http.StatusInternalServerError)
 			return
@@ -183,7 +249,90 @@ func PlaceOrderHandler(conn *sqlx.DB) http.HandlerFunc {
 			return
 		}
 
+		msg := "発注内容を発注残として登録しました。"
+		if isReservation {
+			msg = "発注を予約しました。指定日時まで保留されます。"
+		}
+
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]string{"message": "発注内容を発注残として登録しました。"})
+		json.NewEncoder(w).Encode(map[string]string{"message": msg})
+	}
+}
+
+// GenerateReturnCandidatesHandler (期間指定なし・固定ロジック版)
+func GenerateReturnCandidatesHandler(db *sqlx.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		// 設定から期間を取得
+		cfg, err := config.LoadConfig()
+		if err != nil {
+			http.Error(w, "設定の読み込みに失敗しました", http.StatusInternalServerError)
+			return
+		}
+		days := cfg.CalculationPeriodDays
+		deadline := time.Now().AddDate(0, 0, -days).Format("20060102")
+
+		query := `
+			SELECT 
+				p.product_name,
+				p.maker_name,
+				p.package_form,
+				p.nhi_price,
+				IFNULL(MAX(CASE WHEN t.flag IN (1, 11) THEN t.transaction_date END), '') as last_in_date,
+				IFNULL(MAX(CASE WHEN t.flag IN (3, 12) THEN t.transaction_date END), '') as last_out_date,
+				SUM(CASE 
+					WHEN t.flag IN (1, 11) THEN t.yj_quantity 
+					WHEN t.flag IN (3, 2, 12) THEN -t.yj_quantity 
+					ELSE 0 END
+				) as stock_quantity
+			FROM product_master p
+			LEFT JOIN transaction_records t ON p.product_code = t.jan_code
+			GROUP BY p.product_code
+			HAVING 
+				stock_quantity > 0 
+				AND (last_out_date < ? OR last_out_date = '')
+				AND (last_in_date < ? OR last_in_date = '')
+			ORDER BY last_in_date ASC
+		`
+
+		rows, err := db.Queryx(query, deadline, deadline)
+		if err != nil {
+			http.Error(w, "返品候補の抽出に失敗しました: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		defer rows.Close()
+
+		var results []ReturnCandidate
+		for rows.Next() {
+			var item struct {
+				ProductName   string  `db:"product_name"`
+				MakerName     string  `db:"maker_name"`
+				PackageForm   string  `db:"package_form"`
+				NhiPrice      float64 `db:"nhi_price"`
+				LastInDate    string  `db:"last_in_date"`
+				StockQuantity float64 `db:"stock_quantity"`
+			}
+			if err := rows.StructScan(&item); err != nil {
+				continue
+			}
+
+			expiry := ""
+			if item.LastInDate != "" {
+				t, _ := time.Parse("20060102", item.LastInDate)
+				expiry = t.AddDate(3, 0, 0).Format("2006/01") + " (推定)"
+			}
+
+			results = append(results, ReturnCandidate{
+				ProductName:     item.ProductName,
+				MakerName:       item.MakerName,
+				PackageForm:     item.PackageForm,
+				LastInDate:      item.LastInDate,
+				EstimatedExpiry: expiry,
+				StockQuantity:   item.StockQuantity,
+				NhiPrice:        item.NhiPrice,
+			})
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(results)
 	}
 }
