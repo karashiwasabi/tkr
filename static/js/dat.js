@@ -5,7 +5,10 @@ import { renderTransactionTableHTML, renderEmptyTableHTML } from './common_table
 
 let datUploadBtn, datFileInput, uploadResultContainer, dataTable;
 let datSearchBtn, barcodeInput;
-let medicodeDownloadBtn; // 追加
+let medicodeDownloadBtn;
+// ▼▼▼ 追加: 修正用ボタンとファイル入力 ▼▼▼
+let datFixUploadBtn, datFixFileInput;
+// ▲▲▲
 
 // 検索処理
 async function handleDatSearch() {
@@ -86,7 +89,7 @@ export function fetchAndRenderDat() {
     }
 }
 
-// ▼▼▼ 追加: 自動受信ハンドラ ▼▼▼
+// 自動受信ハンドラ
 async function handleMedicodeDownload() {
     if(!confirm("MEDICODE-Webに接続し、未受信のDATファイルをダウンロードします。\nブラウザが自動操作されます。\nよろしいですか？")) {
         return;
@@ -119,14 +122,17 @@ async function handleMedicodeDownload() {
         window.hideLoading();
     }
 }
-// ▲▲▲ 追加ここまで ▲▲▲
 
 // 初期化関数
 export function initDatUpload() {
     datUploadBtn = document.getElementById('datUploadBtn');
     datFileInput = document.getElementById('datFileInput');
-    // ▼▼▼ ボタン取得 ▼▼▼
     medicodeDownloadBtn = document.getElementById('medicodeDownloadBtn');
+
+    // ▼▼▼ 追加: 修正用要素の取得 ▼▼▼
+    datFixUploadBtn = document.getElementById('datFixUploadBtn');
+    datFixFileInput = document.getElementById('datFixFileInput');
+    // ▲▲▲
 
     uploadResultContainer = document.getElementById('datUploadResultContainer');
     dataTable = document.getElementById('datMainDataTable');
@@ -134,6 +140,7 @@ export function initDatUpload() {
     barcodeInput = document.getElementById('dat-search-barcode');
     const barcodeForm = document.getElementById('dat-barcode-form');
 
+    // 通常アップロード
     if (datUploadBtn && datFileInput) {
         datUploadBtn.addEventListener('click', () => {
             datFileInput.click();
@@ -152,7 +159,26 @@ export function initDatUpload() {
         console.error('DAT Upload button or file input not found.');
     }
 
-    // ▼▼▼ イベント登録 ▼▼▼
+    // ▼▼▼ 追加: 修正用アップロード ▼▼▼
+    if (datFixUploadBtn && datFixFileInput) {
+        datFixUploadBtn.addEventListener('click', () => {
+            if(!confirm("【重要】過去のDATファイルを取り込み、金額等のデータを修正します。\n\n・発注残の消込は行われません（在庫は増えますが、発注残は減りません）。\n・既に存在する伝票番号のデータは上書きされます。\n\n実行してよろしいですか？")) return;
+            datFixFileInput.click();
+        });
+        datFixFileInput.addEventListener('change', (event) => {
+            handleFileUpload(
+                '/api/dat/upload?mode=fix_only', // ★修正モードパラメータ
+                event.target.files,
+                datFixFileInput,
+                uploadResultContainer,
+                dataTable,
+                'DATファイルを修正モードで取込中...'
+            );
+        });
+    }
+    // ▲▲▲
+
+    // イベント登録
     if (medicodeDownloadBtn) {
         medicodeDownloadBtn.addEventListener('click', handleMedicodeDownload);
     }

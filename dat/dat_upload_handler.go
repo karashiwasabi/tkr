@@ -2,12 +2,18 @@
 package dat
 
 import (
+	"bufio"
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
 	"log"
 	"mime/multipart"
 	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
+	"time"
 	"tkr/database"
 	"tkr/mappers"
 	"tkr/mastermanager"
@@ -29,6 +35,14 @@ func UploadDatHandler(db *sqlx.DB) http.HandlerFunc {
 		}
 		defer r.MultipartForm.RemoveAll()
 
+		// ▼▼▼ 追加: 修正モードかどうかの判定 ▼▼▼
+		mode := r.FormValue("mode")
+		skipReconcile := (mode == "fix_only")
+		if skipReconcile {
+			log.Println("Mode: fix_only (Skipping backorder reconciliation)")
+		}
+		// ▲▲▲ 追加ここまで ▲▲▲
+
 		var processedFiles []string
 		var successfullyInsertedTransactions []model.TransactionRecord
 		var allResults []map[string]interface{}
@@ -46,10 +60,29 @@ func UploadDatHandler(db *sqlx.DB) http.HandlerFunc {
 				continue
 			}
 
-			// ▼▼▼ 共通関数を呼び出す ▼▼▼
-			inserted, err := ImportDatStream(db, file, fileHeader.Filename)
+			// ▼▼▼ 修正: アーカイブと共通関数呼び出し ▼▼▼
+			// 1. ファイルをメモリに読み込む（アーカイブ用とパース用）
+			fileBytes, readErr := io.ReadAll(file)
 			file.Close()
-			// ▲▲▲ 共通関数呼び出し終了 ▲▲▲
+			if readErr != nil {
+				fileResult["error"] = fmt.Sprintf("Failed to read file: %v", readErr)
+				allResults = append(allResults, fileResult)
+				continue
+			}
+
+			// 2. アーカイブ保存 (Sレコード解析)
+			archivePath, archiveErr := archiveDatFile(fileBytes)
+			if archiveErr != nil {
+				log.Printf("WARN: Failed to archive DAT file: %v", archiveErr)
+			} else if archivePath != "" {
+				log.Printf("Archived DAT file to: %s", archivePath)
+			} else {
+				log.Printf("File already archived (skipped save).")
+			}
+
+			// 3. 共通関数を呼び出す (バイト列からReaderを作成)
+			inserted, err := ImportDatStream(db, bytes.NewReader(fileBytes), fileHeader.Filename, skipReconcile)
+			// ▲▲▲ 修正ここまで ▲▲▲
 
 			if err != nil {
 				log.Printf("Failed to process DAT file %s: %v", fileHeader.Filename, err)
@@ -75,8 +108,59 @@ func UploadDatHandler(db *sqlx.DB) http.HandlerFunc {
 	}
 }
 
-// ▼▼▼ 追加: 外部から呼び出せる共通関数 ▼▼▼
-func ImportDatStream(db *sqlx.DB, r io.Reader, filename string) ([]model.TransactionRecord, error) {
+// archiveDatFile はSレコードを解析してファイルを保存します
+func archiveDatFile(data []byte) (string, error) {
+	// 保存先ディレクトリ
+	archiveDir := "archive/dat"
+	if err := os.MkdirAll(archiveDir, 0755); err != nil {
+		return "", err
+	}
+
+	// Sレコードを探す
+	scanner := bufio.NewScanner(bytes.NewReader(data))
+	var sRecord string
+	for scanner.Scan() {
+		line := scanner.Text()
+		if strings.HasPrefix(line, "S") {
+			sRecord = line
+			break
+		}
+	}
+
+	if sRecord == "" || len(sRecord) < 39 {
+		// Sレコードがない、または短すぎる場合は現在時刻で保存
+		fileName := fmt.Sprintf("UNKNOWN_%s.DAT", time.Now().Format("20060102_150405"))
+		return saveFileIfNotExists(filepath.Join(archiveDir, fileName), data)
+	}
+
+	// 解析: S20902020014 05262978172736251112050241
+	// 日付: 27-33文字目 (251112)
+	// 時刻: 33-39文字目 (050241)
+	datePart := sRecord[27:33] // YYMMDD
+	timePart := sRecord[33:39] // HHMMSS
+
+	// 西暦補完 (25 -> 2025)
+	fullDate := "20" + datePart
+
+	fileName := fmt.Sprintf("%s_%s.DAT", fullDate, timePart)
+	savePath := filepath.Join(archiveDir, fileName)
+
+	return saveFileIfNotExists(savePath, data)
+}
+
+func saveFileIfNotExists(path string, data []byte) (string, error) {
+	if _, err := os.Stat(path); err == nil {
+		// ファイルが既に存在する -> 内容を確認すべきだが、今回は名前重複＝保存済みとみなす
+		return "", nil
+	}
+	if err := os.WriteFile(path, data, 0644); err != nil {
+		return "", err
+	}
+	return path, nil
+}
+
+// ▼▼▼ 修正: skipReconcile 引数を追加 ▼▼▼
+func ImportDatStream(db *sqlx.DB, r io.Reader, filename string, skipReconcile bool) ([]model.TransactionRecord, error) {
 	parsedRecords, parseErr := parsers.ParseDat(r)
 	if parseErr != nil {
 		return nil, fmt.Errorf("DAT parse error: %w", parseErr)
@@ -93,8 +177,8 @@ func ImportDatStream(db *sqlx.DB, r io.Reader, filename string) ([]model.Transac
 		return nil, fmt.Errorf("process records error: %w", processErr)
 	}
 
-	// 発注残消込処理
-	if len(insertedTransactions) > 0 {
+	// 発注残消込処理 (skipReconcileがfalseの場合のみ実行)
+	if !skipReconcile && len(insertedTransactions) > 0 {
 		var deliveredItems []model.Backorder
 		for _, rec := range insertedTransactions {
 			if rec.Flag == 1 { // 納品
@@ -122,7 +206,10 @@ func ImportDatStream(db *sqlx.DB, r io.Reader, filename string) ([]model.Transac
 	return insertedTransactions, nil
 }
 
-// ▲▲▲ 追加ここまで ▲▲▲
+// ▲▲▲ 修正ここまで ▲▲▲
+
+// ... (removeDatDuplicates, ProcessDatRecords, OpenFileHeader は前回の回答と同じ内容のため省略可能ですが、全体を要求されている場合は含めます)
+// 前回の回答で修正した「マスタからの補完ロジック削除」済みの ProcessDatRecords を使用します。
 
 func removeDatDuplicates(records []model.DatRecord) []model.DatRecord {
 	seen := make(map[string]struct{})
@@ -210,16 +297,12 @@ func ProcessDatRecords(tx *sqlx.Tx, parsedRecords []model.DatRecord) ([]model.Tr
 		transaction.YjQuantity = rec.DatQuantity * master.YjPackUnitQty
 
 		if master.JanPackInnerQty > 0 {
-			transaction.JanQuantity = transaction.YjQuantity /
-				master.JanPackInnerQty
+			transaction.JanQuantity = transaction.YjQuantity / master.JanPackInnerQty
 		} else {
 			transaction.JanQuantity = 0
 		}
 
-		if transaction.UnitPrice == 0 {
-			transaction.UnitPrice = master.NhiPrice
-			transaction.Subtotal = transaction.YjQuantity * transaction.UnitPrice
-		}
+		// マスタからの補完ロジックは削除済み
 
 		mappers.MapMasterToTransaction(&transaction, master)
 

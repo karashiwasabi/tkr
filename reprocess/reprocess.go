@@ -70,7 +70,8 @@ func ExecuteReprocess(conn *sqlx.DB) error {
 			// 1. 最新のマスター情報をレコードにマッピング (TKRの関数名に変更)
 			mappers.MapMasterToTransaction(&rec, master)
 
-			// ▼▼▼【ここから修正】DatQuantity(箱数) を基準に再計算 ▼▼▼
+			// 2. 数量の再計算（マスターの包装規格変更への対応）
+			// DAT数量(箱数)がある場合は、それを正としてYJ/JAN数量を再計算する
 			if rec.DatQuantity > 0 && master.YjPackUnitQty > 0 {
 				// (A) DAT数量(箱数)が存在する場合（DAT取込データ）
 				// YJ数量 = DAT数量(箱数) * YJ包装数
@@ -91,24 +92,24 @@ func ExecuteReprocess(conn *sqlx.DB) error {
 				rec.JanQuantity = rec.YjQuantity / master.JanPackInnerQty
 			}
 			// (D) すべて0の場合は、0のまま
-			// ▲▲▲【修正ここまで】▲▲▲
 
 			// 3. 金額を再計算 (TKRのFlag定義に合わせてロジックを分岐)
 			switch rec.Flag {
-			// ▼▼▼【ここから修正】 flag = 1 (納品) を default と同じ扱いに変更 ▼▼▼
-			case 0, 3: // 棚卸, 処方
+			case 1, 2: // 納品(1), 返品(2) -> DAT由来
+				// ▼▼▼【修正】DAT由来の納品・返品データは金額を再計算しない ▼▼▼
+				// DATファイルの値が正であるため、マスタの薬価等を適用して書き換えることはしない。
+				// 何もしない (break不要、処理をスキップ)
+
+			case 0, 3: // 棚卸(0), 処方(3)
 				rec.UnitPrice = master.NhiPrice // 薬価を単価とする
 				rec.Subtotal = rec.YjQuantity * rec.UnitPrice
 
-			case 2: // 返品
+			default: // その他 (入庫 11, 出庫 12 など)
+				// ユーザー指示：入出庫は薬価ベースで計算してOK
 				rec.UnitPrice = master.NhiPrice
 				rec.Subtotal = rec.YjQuantity * rec.UnitPrice
-
-			default: // 納品(1), その他 (入出庫 11, 12 など)
-				// 数量の変更を反映するため金額は再計算するが、単価は維持する
-				rec.Subtotal = rec.YjQuantity * rec.UnitPrice
-				// ▲▲▲【修正ここまで】▲▲▲
 			}
+			// ▲▲▲【修正ここまで】▲▲▲
 
 			// 4. 処理ステータスを更新 (TKRの定義に合わせて修正)
 			if rec.ProcessFlagMA == "PRO" && master.Origin == "JCSHMS" {

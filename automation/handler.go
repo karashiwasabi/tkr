@@ -71,7 +71,9 @@ func DownloadMedicodeDatHandler(db *sqlx.DB) http.HandlerFunc {
 		}
 		defer file.Close()
 
-		insertedTransactions, err := dat.ImportDatStream(db, file, filepath.Base(filePath))
+		// ▼▼▼ 引数追加: false (消込を行う) ▼▼▼
+		insertedTransactions, err := dat.ImportDatStream(db, file, filepath.Base(filePath), false)
+		// ▲▲▲
 		if err != nil {
 			writeJSONError(w, "DAT取込処理(dat.ImportDatStream)でエラー: "+err.Error(), http.StatusInternalServerError)
 			return
