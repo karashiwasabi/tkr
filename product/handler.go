@@ -62,10 +62,15 @@ func SearchProductsHandler(conn *sqlx.DB) http.HandlerFunc {
 		dosageForm := q.Get("dosageForm")
 		genericName := q.Get("genericName")
 		shelfNumber := q.Get("shelfNumber")
-		// ▼▼▼【ここを修正】searchMode の取得を復活させる ▼▼▼
 		searchMode := q.Get("searchMode")
 
-		// ▼▼▼【ここから修正】searchMode によって分岐するロジックを復活 ▼▼▼
+		productName := q.Get("productName")
+		drugTypesRaw := q.Get("drugTypes")
+		var drugTypes []string
+		if drugTypesRaw != "" {
+			drugTypes = strings.Split(drugTypesRaw, ",")
+		}
+
 		if searchMode == "inout" {
 			// --- 「JCSHMSから採用」フロー (マスタ編集, 入出庫明細) ---
 
@@ -80,7 +85,7 @@ func SearchProductsHandler(conn *sqlx.DB) http.HandlerFunc {
 			seenCodes := make(map[string]bool)
 
 			// 2. JCSHMS から検索 (未採用/採用済 候補)
-			jcshmsResults, err := database.GetFilteredJcshmsInfo(conn, dosageForm, kanaName, genericName)
+			jcshmsResults, err := database.GetFilteredJcshmsInfo(conn, dosageForm, kanaName, genericName, productName, drugTypes)
 			if err != nil {
 				http.Error(w, "Failed to search jcshms_master: "+err.Error(), http.StatusInternalServerError)
 				return
@@ -103,7 +108,7 @@ func SearchProductsHandler(conn *sqlx.DB) http.HandlerFunc {
 			}
 
 			// 4. 独自マスタ(PROVISIONAL)から検索
-			adoptedMasters, err := database.GetFilteredProductMasters(conn, dosageForm, kanaName, genericName, shelfNumber)
+			adoptedMasters, err := database.GetFilteredProductMasters(conn, dosageForm, kanaName, genericName, shelfNumber, productName, drugTypes)
 			if err != nil {
 				http.Error(w, "Failed to search product_master: "+err.Error(), http.StatusInternalServerError)
 				return
@@ -130,7 +135,7 @@ func SearchProductsHandler(conn *sqlx.DB) http.HandlerFunc {
 		} else {
 			// --- それ以外の通常検索 (棚卸調整, DAT取込, 発注) ---
 
-			localMasters, err := database.GetFilteredProductMasters(conn, dosageForm, kanaName, genericName, shelfNumber)
+			localMasters, err := database.GetFilteredProductMasters(conn, dosageForm, kanaName, genericName, shelfNumber, productName, drugTypes)
 			if err != nil {
 				http.Error(w, "Failed to search product_master: "+err.Error(), http.StatusInternalServerError)
 				return
@@ -150,7 +155,6 @@ func SearchProductsHandler(conn *sqlx.DB) http.HandlerFunc {
 			w.Header().Set("Content-Type", "application/json")
 			json.NewEncoder(w).Encode(results)
 		}
-		// ▲▲▲【修正ここまで】▲▲▲
 	}
 }
 

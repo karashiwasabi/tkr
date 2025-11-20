@@ -31,8 +31,7 @@ const SelectColumns = `
 	nhi_price, purchase_price,
 	flag_poison, flag_deleterious, flag_narcotic, flag_psychotropic, flag_stimulant, flag_stimulant_raw,
 	is_order_stopped, supplier_wholesale,
-	group_code, shelf_number, 
-category, user_notes
+	group_code, shelf_number, category, user_notes
 `
 
 func ScanProductMaster(row interface{ Scan(...interface{}) error }) (*model.ProductMaster, error) {
@@ -92,8 +91,7 @@ func GetAllProductMasters(dbtx DBTX) ([]*model.ProductMaster, error) {
 	err := dbtx.Select(&masters, query)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return []*model.ProductMaster{},
-				nil
+			return []*model.ProductMaster{}, nil
 		}
 		return nil, fmt.Errorf("failed to select all product masters: %w", err)
 	}
@@ -103,7 +101,6 @@ func GetAllProductMasters(dbtx DBTX) ([]*model.ProductMaster, error) {
 	return masters, nil
 }
 
-// ▼▼▼【ここから追加】採用済みの全 ProductCode をマップで取得する関数 ▼▼▼
 func GetAllAdoptedProductCodesMap(dbtx DBTX) (map[string]bool, error) {
 	rows, err := dbtx.Query(`SELECT product_code FROM product_master`)
 	if err != nil {
@@ -127,50 +124,64 @@ func GetAllAdoptedProductCodesMap(dbtx DBTX) (map[string]bool, error) {
 	return codeMap, nil
 }
 
-// ▲▲▲【追加ここまで】▲▲▲
-
-func GetFilteredProductMasters(dbtx DBTX, usageClass, kanaName, genericName, shelfNumber string) ([]model.ProductMaster, error) {
+// GetFilteredProductMasters は条件に基づいて製品マスタを検索します。
+func GetFilteredProductMasters(dbtx DBTX, usageClass, kanaName, genericName, shelfNumber, productName string, drugTypes []string) ([]model.ProductMaster, error) {
 	var masters []model.ProductMaster
 
-	query := `SELECT * FROM product_master`
-	mustConditions := []string{}
-	args := []interface{}{}
+	query := `SELECT * FROM product_master WHERE 1=1`
+	var args []interface{}
 
-	if usageClass != "" {
-		mustConditions = append(mustConditions, "usage_classification = ?")
-		args = append(args,
-			usageClass)
-	} else {
-		return []model.ProductMaster{}, nil
+	if usageClass != "" && usageClass != "all" {
+		query += " AND usage_classification = ?"
+		args = append(args, usageClass)
 	}
 
-	var nameConditions []string
-	if len(kanaName) > 0 {
-		nameConditions = append(nameConditions, "kana_name LIKE ?")
+	if kanaName != "" {
+		query += " AND kana_name LIKE ?"
 		args = append(args, kanaName+"%")
 	}
-
-	if len(genericName) > 0 {
-		nameConditions = append(nameConditions, "generic_name LIKE ?")
+	if genericName != "" {
+		query += " AND generic_name LIKE ?"
 		args = append(args, "%"+genericName+"%")
 	}
-
-	if len(nameConditions) > 0 {
-		mustConditions = append(mustConditions, "("+strings.Join(nameConditions, " OR ")+")")
+	if productName != "" {
+		query += " AND product_name LIKE ?"
+		args = append(args, "%"+productName+"%")
 	}
 
-	if len(shelfNumber) > 0 {
-		mustConditions = append(mustConditions, "shelf_number = ?")
-		args = append(args, shelfNumber)
+	if shelfNumber != "" {
+		query += " AND shelf_number LIKE ?"
+		args = append(args, "%"+shelfNumber+"%")
 	}
 
-	if len(mustConditions) > 0 {
-		query += " WHERE " + strings.Join(mustConditions, " AND ")
-	} else {
-		return []model.ProductMaster{}, fmt.Errorf("usage class filter is required")
+	if len(drugTypes) > 0 {
+		var drugConditions []string
+		for _, dt := range drugTypes {
+			switch dt {
+			case "poison":
+				drugConditions = append(drugConditions, "flag_poison = 1")
+			case "deleterious":
+				drugConditions = append(drugConditions, "flag_deleterious = 1")
+			case "narcotic":
+				drugConditions = append(drugConditions, "flag_narcotic = 1")
+			case "psycho1":
+				drugConditions = append(drugConditions, "flag_psychotropic = 1")
+			case "psycho2":
+				drugConditions = append(drugConditions, "flag_psychotropic = 2")
+			case "psycho3":
+				drugConditions = append(drugConditions, "flag_psychotropic = 3")
+			case "stimulant":
+				drugConditions = append(drugConditions, "flag_stimulant = 1")
+			case "stimulant_raw":
+				drugConditions = append(drugConditions, "flag_stimulant_raw = 1")
+			}
+		}
+		if len(drugConditions) > 0 {
+			query += " AND (" + strings.Join(drugConditions, " OR ") + ")"
+		}
 	}
 
-	query += " ORDER BY kana_name"
+	query += " ORDER BY kana_name LIMIT 500"
 
 	err := dbtx.Select(&masters, query, args...)
 	if err != nil {
@@ -231,8 +242,7 @@ func GetProductMasterByBarcode(dbtx DBTX, barcodeStr string) (*model.ProductMast
 
 func GetProductMastersByYjCode(dbtx DBTX, yjCode string) ([]*model.ProductMaster, error) {
 	var masters []*model.ProductMaster
-	query := `SELECT * FROM product_master WHERE yj_code = ?
-ORDER BY product_code`
+	query := `SELECT * FROM product_master WHERE yj_code = ? ORDER BY product_code`
 	err := dbtx.Select(&masters, query, yjCode)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -275,15 +285,10 @@ func GetProductMasterByKanaNameShort(dbtx DBTX, kanaNameShort string) (*model.Pr
 const insertProductMasterQuery = `
 INSERT INTO product_master (
     product_code, yj_code, gs1_code, product_name, kana_name, kana_name_short, 
-    generic_name, maker_name, specification, usage_classification, 
- package_form, 
+    generic_name, maker_name, specification, usage_classification, package_form, 
     yj_unit_name, yj_pack_unit_qty, jan_pack_inner_qty, jan_unit_code, jan_pack_unit_qty, 
     origin, nhi_price, purchase_price, flag_poison, flag_deleterious, flag_narcotic, 
-    
- flag_psychotropic, 
- flag_stimulant, 
-flag_stimulant_raw, 
-is_order_stopped, 
+    flag_psychotropic, flag_stimulant, flag_stimulant_raw, is_order_stopped, 
     supplier_wholesale, group_code, shelf_number, category, user_notes
 ) VALUES (
     :product_code, :yj_code, :gs1_code, :product_name, :kana_name, :kana_name_short, 
@@ -340,19 +345,13 @@ func GetAllPackageKeysFromMasters(dbtx DBTX) (map[string]MasterPackageKeyInfo, e
 	return keyInfoMap, nil
 }
 
-// ▼▼▼【ここに追加】 (WASABI: db/product_master.go  より移植) ▼▼▼
-// UpdatePricesAndSuppliersInTx は、納入価と採用卸を一括更新します。 (TKR用に sqlx.Tx を使用)
 func UpdatePricesAndSuppliersInTx(tx *sqlx.Tx, updates []model.PriceUpdate) error {
-	// sqlx.NamedExec を使うために :field 形式のプレースホルダに変更
 	const q = `UPDATE product_master SET purchase_price = :newPrice, supplier_wholesale = :newWholesaler
 WHERE product_code = :productCode`
 
-	// NamedExec はスライス（[]model.PriceUpdate）を受け取って一括実行できる
 	_, err := tx.NamedExec(q, updates)
 	if err != nil {
 		return fmt.Errorf("UpdatePricesAndSuppliersInTx failed (NamedExec): %w", err)
 	}
 	return nil
 }
-
-// ▲▲▲【追加ここまで】▲▲▲

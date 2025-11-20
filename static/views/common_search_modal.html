@@ -6,91 +6,85 @@
             <fieldset>
                 <legend>検索条件</legend>
                 
-                <div class="search-grid-top">
-     
-
-                    <div class="form-group">
-                        <label for="modal-search-gs1">GS1バーコードスキャン:</label>
-                         <form id="modal-search-gs1-form">
-                            
-<input type="text" id="modal-search-gs1" autocomplete="off" placeholder="GS1-128スキャン...">
- 
+                <div class="modal-search-row">
+                    <div class="form-group flex-100">
+                        <label for="modal-search-gs1">GS1バーコード:</label>
+                        <form id="modal-search-gs1-form">
+                            <input type="text" id="modal-search-gs1" autocomplete="off" placeholder="スキャン">
                         </form>
                     </div>
-                </div>
-                <div class="search-grid-bottom">
-                  
-  <div class="form-group">
-   
-                        <label>内外注区分:</label>
-                       <div class="radio-group" id="modal-search-usage-class">
-            
-        
-                            <label><input type="radio" name="modal_usage_class" value="内"> 内</label>
+
+                    <div class="form-group flex-auto">
+                        <label>剤型:</label>
+                        <div class="radio-group" id="modal-search-usage-class">
+                            <label><input type="radio" name="modal_usage_class" value="内" checked> 内</label>
                             <label><input type="radio" name="modal_usage_class" value="外"> 外</label>
-                            
-<label><input type="radio" name="modal_usage_class" value="歯"> 歯</label>
+                            <label><input type="radio" name="modal_usage_class" value="歯"> 歯</label>
                             <label><input type="radio" name="modal_usage_class" value="注"> 注</label>
-                        
                             <label><input type="radio" name="modal_usage_class" value="機"> 機</label>
                             <label><input type="radio" name="modal_usage_class" value="他"> 他</label>
-                         </div>
-               
-     </div>
-                    
-                    <div class="form-group">
-                         <label for="modal-search-kana">カナ名 (前方一致):</label>
-                         <input type="text" 
-id="modal-search-kana" autocomplete="off">
+                        </div>
                     </div>
-                    <div class="form-group">
-                         <label for="modal-search-generic">一般名 (部分一致):</label>
-   
-                          <input type="text" 
-id="modal-search-generic" autocomplete="off">
+
+                    <div class="form-group flex-auto">
+                        <label>薬種 (OR検索):</label>
+                        <div class="checkbox-group compact-checkboxes" id="modal-search-drug-types">
+                            <label><input type="checkbox" value="poison"> 毒</label>
+                            <label><input type="checkbox" value="deleterious"> 劇</label>
+                            <label><input type="checkbox" value="narcotic"> 麻</label>
+                            <label><input type="checkbox" value="psycho1"> 向1</label>
+                            <label><input type="checkbox" value="psycho2"> 向2</label>
+                            <label><input type="checkbox" value="psycho3"> 向3</label>
+                            <label><input type="checkbox" value="stimulant"> 覚</label>
+                            <label><input type="checkbox" value="stimulant_raw"> 覚原</label>
+                        </div>
                     </div>
-                    <div class="form-group">
-                         <label for="modal-search-shelf">棚番 (部分一致):</label>
-       
-                        
-<input type="text" id="modal-search-shelf" autocomplete="off">
+                </div>
+
+                <div class="modal-search-row" style="margin-top: 8px;">
+                    <div class="form-group flex-grow">
+                        <label for="modal-search-product">製品名 (部分):</label>
+                        <input type="text" id="modal-search-product" autocomplete="off">
                     </div>
+                    <div class="form-group flex-grow">
+                        <label for="modal-search-kana">カナ名 (前方):</label>
+                        <input type="text" id="modal-search-kana" autocomplete="off">
                     </div>
-                 <div class="form-actions">
-                    <button id="product-search-btn" class="btn">この条件で検索</button>
-   
-              
-   </div>
+                    <div class="form-group flex-grow">
+                        <label for="modal-search-generic">一般名 (部分):</label>
+                        <input type="text" id="modal-search-generic" autocomplete="off">
+                    </div>
+                    <div class="form-group flex-100">
+                        <label for="modal-search-shelf">棚番 (部分):</label>
+                        <input type="text" id="modal-search-shelf" autocomplete="off">
+                    </div>
+                    <div class="form-group flex-none">
+                         <button id="product-search-btn" class="btn" style="margin-top: 14px;">この条件で検索</button>
+                    </div>
+                </div>
+
             </fieldset>
         </div>
         <div id="search-results-container" class="table-container">
             <table id="search-results-table" class="data-table">
                 <thead>
                     <tr>
-       
-          
-              <th class="col-modal-product">製品名</th>
+                        <th class="col-modal-product">製品名</th>
                         <th class="col-modal-maker">メーカー</th>
                         <th class="col-modal-spec">包装仕様</th>
                         <th class="col-modal-yj">YJコード</th>
-       
-   
-                     <th class="col-modal-jan">JANコード</th>
+                        <th class="col-modal-jan">JANコード</th>
                         <th class="col-modal-action">選択</th>
                     </tr>
                 </thead>
-                 
-<tbody>
-    
+                <tbody>
                     <tr>
                         <td colspan="6" class="center">検索ボタンを押してください。</td>
                     </tr>
                  </tbody>
             </table>
- 
        </div>
- 
-        <div class="form-actions">
+       <div class="form-actions">
             <button type="button" id="closeSearchModalBtn" class="btn">閉じる</button>
         </div>
     </div>

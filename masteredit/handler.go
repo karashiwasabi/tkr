@@ -2,17 +2,17 @@
 package masteredit
 
 import (
-	"database/sql" // sql をインポート
+	"database/sql"
 	"encoding/json"
 	"errors"
-	"fmt" // 変更
+	"fmt"
 	"log"
 	"net/http"
 	"strings"
 	"tkr/database"
 	"tkr/mastermanager"
 	"tkr/model"
-	"tkr/units" // 変更
+	"tkr/units"
 
 	"github.com/jmoiron/sqlx"
 )
@@ -37,7 +37,7 @@ func ListMastersHandler(db *sqlx.DB) http.HandlerFunc {
 		}
 
 		masters, err := database.GetFilteredProductMasters(db,
-			usageClass, kanaName, genericName, shelfNumber)
+			usageClass, kanaName, genericName, shelfNumber, "", nil)
 
 		if err != nil {
 			log.Printf("Error fetching filtered product masters: %v", err)
@@ -121,8 +121,6 @@ func UpdateMasterHandler(db *sqlx.DB) http.HandlerFunc {
 			http.Error(w, "Invalid request body", http.StatusBadRequest)
 			return
 		}
-
-		// productCode が空でもエラーにしなくなった
 
 		tx, err := db.Beginx()
 		if err != nil {
@@ -357,5 +355,3 @@ func BulkUpdateShelfHandler(conn *sqlx.DB) http.HandlerFunc {
 		})
 	}
 }
-
-// ▲▲▲【追加ここまで】▲▲▲
