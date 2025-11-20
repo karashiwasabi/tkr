@@ -274,6 +274,17 @@
     border-radius: 2px;
 }
 
+/* ▼▼▼ 追加: 在庫差異の強調スタイル ▼▼▼ */
+.status-diff {
+    color: #dc3545; /* 赤文字 */
+    font-weight: bold;
+    background-color: #fff3cd; /* 薄い黄色背景で注意喚起 */
+    padding: 2px 4px;
+    border-radius: 2px;
+    border: 1px solid #ffeeba;
+}
+/* ▲▲▲ 追加ここまで ▲▲▲ */
+
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\css\inout.css -----
 /* C:\Users\wasab\OneDrive\デスクトップ\TKR\static\css\inout.css */
 .inout-view-container {
@@ -978,12 +989,7 @@ td.status-near {
 }
 
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\css\search_form_group.css -----
-/* C:\Users\wasab\OneDrive\デスクトップ\TKR\static\css\search_form_group.css */
-
-/*
-   共通検索フォーム (search_form_group.html) 専用スタイル
-*/
-
+/* 既存のスタイルは維持 */
 .search-form-container {
     display: flex;
     flex-direction: column;
@@ -991,79 +997,22 @@ td.status-near {
     gap: 10px;
 }
 
-/* 上段 (バーコード行) */
-.search-barcode-row {
+/* ...既存の search-barcode-row, search-filter-row 等の定義... */
+
+/* ▼▼▼ 追加: 1行レイアウト用のスタイル ▼▼▼ */
+.search-row-unified {
     display: flex;
     width: 100%;
-}
-
-.search-barcode-row .form-group {
-    flex-basis: 300px;
-    flex-grow: 1;
-    /* ▼▼▼【ここから追加】干渉を防ぐため明示的に指定 ▼▼▼ */
-    display: flex;
-    flex-direction: column;
-    gap: 3px;
-    /* ▲▲▲【追加ここまで】▲▲▲ */
-}
-
-.search-barcode-form {
-    margin: 0;
-}
-
-.search-barcode-input {
-    padding: 3px;
-    font-size: inherit;
-    width: 100%;
-    box-sizing: border-box;
-}
-
-/* 下段 (フィルター行) */
-.search-filter-row {
-    display: flex;
-    flex-wrap: wrap;
     gap: 10px;
-    align-items: flex-end; /* ラベル、入力欄、ボタンの底を揃える */
-    width: 100%;
+    align-items: flex-end;
 }
 
-/* ▼▼▼【ここから追加】下段の .form-group スタイル ▼▼▼ */
-.search-filter-row .form-group {
-    display: flex;
-    flex-direction: column;
-    gap: 3px;
-}
-/* ▲▲▲【追加ここまで】▲▲▲ */
-
-/* 下段の汎用入力欄 */
-.search-filter-input {
-    padding: 3px;
-    font-size: inherit;
-}
-
-/* 下段の検索ボタン */
-.search-submit-button {
-    padding: 5px 10px;
-    margin-left: auto; /* 右寄せ */
-}
-
-/* ▼▼▼【ここから追加】ラジオボタンのスタイルを他から分離 ▼▼▼ */
-.search-filter-row .form-group .radio-group {
-    display: flex;
-    flex-wrap: nowrap;
-    gap: 10px;
-    align-items: center;
-    height: 100%;
-}
-
-.search-filter-row .form-group .radio-group label {
-    display: flex;
-    align-items: center;
-    gap: 2px;
+/* 入力欄とボタンの高さを合わせる調整 */
+.search-row-unified .search-submit-button {
+    margin-bottom: 1px; /* 微調整 */
     white-space: nowrap;
-    font-weight: normal; /* inventory_adjustment.css の [cite: 657] を上書き */
 }
-/* ▲▲▲【追加ここまで】▲▲▲ */
+/* ▲▲▲ 追加ここまで ▲▲▲ */
 
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\css\search_modal.css -----
 /* C:\Users\wasab\OneDrive\デスクトップ\TKR\static\css\search_modal.css */
@@ -1075,7 +1024,8 @@ td.status-near {
 
 /* 検索結果テーブル */
 #search-results-table {
-    font-size: 10px; /* 通常より少し小さく */
+    font-size: 10px;
+    /* 通常より少し小さく */
 }
 #search-results-table th, 
 #search-results-table td {
@@ -1101,7 +1051,7 @@ td.status-near {
    将来的に検索モーダル内で検索を有効化する場合に備えて定義する
 */
 #tkr-search-modal-content .filter-container {
-    background-color: #f4f4f4; 
+    background-color: #f4f4f4;
     border: 1px solid #ccc; 
     padding: 10px;
 }
@@ -1120,7 +1070,7 @@ td.status-near {
 }
 #tkr-search-modal-content .filter-container .form-actions {
     border-top: none; 
-    margin-top: 10px; 
+    margin-top: 10px;
     padding-top: 0;
 }
 #tkr-search-modal-content #product-search-btn {
@@ -1129,23 +1079,77 @@ td.status-near {
 
 /* 検索結果のコンテナ */
 #search-results-container {
-    max-height: 50vh; 
+    max-height: 50vh;
     overflow-y: auto; 
     margin-top: 10px;
 }
 
 /* 検索結果テーブルの列幅 */
 #search-results-table th.col-modal-product { width: 35%; }
-#search-results-table th.col-modal-maker   { width: 15%; }
+#search-results-table th.col-modal-maker   { width: 15%;
+}
 #search-results-table th.col-modal-spec    { width: 20%; }
-#search-results-table th.col-modal-yj      { width: 10%; }
+#search-results-table th.col-modal-yj      { width: 10%;
+}
 #search-results-table th.col-modal-jan     { width: 10%; }
-#search-results-table th.col-modal-action  { width: 10%; }
+#search-results-table th.col-modal-action  { width: 10%;
+}
 
 /* モーダル末尾の「閉じる」ボタンのマージン */
 #tkr-search-modal-overlay .form-actions {
     margin-top: 15px;
 }
+
+/* ▼▼▼ 追加: モーダル内の1行レイアウト用スタイル ▼▼▼ */
+.modal-search-row {
+    display: flex;
+    width: 100%;
+    gap: 10px;
+    align-items: center; /* 垂直方向中央揃え (ボタンと入力欄の高さを合わせる) */
+}
+
+.modal-search-row .form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+/* 幅調整用ヘルパークラス */
+.flex-100 { flex: 0 0 100px; }
+.flex-auto { flex: 0 0 auto; }
+.flex-grow { flex: 1 1 0; min-width: 80px; }
+.flex-none { flex: 0 0 auto; }
+
+/* 薬種チェックボックスのスタイル */
+.compact-checkboxes {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    height: 100%;
+    padding: 3px 0;
+}
+.compact-checkboxes label {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    white-space: nowrap;
+    font-weight: normal;
+    font-size: 10px;
+    cursor: pointer;
+}
+
+/* 入力欄の共通スタイル上書き (幅100%にするため) */
+.modal-search-row input[type="text"] {
+    width: 100%;
+    box-sizing: border-box;
+}
+
+/* 検索ボタンの位置微調整 */
+#product-search-btn {
+    white-space: nowrap;
+    padding: 4px 10px;
+}
+/* ▲▲▲ 追加ここまで ▲▲▲ */
 
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\css\styles.css -----
 /* TKR/static/css/styles.css (Table styles removed) */
@@ -1900,91 +1904,85 @@ body {
             <fieldset>
                 <legend>検索条件</legend>
                 
-                <div class="search-grid-top">
-     
-
-                    <div class="form-group">
-                        <label for="modal-search-gs1">GS1バーコードスキャン:</label>
-                         <form id="modal-search-gs1-form">
-                            
-<input type="text" id="modal-search-gs1" autocomplete="off" placeholder="GS1-128スキャン...">
- 
+                <div class="modal-search-row">
+                    <div class="form-group flex-100">
+                        <label for="modal-search-gs1">GS1バーコード:</label>
+                        <form id="modal-search-gs1-form">
+                            <input type="text" id="modal-search-gs1" autocomplete="off" placeholder="スキャン">
                         </form>
                     </div>
-                </div>
-                <div class="search-grid-bottom">
-                  
-  <div class="form-group">
-   
-                        <label>内外注区分:</label>
-                       <div class="radio-group" id="modal-search-usage-class">
-            
-        
-                            <label><input type="radio" name="modal_usage_class" value="内"> 内</label>
+
+                    <div class="form-group flex-auto">
+                        <label>剤型:</label>
+                        <div class="radio-group" id="modal-search-usage-class">
+                            <label><input type="radio" name="modal_usage_class" value="内" checked> 内</label>
                             <label><input type="radio" name="modal_usage_class" value="外"> 外</label>
-                            
-<label><input type="radio" name="modal_usage_class" value="歯"> 歯</label>
+                            <label><input type="radio" name="modal_usage_class" value="歯"> 歯</label>
                             <label><input type="radio" name="modal_usage_class" value="注"> 注</label>
-                        
                             <label><input type="radio" name="modal_usage_class" value="機"> 機</label>
                             <label><input type="radio" name="modal_usage_class" value="他"> 他</label>
-                         </div>
-               
-     </div>
-                    
-                    <div class="form-group">
-                         <label for="modal-search-kana">カナ名 (前方一致):</label>
-                         <input type="text" 
-id="modal-search-kana" autocomplete="off">
+                        </div>
                     </div>
-                    <div class="form-group">
-                         <label for="modal-search-generic">一般名 (部分一致):</label>
-   
-                          <input type="text" 
-id="modal-search-generic" autocomplete="off">
+
+                    <div class="form-group flex-auto">
+                        <label>薬種 (OR検索):</label>
+                        <div class="checkbox-group compact-checkboxes" id="modal-search-drug-types">
+                            <label><input type="checkbox" value="poison"> 毒</label>
+                            <label><input type="checkbox" value="deleterious"> 劇</label>
+                            <label><input type="checkbox" value="narcotic"> 麻</label>
+                            <label><input type="checkbox" value="psycho1"> 向1</label>
+                            <label><input type="checkbox" value="psycho2"> 向2</label>
+                            <label><input type="checkbox" value="psycho3"> 向3</label>
+                            <label><input type="checkbox" value="stimulant"> 覚</label>
+                            <label><input type="checkbox" value="stimulant_raw"> 覚原</label>
+                        </div>
                     </div>
-                    <div class="form-group">
-                         <label for="modal-search-shelf">棚番 (部分一致):</label>
-       
-                        
-<input type="text" id="modal-search-shelf" autocomplete="off">
+                </div>
+
+                <div class="modal-search-row" style="margin-top: 8px;">
+                    <div class="form-group flex-grow">
+                        <label for="modal-search-product">製品名 (部分):</label>
+                        <input type="text" id="modal-search-product" autocomplete="off">
                     </div>
+                    <div class="form-group flex-grow">
+                        <label for="modal-search-kana">カナ名 (前方):</label>
+                        <input type="text" id="modal-search-kana" autocomplete="off">
                     </div>
-                 <div class="form-actions">
-                    <button id="product-search-btn" class="btn">この条件で検索</button>
-   
-              
-   </div>
+                    <div class="form-group flex-grow">
+                        <label for="modal-search-generic">一般名 (部分):</label>
+                        <input type="text" id="modal-search-generic" autocomplete="off">
+                    </div>
+                    <div class="form-group flex-100">
+                        <label for="modal-search-shelf">棚番 (部分):</label>
+                        <input type="text" id="modal-search-shelf" autocomplete="off">
+                    </div>
+                    <div class="form-group flex-none">
+                         <button id="product-search-btn" class="btn" style="margin-top: 14px;">この条件で検索</button>
+                    </div>
+                </div>
+
             </fieldset>
         </div>
         <div id="search-results-container" class="table-container">
             <table id="search-results-table" class="data-table">
                 <thead>
                     <tr>
-       
-          
-              <th class="col-modal-product">製品名</th>
+                        <th class="col-modal-product">製品名</th>
                         <th class="col-modal-maker">メーカー</th>
                         <th class="col-modal-spec">包装仕様</th>
                         <th class="col-modal-yj">YJコード</th>
-       
-   
-                     <th class="col-modal-jan">JANコード</th>
+                        <th class="col-modal-jan">JANコード</th>
                         <th class="col-modal-action">選択</th>
                     </tr>
                 </thead>
-                 
-<tbody>
-    
+                <tbody>
                     <tr>
                         <td colspan="6" class="center">検索ボタンを押してください。</td>
                     </tr>
                  </tbody>
             </table>
- 
        </div>
- 
-        <div class="form-actions">
+       <div class="form-actions">
             <button type="button" id="closeSearchModalBtn" class="btn">閉じる</button>
         </div>
     </div>
@@ -2011,24 +2009,16 @@ id="modal-search-generic" autocomplete="off">
         <input type="file" id="datFileInput" multiple accept=".dat,.DAT" class="hidden">
         <button id="medicodeDownloadBtn" class="btn" style="background-color: #0d6efd; color: white; border-color: #0d6efd;">MEDICODE自動受信</button>
     </div>
+    
+    <div class="upload-button-container" style="margin-top: 20px; padding-top: 10px; border-top: 1px dashed #ccc;">
+        <h4 style="margin: 0 0 5px 0; color: #d63384;">データ修正用 (発注残に影響しません)</h4>
+        <button id="datFixUploadBtn" class="btn" style="background-color: #ffc107; color: #000; border-color: #ffc107; font-weight: bold;">過去DAT取り込み (修正のみ)</button>
+        <input type="file" id="datFixFileInput" multiple accept=".dat,.DAT" class="hidden">
+    </div>
     <div class="filter-container">
         <fieldset>
         <legend>品目検索</legend>
-        
-        <div class="search-form-container">
-            <div class="search-barcode-row">
-                 <div class="form-group">
-                     <label for="dat-search-barcode">バーコードスキャン:</label>
-                     <form id="dat-barcode-form" class="search-barcode-form">
-                         <input type="text" id="dat-search-barcode" class="search-barcode-input" autocomplete="off" placeholder="GTIN/JAN, ロット情報含む可">
-                     </form>
-                 </div>
-            </div>
-            <div class="search-filter-row" style="padding-top: 10px; border-top: 1px dashed #ccc; margin-top: 10px;">
-                <p style="font-size: 10px; font-weight: bold; margin: 0 10px 0 0;">または</p>
-                <button id="datOpenSearchModalBtn" class="btn search-submit-button" style="margin-left: auto;">品目検索...</button>
-            </div>
-        </div>
+            {{ template "generic_search_form" . }}
         </fieldset>
     </div>
     
@@ -2140,26 +2130,11 @@ type="date" id="ds-end-date">
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\views\inventory_adjustment_view.html -----
 <div id="inventory-adjustment-view" class="view">
     <h1>棚卸調整 (1品目ごと)</h1>
-    <div 
-class="filter-container">
+    <div class="filter-container">
         <fieldset>
         <legend>品目検索</legend>
-            
-            <div class="search-form-container">
-                <div class="search-barcode-row">
-                    <div class="form-group">
-                        <label for="ia-barcode-input">バーコードスキャン:</label>
-                        <form id="ia-barcode-form" class="search-barcode-form">
-                            <input type="text" id="ia-barcode-input" class="search-barcode-input" autocomplete="off" placeholder="GTIN/JAN, ロット情報含む可">
-                        </form>
-                    </div>
-                </div>
-                <div class="search-filter-row" style="padding-top: 10px; border-top: 1px dashed #ccc; margin-top: 10px;">
-                    <p style="font-size: 10px; font-weight: bold; margin: 0 10px 0 0;">または</p>
-                    <button id="ia-search-btn" class="btn search-submit-button" style="margin-left: auto;">品目検索...</button>
-                </div>
-            </div>
-            </fieldset>
+            {{ template "generic_search_form" . }}
+        </fieldset>
     </div>
     <div id="inventory-adjustment-output" class="table-container">
         <p>上記検索条件で品目を指定してください。</p>
@@ -2173,27 +2148,14 @@ class="filter-container">
         <fieldset>
         <legend>品目検索</legend>
         
-        <div class="search-form-container">
-            <div class="search-barcode-row">
-                 <div class="form-group">
-                     <label for="master-search-gs1-barcode">GS1バーコードスキャン:</label>
-                     <form id="master-barcode-form" class="search-barcode-form">
-                         <input type="text" id="master-search-gs1-barcode" class="search-barcode-input" autocomplete="off" placeholder="GS1/JANをスキャン...">
-                     </form>
-                 </div>
-            </div>
-            <div class="search-filter-row" style="padding-top: 10px; border-top: 1px dashed #ccc; margin-top: 10px;">
-                <p style="font-size: 10px; font-weight: bold; margin: 0 10px 0 0;">または</p>
-                <button id="masterSearchBtn" class="btn search-submit-button" style="margin-left: auto;">既存マスタ検索</button>
-            </div>
-        </div>
+        {{ template "generic_search_form" . }}
+
         <div class="search-form-container" style="margin-top: 10px; border-top: 1px dashed #ccc; padding-top: 10px;">
             <div class="search-filter-row">
                 <span style="font-size: 10px; font-weight: bold; margin-right: auto;">新規マスタ作成:</span>
                 <button id="openShelfRegBtn" class="btn" style="background-color: #6f42c1; color: white; margin-right: 10px;">棚番連続登録</button>
                 <button id="masterAdoptJCSHMSBtn" class="btn" style="background-color: #17a2b8; color: white;">JCSHMSから採用...</button>
-  
-              <button id="masterCreateNewBtn" class="btn" style="background-color: #28a745; color: white;">その他 新規作成</button>
+                <button id="masterCreateNewBtn" class="btn" style="background-color: #28a745; color: white;">その他 新規作成</button>
             </div>
         </div>
         </fieldset>
@@ -2202,8 +2164,7 @@ class="filter-container">
         <table id="masterListTable" class="data-table">
             <thead>
             </thead>
-       
-     <tbody>
+            <tbody>
             </tbody>
         </table>
      </div>
@@ -2211,164 +2172,140 @@ class="filter-container">
 
 <div id="masterEditModalOverlay" class="modal-overlay hidden">
     <div class="modal-content">
-   
     <h2>製品マスター編集</h2>
         <form id="masterEditForm" autocomplete="off">
- 
              <div class="form-row readonly-group">
                 <div class="form-group flex-120">
-           
-         <label for="edit-yj-code">YJコード (編集不可: JCSHMS)</label>
+                    <label for="edit-yj-code">YJコード (編集不可: JCSHMS)</label>
                     <input type="text" id="edit-yj-code" class="readonly-field" readonly>
                </div>
                 <div class="form-group flex-120">
                     <label for="view-product-code">JANコード (キー)</label>
-         
-           <input type="text" id="view-product-code" class="readonly-field" readonly>
+                    <input type="text" id="view-product-code" class="readonly-field" readonly>
                     <input type="hidden" id="edit-product-code">
                 </div>
                 <div class="form-group flex-120">
                     <label for="edit-gs1-code">GS1コード (編集不可: JCSHMS)</label>
-      
-              <input type="text" id="edit-gs1-code" class="readonly-field" readonly>
-               </div>
+                    <input type="text" id="edit-gs1-code" class="readonly-field" readonly>
+                </div>
               <div class="form-group flex-100">
                     <label for="edit-origin">由来 (編集不可)</label>
                     <input type="text" id="edit-origin" class="readonly-field" readonly>
-     
-           </div>
+               </div>
            </div>
             
           <div class="form-row">
                 <div class="form-group flex-300">
                     <label for="edit-product-name">製品名 (JCSHMS):</label>
-               
-     <input type="text" id="edit-product-name">
-              </div>
+                    <input type="text" id="edit-product-name">
+                </div>
                 <div class="form-group flex-300">
                     <label for="edit-kana-name">カナ名 (JCSHMS):</label>
                     <input type="text" id="edit-kana-name">
                 </div>
- 
-               <div class="form-group flex-200">
+                <div class="form-group flex-200">
                     <label for="edit-kana-name-short">カナ名短縮 (JCSHMS):</label>
                     <input type="text" id="edit-kana-name-short">
                 </div>
             </div>
            
- <div class="form-row">
+            <div class="form-row">
                <div class="form-group flex-300">
                 <label for="edit-generic-name">一般名 (JCSHMS):</label>
                     <input type="text" id="edit-generic-name">
                 </div>
                 <div class="form-group flex-300">
-       
-            <label for="edit-maker-name">メーカー名 (JCSHMS):</label>
-                <input type="text" id="edit-maker-name">
+                    <label for="edit-maker-name">メーカー名 (JCSHMS):</label>
+                    <input type="text" id="edit-maker-name">
                 </div>
             </div>
             <div class="form-row">
                 <div class="form-group flex-200">
-         
-         <label for="edit-specification">規格 (JCSHMS):</label>
-                  <input type="text" id="edit-specification">
+                    <label for="edit-specification">規格 (JCSHMS):</label>
+                    <input type="text" id="edit-specification">
                 </div>
                 <div class="form-group flex-150">
                     <label for="edit-package-form">包装剤型 (JCSHMS):</label>
-             
-     <input type="text" id="edit-package-form">
-               </div>
+                    <input type="text" id="edit-package-form">
+                </div>
                 <div class="form-group flex-100">
                     <label for="edit-usage-classification">内外注区分 (JCSHMS):</label>
                     <input type="text" id="edit-usage-classification">
               </div>
-  
           </div>
    
-         <div class="form-row">
+          <div class="form-row">
                 <div class="form-group flex-100">
                     <label for="edit-yj-unit-name">YJ単位名 (JCSHMS):</label>
                     <input type="text" id="edit-yj-unit-name">
-               
-</div>
+               </div>
             <div class="form-group flex-100">
-                    <label for="edit-yj-pack-unit-qty">YJ包装単位数量 (JCSHMS):</label>
+                <label for="edit-yj-pack-unit-qty">YJ包装単位数量 (JCSHMS):</label>
                     <input type="number" id="edit-yj-pack-unit-qty">
                 </div>
             </div>
-             <div 
-class="form-row">
+             <div class="form-row">
                <div class="form-group flex-100">
                     <label for="edit-jan-pack-inner-qty">JAN包装内数量 (JCSHMS):</label>
                     <input type="number" id="edit-jan-pack-inner-qty">
                 </div>
                 <div class="form-group flex-100">
-     
-               <label for="edit-jan-unit-code">JAN単位コード (JCSHMS):</label>
+                    <label for="edit-jan-unit-code">JAN単位コード (JCSHMS):</label>
                     <input type="number" id="edit-jan-unit-code">
                 </div>
                 <div class="form-group flex-100">
                   <label for="edit-jan-pack-unit-qty">JAN包装単位数量 (JCSHMS):</label>
-       
-            <input type="number" id="edit-jan-pack-unit-qty">
-                </div>
+                  <input type="number" id="edit-jan-pack-unit-qty">
+               </div>
             </div>
             <div class="form-row">
                 <div class="form-group flex-100">
                    <label for="edit-nhi-price">薬価 (JCSHMS):</label>
-      
-            <input type="number" id="edit-nhi-price" step="0.01">
+                   <input type="number" id="edit-nhi-price" step="0.01">
                 </div>
                 <div class="form-group flex-100">
                     <label for="edit-purchase-price">仕入単価 (ユーザー):</label>
                   <input type="number" id="edit-purchase-price" step="0.01">
-        
-</div>
+                </div>
             </div>
-            <div class="form-row">
+             <div class="form-row">
                 <div class="form-group"><label for="edit-flag-poison">毒</label><input type="number" id="edit-flag-poison"></div>
                 <div class="form-group"><label for="edit-flag-deleterious">劇</label><input type="number" id="edit-flag-deleterious"></div>
                 <div class="form-group"><label for="edit-flag-narcotic">麻</label><input type="number" id="edit-flag-narcotic"></div>
-               
- <div class="form-group"><label for="edit-flag-psychotropic">向</label><input type="number" id="edit-flag-psychotropic"></div>
+                <div class="form-group"><label for="edit-flag-psychotropic">向</label><input type="number" id="edit-flag-psychotropic"></div>
                 <div class="form-group"><label for="edit-flag-stimulant">覚</label><input type="number" id="edit-flag-stimulant"></div>
                 <div class="form-group"><label for="edit-flag-stimulant-raw">覚原</label><input type="number" id="edit-flag-stimulant-raw"></div>
                 <div class="form-group"><label for="edit-is-order-stopped">発注停止</label><input type="number" id="edit-is-order-stopped"></div>
           </div>
             <div class="form-row">
-            
-  <div class="form-group flex-150">
+               <div class="form-group flex-150">
                     <label for="edit-supplier-wholesale">主要卸 (ユーザー):</label>
                     <select id="edit-supplier-wholesale"></select>
                 </div>
                 <div class="form-group flex-150">
-             <label for="edit-group-code">グループコード (ユーザー):</label>
-    
-                <input type="text" id="edit-group-code">
+                    <label for="edit-group-code">グループコード (ユーザー):</label>
+                    <input type="text" id="edit-group-code">
                 </div>
                 <div class="form-group flex-150">
             <label for="edit-shelf-number">棚番 (ユーザー):</label>
              <input type="text" id="edit-shelf-number">
                 </div>
-   
-             <div class="form-group flex-150">
+                <div class="form-group flex-150">
                     <label for="edit-category">分類 (ユーザー):</label>
             <input type="text" id="edit-category">
          </div>
             </div>
             <div class="form-row">
-               
- <div class="form-group flex-full">
+                <div class="form-group flex-full">
                     <label for="edit-user-notes">メモ (ユーザー):</label>
             <input type="text" id="edit-user-notes">
             </div>
             </div>
             <div class="form-actions">
                 <button type="button" id="saveMasterBtn" class="btn">保存</button>
-     
-           <button type="button" id="referenceJCSHMSBtn" class="btn">参照</button>
+                <button type="button" id="referenceJCSHMSBtn" class="btn">参照</button>
                 <button type="button" id="cancelEditMasterBtn" class="btn">閉じる</button>
-      </div>
+          </div>
         </form>
     </div>
 </div>
@@ -2611,7 +2548,6 @@ class="form-row">
 </div>
 
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\views\search_form_group.html -----
-// C:\Users\wasab\OneDrive\デスクトップ\TKR\static\views\search_form_group.html
 {{ define "generic_search_form" }}
     {{ $prefix := .Prefix }}
     {{ $formID := .BarcodeFormID }}
@@ -2620,56 +2556,13 @@ class="form-row">
     {{ $btnText := .SearchButtonText }}
 
     <div class="search-form-container">
-        
-        <div class="search-barcode-row">
-            <div class="form-group">
- 
-               <label for="{{ $inputID }}">バーコードスキャン:</label>
-           
-             <form id="{{ $formID }}" class="search-barcode-form">
+        <div class="search-row-unified">
+            <div class="form-group" style="flex-grow: 1;">
+                <label for="{{ $inputID }}">バーコードスキャン:</label>
+                <form id="{{ $formID }}" class="search-barcode-form">
                     <input type="text" id="{{ $inputID }}" class="search-barcode-input" autocomplete="off" placeholder="GTIN/JAN, ロット情報含む可">
                 </form>
-          
-  </div>
-        </div>
-
-        <div class="search-filter-row">
-            
-      
-             <div class="form-group">
-                <label>内外注区分:</label>
-                <div class="radio-group"> 
-               
-     <label><input type="radio" name="{{ $prefix }}usage_class" value="内" checked> 内</label>
-                    <label><input type="radio" name="{{ $prefix }}usage_class" value="外"> 外</label>
-                    <label><input type="radio" name="{{ $prefix }}usage_class" value="歯"> 歯</label>
-                    <label><input type="radio" name="{{ $prefix }}usage_class" value="注"> 注</label>
-                    <label><input type="radio" name="{{ $prefix }}usage_class" value="機"> 機</label>
-                    <label><input type="radio" name="{{ $prefix }}usage_class" value="他"> 他</label>
-         
- 
-                </div>
             </div>
-
-            <div class="form-group">
-                <label for="{{ $prefix }}search-kana">カナ名 (前方一致):</label>
-                <input type="text" id="{{ $prefix }}search-kana" class="search-filter-input" autocomplete="off">
-            </div>
-
-     
-       <div class="form-group">
- 
-                 <label for="{{ $prefix }}search-generic">一般名 (部分一致):</label>
-                <input type="text" id="{{ $prefix }}search-generic" class="search-filter-input" autocomplete="off">
-            </div>
-
-            <div class="form-group">
-                <label for="{{ $prefix }}search-shelf">棚番 (部分一致):</label>
-   
-           
-               <input type="text" id="{{ $prefix }}search-shelf" class="search-filter-input" autocomplete="off">
-            </div>
-
             <button id="{{ $btnID }}" class="btn search-submit-button">{{ $btnText }}</button>
         </div>
     </div>

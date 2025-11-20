@@ -4,6 +4,7 @@ package database
 import (
 	"fmt"
 	"log"
+	"time"
 	"tkr/model"
 	"tkr/units"
 
@@ -43,31 +44,13 @@ func GetDeadStockList(db *sqlx.DB, startDate, endDate string, excludeZeroStock b
 		GROUP BY package_key, P.yj_code
 	`
 
-	// C: 全期間の理論在庫（通算在庫）を集計
-	const theoreticalStockQuery = `
-		SELECT 
-			T.yj_code || '|' || 
-			COALESCE(T.package_form, '不明') || '|' || 
-			PRINTF('%g', COALESCE(T.jan_pack_inner_qty, 0)) || '|' ||
-			COALESCE(U.name, T.yj_unit_name, '不明') AS package_key,
-			SUM(CASE 
-				WHEN T.flag = 1 THEN T.yj_quantity
-				WHEN T.flag = 3 THEN -T.yj_quantity
-				WHEN T.flag = 2 THEN -T.yj_quantity
-				ELSE 0 
-			END) AS theoretical_stock
-		FROM transaction_records AS T
-		LEFT JOIN units AS U ON T.yj_unit_name = U.code
-		WHERE T.flag IN (1, 2, 3)
-		GROUP BY package_key
-	`
-
-	// A(product_master) を基準にし、B(処方)、PS(棚卸在庫)、C(理論在庫) をJOINする
+	// メインクエリ
+	// StockQuantityYj には「前回棚卸数(package_stock)」を取得する
 	query := `
 		SELECT 
 			A.package_key, 
 			A.yj_code, 
-			COALESCE(PS.stock_quantity_yj, C.theoretical_stock, 0) AS stock_quantity_yj,
+			COALESCE(PS.stock_quantity_yj, 0) AS stock_quantity_yj, -- 前回棚卸数
 			A.kana_name,
 			A.usage_classification,
 			A.jan_pack_inner_qty
@@ -77,17 +60,13 @@ func GetDeadStockList(db *sqlx.DB, startDate, endDate string, excludeZeroStock b
 		LEFT JOIN (
 			` + movedKeysQuery + `
 		) AS B ON A.package_key = B.package_key
-		LEFT JOIN package_stock AS PS ON A.package_key = PS.package_key -- D: 棚卸在庫
-		LEFT JOIN (
-			` + theoreticalStockQuery + `
-		) AS C ON A.package_key = C.package_key -- C: 理論在庫
+		LEFT JOIN package_stock AS PS ON A.package_key = PS.package_key
 		WHERE 
 			B.package_key IS NULL -- 期間内に動きがなかったもの
 	`
-	if excludeZeroStock {
-		query += ` AND COALESCE(PS.stock_quantity_yj, C.theoretical_stock, 0) > 0`
-	}
 
+	// SQL段階での除外判定には前回棚卸数を使用（参考程度）
+	// 厳密な excludeZeroStock 判定は後続のGoロジックで現在在庫を計算してから行う
 	query += `
 		ORDER BY 
 			CASE COALESCE(A.usage_classification, '他')
@@ -124,13 +103,11 @@ func GetDeadStockList(db *sqlx.DB, startDate, endDate string, excludeZeroStock b
 		yjCodes = append(yjCodes, yj)
 	}
 
-	// ▼▼▼【修正】既存の関数を組み合わせてマスタを取得 ▼▼▼
-	// 対象のYJコードに関連する全JANコードを取得
+	// 関連マスタの取得
 	productCodes, err := GetProductCodesByYjCodes(db, yjCodes)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get product codes for dead stock details: %w", err)
 	}
-	// JANコードからマスタマップを取得
 	mastersMap, err := GetProductMastersByCodesMap(db, productCodes)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get product masters map for dead stock details: %w", err)
@@ -139,36 +116,53 @@ func GetDeadStockList(db *sqlx.DB, startDate, endDate string, excludeZeroStock b
 	for _, m := range mastersMap {
 		masters = append(masters, m)
 	}
-	// ▲▲▲【修正ここまで】▲▲▲
 
-	// マスタを PackageKey ごとにグルーピングし、JANコードリストを作成
+	// マスタを PackageKey ごとにグルーピング
 	janCodesByPackageKey := make(map[string][]string)
 	masterInfoByPackageKey := make(map[string]*model.ProductMaster)
+	representativeJanByPackageKey := make(map[string]string)
 
 	for _, m := range masters {
-		key := GeneratePackageKey(m) // 共通ロジックを使用
+		key := GeneratePackageKey(m)
 		janCodesByPackageKey[key] = append(janCodesByPackageKey[key], m.ProductCode)
 
-		// 表示用の代表マスタ情報を保持 (JCSHMS優先)
+		// 表示用・計算用の代表マスタを選定
 		if current, exists := masterInfoByPackageKey[key]; !exists {
 			masterInfoByPackageKey[key] = m
+			representativeJanByPackageKey[key] = m.ProductCode
 		} else if current.Origin != "JCSHMS" && m.Origin == "JCSHMS" {
 			masterInfoByPackageKey[key] = m
+			representativeJanByPackageKey[key] = m.ProductCode
 		}
 	}
 
-	// 3. 各不動在庫品目の詳細（品名、ロット）を設定
+	today := time.Now().Format("20060102")
+	var resultItems []model.DeadStockItem
+
+	// 3. 各項目の詳細設定と現在在庫計算
 	for i := range items {
 		item := &items[i]
 
-		// YJ在庫 -> JAN在庫 への換算
-		if item.JanPackInnerQty > 0 {
-			item.StockQuantityJan = item.StockQuantityYj / item.JanPackInnerQty
+		// 代表JANを使って「現在の正確な理論在庫」を計算
+		repJan, hasRep := representativeJanByPackageKey[item.PackageKey]
+		if hasRep {
+			currentStock, err := CalculateStockOnDate(db, repJan, today)
+			if err != nil {
+				log.Printf("WARN: Failed to calculate stock for %s: %v", repJan, err)
+				item.CurrentStockYj = item.StockQuantityYj // エラー時は前回棚卸数を入れる
+			} else {
+				item.CurrentStockYj = currentStock
+			}
 		} else {
-			item.StockQuantityJan = 0
+			item.CurrentStockYj = 0
 		}
 
-		// 代表品名と包装仕様の設定
+		// 「在庫0を除外」オプションの適用（現在在庫で判定）
+		if excludeZeroStock && item.CurrentStockYj <= 0 {
+			continue
+		}
+
+		// 代表品名などの設定
 		if master, ok := masterInfoByPackageKey[item.PackageKey]; ok {
 			item.ProductName = master.ProductName
 			item.PackageSpec = fmt.Sprintf("%s %g%s", master.PackageForm, master.YjPackUnitQty, units.ResolveName(master.YjUnitName))
@@ -178,10 +172,9 @@ func GetDeadStockList(db *sqlx.DB, startDate, endDate string, excludeZeroStock b
 			}
 		}
 
-		// ロット詳細の取得
+		// ロット詳細（前回棚卸時の明細）を取得
 		targetJanCodes := janCodesByPackageKey[item.PackageKey]
-
-		if item.StockQuantityJan > 0 && len(targetJanCodes) > 0 {
+		if len(targetJanCodes) > 0 {
 			q := `
 				SELECT 
 					T.jan_code, 
@@ -198,27 +191,27 @@ func GetDeadStockList(db *sqlx.DB, startDate, endDate string, excludeZeroStock b
 				  AND T.transaction_date = (
 					  SELECT MAX(last_inventory_date) 
 					  FROM package_stock 
-					  WHERE package_key = ? 
-				  )
+					  WHERE package_key = ?
+				)
 				ORDER BY T.expiry_date, T.lot_number
 			`
 			query, args, err := sqlx.In(q, targetJanCodes, item.PackageKey)
 			if err != nil {
 				log.Printf("WARN: Failed to build IN query for dead stock details: %v", err)
 				item.LotDetails = []model.LotDetail{}
-				continue
-			}
-			query = db.Rebind(query)
-
-			err = db.Select(&item.LotDetails, query, args...)
-			if err != nil {
-				log.Printf("WARN: Failed to get lot details for dead stock PackageKey %s: %v", item.PackageKey, err)
-				item.LotDetails = []model.LotDetail{}
+			} else {
+				query = db.Rebind(query)
+				err = db.Select(&item.LotDetails, query, args...)
+				if err != nil {
+					item.LotDetails = []model.LotDetail{}
+				}
 			}
 		} else {
 			item.LotDetails = []model.LotDetail{}
 		}
+
+		resultItems = append(resultItems, *item)
 	}
 
-	return items, nil
+	return resultItems, nil
 }

@@ -111,3 +111,14 @@
     padding: 0 2px;
     border-radius: 2px;
 }
+
+/* ▼▼▼ 追加: 在庫差異の強調スタイル ▼▼▼ */
+.status-diff {
+    color: #dc3545; /* 赤文字 */
+    font-weight: bold;
+    background-color: #fff3cd; /* 薄い黄色背景で注意喚起 */
+    padding: 2px 4px;
+    border-radius: 2px;
+    border: 1px solid #ffeeba;
+}
+/* ▲▲▲ 追加ここまで ▲▲▲ */

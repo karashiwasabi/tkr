@@ -5,11 +5,9 @@ import (
 	"database/sql"
 	"fmt"
 	"tkr/model"
-
-	"github.com/jmoiron/sqlx"
 )
 
-func CalculateStockOnDate(dbtx *sqlx.DB, productCode string, targetDate string) (float64, error) {
+func CalculateStockOnDate(dbtx DBTX, productCode string, targetDate string) (float64, error) {
 
 	master, err := GetProductMasterByCode(dbtx, productCode)
 	if err != nil {
@@ -19,7 +17,9 @@ func CalculateStockOnDate(dbtx *sqlx.DB, productCode string, targetDate string) 
 		return 0, fmt.Errorf("failed to get master for stock calculation (ProductCode: %s): %w", productCode, err)
 	}
 
-	packageKey := fmt.Sprintf("%s|%s|%g|%s", master.YjCode, master.PackageForm, master.JanPackInnerQty, master.YjUnitName)
+	// ▼▼▼ 修正: GeneratePackageKey を使用して、DB保存済みのキー（単位名変換済み）と一致させる ▼▼▼
+	packageKey := GeneratePackageKey(master)
+	// ▲▲▲ 修正ここまで ▲▲▲
 
 	var latestInvDate string
 	var baseStock float64
@@ -29,8 +29,7 @@ func CalculateStockOnDate(dbtx *sqlx.DB, productCode string, targetDate string) 
 		SELECT package_key, stock_quantity_yj, last_inventory_date 
 		FROM package_stock 
 		WHERE package_key = ? AND last_inventory_date <= ?
-		ORDER BY last_inventory_date DESC 
-LIMIT 1`,
+		ORDER BY last_inventory_date DESC LIMIT 1`,
 		packageKey, targetDate)
 
 	if err != nil && err != sql.ErrNoRows {
@@ -64,8 +63,7 @@ LIMIT 1`,
 		err = dbtx.Get(&totalNetChange, `
 			SELECT SUM(CASE WHEN flag IN (1, 11) THEN yj_quantity WHEN flag IN (2, 3, 12) THEN -yj_quantity ELSE 0 END)
 			FROM transaction_records
-			WHERE jan_code = ?
-AND flag IN (1, 2, 3, 11, 12) AND transaction_date <= ?`,
+			WHERE jan_code = ? AND flag IN (1, 2, 3, 11, 12) AND transaction_date <= ?`,
 			productCode, targetDate)
 
 		if err != nil && err != sql.ErrNoRows {
