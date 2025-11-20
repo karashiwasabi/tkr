@@ -1,3 +1,7 @@
 {
-  "usageFolderPath": "C:\\Users\\wasab\\OneDrive\\デスクトップ\\WASABI\\download\\USAGE"
+  "usageFolderPath": "",
+  "datFolderPath": "",
+  "calculationPeriodDays": 90,
+  "medicodeUserID": "0526297817",
+  "medicodePassword": "a526297817"
 }

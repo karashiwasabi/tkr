@@ -4,6 +4,7 @@ package dat
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"mime/multipart"
 	"net/http"
@@ -16,20 +17,7 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
-// ▼▼▼【ここから削除】dat_utils.go に移管するため ▼▼▼
-/*
-func respondJSONError(w http.ResponseWriter, message string, statusCode int) {
-	log.Println("Error response:", message)
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(statusCode)
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"message": message,
-		"results": []interface{}{},
-	})
-}
-*/
-// ▲▲▲【削除ここまで】▲▲▲
-
+// UploadDatHandler はブラウザからのアップロードを受け付けます
 func UploadDatHandler(db *sqlx.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		log.Println("Received DAT upload request...")
@@ -40,89 +28,43 @@ func UploadDatHandler(db *sqlx.DB) http.HandlerFunc {
 			return
 		}
 		defer r.MultipartForm.RemoveAll()
+
 		var processedFiles []string
 		var successfullyInsertedTransactions []model.TransactionRecord
 		var allResults []map[string]interface{}
+
 		for _, fileHeader := range r.MultipartForm.File["file"] {
 			log.Printf("Processing file: %s", fileHeader.Filename)
 			processedFiles = append(processedFiles, fileHeader.Filename)
 			fileResult := map[string]interface{}{"filename": fileHeader.Filename}
+
 			file, openErr := fileHeader.Open()
 			if openErr != nil {
 				log.Printf("Failed to open uploaded file %s: %v", fileHeader.Filename, openErr)
 				fileResult["error"] = fmt.Sprintf("Failed to open file: %v", openErr)
-				allResults =
-					append(allResults,
-						fileResult)
+				allResults = append(allResults, fileResult)
 				continue
 			}
-			parsedRecords,
-				parseErr := parsers.ParseDat(file)
+
+			// ▼▼▼ 共通関数を呼び出す ▼▼▼
+			inserted, err := ImportDatStream(db, file, fileHeader.Filename)
 			file.Close()
-			if parseErr != nil {
-				log.Printf("Failed to parse DAT file %s: %v", fileHeader.Filename, parseErr)
-				fileResult["error"] = fmt.Sprintf("Failed to parse DAT file: %v", parseErr)
-				allResults = append(allResults, fileResult)
-				continue
-			}
-			log.Printf("Parsed %d records from %s", len(parsedRecords), fileHeader.Filename)
-			fileResult["records_parsed"] = len(parsedRecords)
+			// ▲▲▲ 共通関数呼び出し終了 ▲▲▲
 
-			tx, txErr := db.Beginx()
-			if txErr != nil {
-				log.Printf("Failed to start transaction for %s: %v", fileHeader.Filename, txErr)
-				fileResult["error"] = fmt.Sprintf("Failed to start transaction: %v", txErr)
+			if err != nil {
+				log.Printf("Failed to process DAT file %s: %v", fileHeader.Filename, err)
+				fileResult["error"] = fmt.Sprintf("Failed to process: %v", err)
 				allResults = append(allResults, fileResult)
 				continue
 			}
 
-			insertedTransactions, processErr := ProcessDatRecords(tx, parsedRecords)
-			if processErr != nil {
-				log.Printf("Failed to process DAT records for %s: %v", fileHeader.Filename, processErr)
-				fileResult["error"] = fmt.Sprintf("Failed to process records: %v", processErr)
-				allResults = append(allResults, fileResult)
-				tx.Rollback()
-				continue
-			}
-
-			if len(insertedTransactions) > 0 {
-				var deliveredItems []model.Backorder
-				for _, rec := range insertedTransactions {
-					if rec.Flag ==
-						1 {
-						deliveredItems = append(deliveredItems, model.Backorder{
-							YjCode:          rec.YjCode,
-							PackageForm:     rec.PackageForm,
-							JanPackInnerQty: rec.JanPackInnerQty,
-							YjUnitName:      rec.YjUnitName,
-							YjQuantity:      rec.YjQuantity,
-						})
-					}
-				}
-
-				if len(deliveredItems) > 0 {
-					if err := database.ReconcileBackorders(tx, deliveredItems); err != nil {
-						log.Printf("WARN: Failed to reconcile backorders after DAT import: %v", err)
-						fileResult["error"] = fmt.Sprintf("納品登録成功、発注残消込失敗: %v", err)
-					} else {
-						log.Printf("Successfully reconciled %d backorder items for %s.", len(deliveredItems), fileHeader.Filename)
-					}
-				}
-			}
-
-			if commitErr := tx.Commit(); commitErr != nil {
-				log.Printf("Failed to commit transaction for %s: %v", fileHeader.Filename, commitErr)
-				fileResult["error"] = fmt.Sprintf("Failed to commit transaction: %v", commitErr)
-				allResults = append(allResults, fileResult)
-				continue
-			}
-
-			successfullyInsertedTransactions = append(successfullyInsertedTransactions, insertedTransactions...)
-			log.Printf("Successfully inserted %d records from %s", len(insertedTransactions), fileHeader.Filename)
+			successfullyInsertedTransactions = append(successfullyInsertedTransactions, inserted...)
+			log.Printf("Successfully inserted %d records from %s", len(inserted), fileHeader.Filename)
 			fileResult["success"] = true
-			fileResult["records_inserted"] = len(insertedTransactions)
+			fileResult["records_inserted"] = len(inserted)
 			allResults = append(allResults, fileResult)
 		}
+
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"message": fmt.Sprintf("Processed %d DAT file(s). See results for details.", len(processedFiles)),
@@ -132,6 +74,55 @@ func UploadDatHandler(db *sqlx.DB) http.HandlerFunc {
 		log.Println("Finished DAT upload request.")
 	}
 }
+
+// ▼▼▼ 追加: 外部から呼び出せる共通関数 ▼▼▼
+func ImportDatStream(db *sqlx.DB, r io.Reader, filename string) ([]model.TransactionRecord, error) {
+	parsedRecords, parseErr := parsers.ParseDat(r)
+	if parseErr != nil {
+		return nil, fmt.Errorf("DAT parse error: %w", parseErr)
+	}
+
+	tx, txErr := db.Beginx()
+	if txErr != nil {
+		return nil, fmt.Errorf("failed to start transaction: %w", txErr)
+	}
+	defer tx.Rollback()
+
+	insertedTransactions, processErr := ProcessDatRecords(tx, parsedRecords)
+	if processErr != nil {
+		return nil, fmt.Errorf("process records error: %w", processErr)
+	}
+
+	// 発注残消込処理
+	if len(insertedTransactions) > 0 {
+		var deliveredItems []model.Backorder
+		for _, rec := range insertedTransactions {
+			if rec.Flag == 1 { // 納品
+				deliveredItems = append(deliveredItems, model.Backorder{
+					YjCode:          rec.YjCode,
+					PackageForm:     rec.PackageForm,
+					JanPackInnerQty: rec.JanPackInnerQty,
+					YjUnitName:      rec.YjUnitName,
+					YjQuantity:      rec.YjQuantity,
+				})
+			}
+		}
+
+		if len(deliveredItems) > 0 {
+			if err := database.ReconcileBackorders(tx, deliveredItems); err != nil {
+				log.Printf("WARN: Failed to reconcile backorders after DAT import (%s): %v", filename, err)
+			}
+		}
+	}
+
+	if commitErr := tx.Commit(); commitErr != nil {
+		return nil, fmt.Errorf("commit error: %w", commitErr)
+	}
+
+	return insertedTransactions, nil
+}
+
+// ▲▲▲ 追加ここまで ▲▲▲
 
 func removeDatDuplicates(records []model.DatRecord) []model.DatRecord {
 	seen := make(map[string]struct{})
@@ -149,7 +140,6 @@ func removeDatDuplicates(records []model.DatRecord) []model.DatRecord {
 
 func ProcessDatRecords(tx *sqlx.Tx, parsedRecords []model.DatRecord) ([]model.TransactionRecord, error) {
 	var insertedTransactions []model.TransactionRecord
-	var insertedCount int = 0
 
 	recordsToProcess := removeDatDuplicates(parsedRecords)
 
@@ -162,8 +152,7 @@ func ProcessDatRecords(tx *sqlx.Tx, parsedRecords []model.DatRecord) ([]model.Tr
 		ClientCode string
 	})
 	for _, rec := range recordsToProcess {
-		if rec.Flag == 1 ||
-			rec.Flag == 2 {
+		if rec.Flag == 1 || rec.Flag == 2 {
 			receiptKeysToDelete[rec.ReceiptNumber] = struct {
 				Date       string
 				ClientCode string
@@ -176,8 +165,7 @@ func ProcessDatRecords(tx *sqlx.Tx, parsedRecords []model.DatRecord) ([]model.Tr
 
 	for receiptNumber, keyInfo := range receiptKeysToDelete {
 		log.Printf("Deleting existing DAT records for Receipt: %s, Date: %s, Client: %s", receiptNumber, keyInfo.Date, keyInfo.ClientCode)
-		const q = `DELETE FROM transaction_records WHERE receipt_number = ?
-AND transaction_date = ? AND client_code = ? AND flag IN (1, 2)`
+		const q = `DELETE FROM transaction_records WHERE receipt_number = ? AND transaction_date = ? AND client_code = ? AND flag IN (1, 2)`
 		_, err := tx.Exec(q, receiptNumber, keyInfo.Date, keyInfo.ClientCode)
 		if err != nil {
 			return nil, fmt.Errorf("failed to delete existing DAT records for receipt %s: %w", receiptNumber, err)
@@ -233,14 +221,12 @@ AND transaction_date = ? AND client_code = ? AND flag IN (1, 2)`
 			transaction.Subtotal = transaction.YjQuantity * transaction.UnitPrice
 		}
 
-		mappers.MapMasterToTransaction(&transaction,
-			master)
+		mappers.MapMasterToTransaction(&transaction, master)
 
 		if err := database.InsertTransactionRecord(tx, transaction); err != nil {
 			return nil, fmt.Errorf("transaction insert failed for key %s: %w", key, err)
 		}
 		insertedTransactions = append(insertedTransactions, transaction)
-		insertedCount++
 	}
 	return insertedTransactions, nil
 }

@@ -1,4 +1,3 @@
-// C:\Users\wasab\OneDrive\デスクトップ\TKR\routes.go
 package main
 
 import (
@@ -6,6 +5,7 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"tkr/automation"
 	"tkr/backorder"
 	"tkr/client"
 	"tkr/dat"
@@ -44,10 +44,8 @@ func SetupRoutes(mux *http.ServeMux, dbConn *sqlx.DB) {
 			return
 		}
 		if info == nil {
-			log.Printf("JCSHMS info not found for JAN: %s",
-				janCode)
-			http.NotFound(w,
-				r)
+			log.Printf("JCSHMS info not found for JAN: %s", janCode)
+			http.NotFound(w, r)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -69,9 +67,7 @@ func SetupRoutes(mux *http.ServeMux, dbConn *sqlx.DB) {
 	mux.HandleFunc("/api/masters/update", masteredit.UpdateMasterHandler(dbConn))
 
 	mux.HandleFunc("/api/master/set_order_stopped", masteredit.SetOrderStoppedHandler(dbConn))
-	// ▼▼▼【追加】棚番一括更新用ルート ▼▼▼
 	mux.HandleFunc("/api/masters/bulk_update_shelf", masteredit.BulkUpdateShelfHandler(dbConn))
-	// ▲▲▲【追加ここまで】▲▲▲
 
 	mux.HandleFunc("/api/inventory/adjust/data", inventoryadjustment.GetInventoryDataHandler(dbConn))
 	mux.HandleFunc("/api/inventory/adjust/save", inventoryadjustment.SaveInventoryDataHandler(dbConn))
@@ -112,8 +108,7 @@ func SetupRoutes(mux *http.ServeMux, dbConn *sqlx.DB) {
 	mux.HandleFunc("/api/clients/import", client.ImportClientsHandler(dbConn))
 
 	mux.HandleFunc("/api/clients", func(w http.ResponseWriter, r *http.Request) {
-		clients, err :=
-			database.GetAllClients(dbConn)
+		clients, err := database.GetAllClients(dbConn)
 		if err != nil {
 			http.Error(w, "Failed to get clients", http.StatusInternalServerError)
 			return
@@ -166,4 +161,6 @@ func SetupRoutes(mux *http.ServeMux, dbConn *sqlx.DB) {
 	mux.HandleFunc("/api/pricing/update", pricing.BulkUpdateHandler(dbConn))
 	mux.HandleFunc("/api/pricing/direct_import", pricing.DirectImportHandler(dbConn))
 	mux.HandleFunc("/api/pricing/backup_export", pricing.BackupExportHandler(dbConn))
+
+	mux.HandleFunc("/api/automation/medicode/download", automation.DownloadMedicodeDatHandler(dbConn))
 }

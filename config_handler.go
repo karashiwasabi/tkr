@@ -10,6 +10,13 @@ import (
 	"tkr/config"
 )
 
+// ヘルパー関数: エラーをJSONで返す
+func writeJSONError(w http.ResponseWriter, message string, statusCode int) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(statusCode)
+	json.NewEncoder(w).Encode(map[string]string{"message": message})
+}
+
 // GetConfigHandler は現在の設定を返します
 func GetConfigHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -19,24 +26,24 @@ func GetConfigHandler() http.HandlerFunc {
 	}
 }
 
-// ▼▼▼【修正】SaveConfigHandler で CalculationPeriodDays も保存する ▼▼▼
+// SaveConfigHandler は設定を保存します
 func SaveConfigHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var newCfg config.Config
 		if err := json.NewDecoder(r.Body).Decode(&newCfg); err != nil {
-			http.Error(w, "リクエストが不正です。", http.StatusBadRequest)
+			writeJSONError(w, "リクエストが不正です。", http.StatusBadRequest)
 			return
 		}
 
 		// フォルダパスの検証 (処方取込パス)
 		if err := validateFolderPath(newCfg.UsageFolderPath); err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
+			writeJSONError(w, err.Error(), http.StatusBadRequest)
 			return
 		}
 
 		// フォルダパスの検証 (伝票取込パス)
 		if err := validateFolderPath(newCfg.DatFolderPath); err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
+			writeJSONError(w, err.Error(), http.StatusBadRequest)
 			return
 		}
 
@@ -44,7 +51,7 @@ func SaveConfigHandler() http.HandlerFunc {
 
 		if err := config.SaveConfig(newCfg); err != nil {
 			log.Printf("Error saving config: %v", err)
-			http.Error(w, "設定の保存に失敗しました。", http.StatusInternalServerError)
+			writeJSONError(w, "設定の保存に失敗しました。", http.StatusInternalServerError)
 			return
 		}
 

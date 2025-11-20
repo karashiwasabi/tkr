@@ -1,4 +1,3 @@
-// C:\Users\wasab\OneDrive\デスクトップ\TKR\config\config.go
 package config
 
 import (
@@ -8,11 +7,11 @@ import (
 )
 
 type Config struct {
-	UsageFolderPath string `json:"usageFolderPath"`
-	DatFolderPath   string `json:"datFolderPath"`
-	// ▼▼▼【ここに追加】(WASABI: config.go より) ▼▼▼
-	CalculationPeriodDays int `json:"calculationPeriodDays"`
-	// ▲▲▲【追加ここまで】▲▲▲
+	UsageFolderPath       string `json:"usageFolderPath"`
+	DatFolderPath         string `json:"datFolderPath"`
+	CalculationPeriodDays int    `json:"calculationPeriodDays"`
+	MedicodeUserID        string `json:"medicodeUserID"`
+	MedicodePassword      string `json:"medicodePassword"`
 }
 
 var (
@@ -29,7 +28,6 @@ func LoadConfig() (Config, error) {
 	file, err := os.ReadFile(configFilePath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			// ▼▼▼【修正】デフォルト値を設定 (WASABI: config.go より) ▼▼▼
 			return Config{
 				CalculationPeriodDays: 90,
 			}, nil
@@ -43,11 +41,9 @@ func LoadConfig() (Config, error) {
 	}
 	cfg = tempCfg
 
-	// ▼▼▼【ここに追加】ロード時に0ならデフォルト値を設定 ▼▼▼
 	if cfg.CalculationPeriodDays == 0 {
 		cfg.CalculationPeriodDays = 90
 	}
-	// ▲▲▲【追加ここまで】▲▲▲
 
 	return cfg, nil
 }
@@ -56,11 +52,9 @@ func SaveConfig(newCfg Config) error {
 	mu.Lock()
 	defer mu.Unlock()
 
-	// ▼▼▼【ここに追加】保存時にも0ならデフォルト値を設定 ▼▼▼
 	if newCfg.CalculationPeriodDays == 0 {
 		newCfg.CalculationPeriodDays = 90
 	}
-	// ▲▲▲【追加ここまで】▲▲▲
 
 	file, err := json.MarshalIndent(newCfg, "", "  ")
 	if err != nil {

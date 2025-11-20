@@ -3,6 +3,7 @@ import { initWholesalerManagement } from './config_wholesaler.js';
 import { initDataMigration } from './config_migration.js';
 
 let configSavePathBtn, datFolderPathInput, usageFolderPathInput;
+let medicodeIdInput, medicodePassInput;
 let configSaveDaysBtn, calculationDaysInput;
 
 async function loadConfig() {
@@ -20,6 +21,12 @@ async function loadConfig() {
         }
         if (calculationDaysInput) {
             calculationDaysInput.value = config.calculationPeriodDays || 90;
+        }
+        if (medicodeIdInput) {
+            medicodeIdInput.value = config.medicodeUserID || '';
+        }
+        if (medicodePassInput) {
+            medicodePassInput.value = config.medicodePassword || '';
         }
     } catch (error) {
         window.showNotification(error.message, 'error');
@@ -43,16 +50,20 @@ async function handleSavePaths() {
     const newConfig = {
         datFolderPath: datFolderPathInput.value,
         usageFolderPath: usageFolderPathInput.value,
-        calculationPeriodDays: parseInt(calculationDaysInput.value, 10) || 90
+        calculationPeriodDays: parseInt(calculationDaysInput.value, 10) || 90,
+        medicodeUserID: medicodeIdInput.value.trim(),
+        medicodePassword: medicodePassInput.value.trim()
     };
-    await saveConfig(newConfig, 'パス設定を保存しました。');
+    await saveConfig(newConfig, '設定を保存しました。');
 }
 
 async function handleSaveDays() {
     const newConfig = {
         datFolderPath: datFolderPathInput.value,
         usageFolderPath: usageFolderPathInput.value,
-        calculationPeriodDays: parseInt(calculationDaysInput.value, 10) || 90
+        calculationPeriodDays: parseInt(calculationDaysInput.value, 10) || 90,
+        medicodeUserID: medicodeIdInput.value.trim(),
+        medicodePassword: medicodePassInput.value.trim()
     };
     await saveConfig(newConfig, '集計期間を保存しました。');
 }
@@ -82,6 +93,9 @@ export function initConfigView() {
     configSavePathBtn = document.getElementById('configSavePathBtn');
     datFolderPathInput = document.getElementById('config-dat-folder-path');
     usageFolderPathInput = document.getElementById('config-usage-folder-path');
+    medicodeIdInput = document.getElementById('config-medicode-id');
+    medicodePassInput = document.getElementById('config-medicode-pass');
+
     configSaveDaysBtn = document.getElementById('configSaveDaysBtn');
     calculationDaysInput = document.getElementById('config-calculation-days');
 

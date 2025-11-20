@@ -1232,19 +1232,31 @@ export function initConfigView() {
 
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\js\dat.js -----
 // C:\Users\wasab\OneDrive\デスクトップ\TKR\static\js\dat.js
-import { showModal } from './search_modal.js';
+import { showModal } 
+from './search_modal.js';
 // ▼▼▼【修正】handleFileUpload, renderTransactionTableHTML, renderEmptyTableHTML をインポート ▼▼▼
 import { hiraganaToKatakana, handleFileUpload } from './utils.js';
 import { renderTransactionTableHTML, renderEmptyTableHTML } from './common_table.js';
 // ▲▲▲【修正ここまで】▲▲▲
 
 let datUploadBtn, datFileInput, uploadResultContainer, dataTable;
-let datSearchBtn, barcodeInput;
+let datSearchBtn, 
+barcodeInput;
 
 // ▼▼▼【削除】renderEmptyTable 関数を削除 (common_table.js に移管) ▼▼▼
 /*
 function renderEmptyTable(dataTable) {
-    ...
+    return `
+    <table class="data-table">
+        <thead>
+            <tr><th rowspan="2" class="col-action">－</th><th class="col-date">日付</th><th class="col-yj">YJ</th><th colspan="2" class="col-product">製品名</th><th class="col-count">個数</th><th class="col-yjqty">YJ数量</th><th class="col-yjpackqty">YJ包装数</th><th class="col-yjunit">YJ単位</th><th class="col-unitprice">単価</th><th class="col-expiry">期限</th><th class="col-wholesaler">卸</th><th class="col-line">行</th></tr>
+            <tr><th class="col-flag">種別</th><th class="col-jan">JAN</th><th class="col-package">包装</th><th class="col-maker">メーカー</th><th class="col-form">剤型</th><th class="col-janqty">JAN数量</th><th class="col-janpackqty">JAN包装数</th><th class="col-janunit">JAN単位</th><th class="col-amount">金額</th><th class="col-lot">ロット</th><th class="col-receipt">伝票番号</th><th class="col-ma">MA</th></tr>
+        </thead>
+        <tbody>
+            <tr><td colspan="13">登録されたデータはありません。</td></tr>
+        </tbody>
+    </table>
+    `;
 }
 */
 // ▲▲▲【削除ここまで】▲▲▲
@@ -1253,34 +1265,41 @@ function renderEmptyTable(dataTable) {
 
 // ▼▼▼【修正】handleDatSearch を JSON レスポンス対応に変更 ▼▼▼
 async function handleDatSearch() {
-    const barcode = barcodeInput ? barcodeInput.value.trim() : '';
+    const barcode 
+= barcodeInput ? barcodeInput.value.trim() : '';
     if (!barcode) {
         window.showNotification('バーコードを入力してください。', 'warning');
         return;
     }
 
     if (uploadResultContainer) uploadResultContainer.innerHTML = '<p>検索中...</p>';
-    if (dataTable) dataTable.innerHTML = '<thead></thead><tbody><tr><td colspan="13">検索中...</td></tr></tbody>';
+    if 
+(dataTable) dataTable.innerHTML = '<thead></thead><tbody><tr><td colspan="13">検索中...</td></tr></tbody>';
     window.showLoading('データを検索中...');
     try {
         const params = new URLSearchParams();
         params.append('barcode', barcode);
         const response = await fetch(`/api/dat/search?${params.toString()}`, {
-            method: 'GET',
+  
+          method: 'GET',
         });
         const result = await response.json();
 
         if (!response.ok) {
-            throw new Error(result.message || `サーバーエラー (HTTP ${response.status})`);
+  
+          throw new Error(result.message || `サーバーエラー (HTTP ${response.status})`);
         }
 
         if (uploadResultContainer) {
-            uploadResultContainer.innerHTML = `<p>${result.message || '検索が完了しました。'}</p>`;
+  
+          uploadResultContainer.innerHTML = `<p>${result.message || '検索が完了しました。'}</p>`;
         }
 
         // ▼▼▼【修正】result.tableHTML -> result.transactions と共通関数呼び出しに変更 ▼▼▼
-        if (dataTable && result.transactions && result.transactions.length > 0) {
-            dataTable.innerHTML = renderTransactionTableHTML(result.transactions);
+ 
+       if (dataTable && result.transactions && result.transactions.length > 0) {
+            dataTable.innerHTML = 
+renderTransactionTableHTML(result.transactions);
         } else if (dataTable) {
             dataTable.innerHTML = renderEmptyTableHTML();
         }
@@ -1288,64 +1307,31 @@ async function handleDatSearch() {
         
         window.showNotification(result.message || '検索が完了しました。', 'success');
     } catch (error) {
-        console.error('Search failed:', error);
+      
+  console.error('Search failed:', error);
         if (uploadResultContainer) uploadResultContainer.innerHTML = `<p style="color: red;">エラーが発生しました: ${error.message}</p>`;
         window.showNotification(`エラー: ${error.message}`, 'error');
         if (dataTable) {
-            dataTable.innerHTML = `<thead></thead><tbody><tr><td colspan="13" class="status-error">エラーが発生しました: ${error.message}</td></tr></tbody>`;
+           
+ dataTable.innerHTML = `<thead></thead><tbody><tr><td colspan="13" class="status-error">エラーが発生しました: ${error.message}</td></tr></tbody>`;
         }
     } finally {
         window.hideLoading();
         if (barcodeInput) {
-            barcodeInput.value = '';
+     
+       barcodeInput.value = '';
             barcodeInput.focus();
         }
     }
 }
 // ▲▲▲【修正ここまで】▲▲▲
 
+// ▼▼▼【修正】openProductSearchModal を修正 (モーダル内検索に移行) ▼▼▼
 async function openProductSearchModal() {
-    const apiUrl = '/api/products/search_filtered';
-    const kanaInput = document.getElementById('dat_search-kana');
-    const genericInput = document.getElementById('dat_search-generic');
-    const shelfInput = document.getElementById('dat_search-shelf');
-    const selectedUsageRadio = document.querySelector('input[name="dat_usage_class"]:checked');
     
-    const kanaName = kanaInput ? hiraganaToKatakana(kanaInput.value.trim()) : '';
-    const genericName = genericInput ? genericInput.value.trim() : '';
-    const shelfNumber = shelfInput ? shelfInput.value.trim() : '';
-    const usageClass = selectedUsageRadio ? selectedUsageRadio.value : '';
-
-    if (!usageClass) {
-        window.showNotification('内外注区分を選択してください。', 'warning');
-        return;
-    }
-
-    const params = new URLSearchParams();
-    params.append('kanaName', kanaName);
-    params.append('genericName', genericName);
-    params.append('shelfNumber', shelfNumber);
-    params.append('dosageForm', usageClass);
-
-    window.showLoading('品目リストを検索中...');
-    let products = [];
-    try {
-        const fullUrl = `${apiUrl}?${params.toString()}`;
-        const res = await fetch(fullUrl);
-        if (!res.ok) {
-            throw new Error(`品目リストの取得に失敗しました: ${res.status}`);
-        }
-        products = await res.json();
-    } catch (err) {
-        window.hideLoading();
-        window.showNotification(err.message, 'error');
-        return;
-    } finally {
-        window.hideLoading();
-    }
-
+    // 引数を削除し、初期結果なしでモーダルを開く
     showModal(
-        null,
+        null, // activeRowElement は不要
         (selectedProduct) => { 
             if (barcodeInput) {
                 barcodeInput.value = selectedProduct.productCode;
@@ -1353,10 +1339,13 @@ async function openProductSearchModal() {
             handleDatSearch();
         }, 
         { 
-            initialResults: products, 
+            // searchMode: 'default' (ProductMasterのみ)
+            searchMode: '', 
+            // Datビューは採用済み品目のみを検索するが、採用済みでない品目（JCSHMS）が選択された場合は採用プロセスへ進めるため、allowAdoptedは設定しない（デフォルトの採用フローに乗せる）
         }
     );
 }
+// ▲▲▲【修正ここまで】▲▲▲
 
 // ▼▼▼【修正】fetchAndRenderDat が共通関数を呼ぶように変更 ▼▼▼
 export function fetchAndRenderDat() {
@@ -1393,7 +1382,6 @@ export function initDatUpload() {
                 uploadResultContainer,
                 dataTable,
                 'DATファイルを処理中...'
-                // renderEmptyTable は handleFileUpload 内で共通関数が呼ばれる
             );
         });
     } else {
@@ -2861,7 +2849,8 @@ export function updateFinalInventoryTotal(productCode) {
 
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\js\inventory_adjustment_search.js -----
 // C:\Users\wasab\OneDrive\デスクトップ\TKR\static\js\inventory_adjustment_search.js
-import { hiraganaToKatakana, parseBarcode, fetchProductMasterByBarcode } from './utils.js';
+import { hiraganaToKatakana, parseBarcode, fetchProductMasterByBarcode 
+} from './utils.js';
 import { showModal } from './search_modal.js';
 // ▼▼▼【ここに追加】logic.js から YjCode 管理関数をインポート ▼▼▼
 import { setCurrentYjCode, getCurrentYjCode } from './inventory_adjustment_logic.js';
@@ -2876,7 +2865,7 @@ let view, outputContainer;
 async function handleBarcodeScan(e, loadAndRenderDetailsCallback) {
     e.preventDefault();
     
-    // ▼▼▼【ここから修正】グローバル変数(barcodeInput)ではなく、イベント(e)から入力要素を取得 ▼▼▼
+    // ▼▼▼【修正】グローバル変数(barcodeInput)ではなく、イベント(e)から入力要素を取得 ▼▼▼
     const currentBarcodeForm = e.target;
     const currentBarcodeInput = currentBarcodeForm.querySelector('.search-barcode-input');
 // フォーム内の入力欄
@@ -2890,12 +2879,14 @@ async function handleBarcodeScan(e, loadAndRenderDetailsCallback) {
 
     window.showLoading('製品情報を検索中...');
     try 
+
 {
    
      const productMaster = await fetchProductMasterByBarcode(inputValue);
         
         // ▼▼▼【ここから修正】YJコードが同じでも必ずリロードするように変更 + logic.js を使用 ▼▼▼
-        if (productMaster.yjCode !== getCurrentYjCode()) {
+        if (productMaster.yjCode !== 
+getCurrentYjCode()) {
            
  window.showNotification(`品目を切り替えました: ${productMaster.productName}`, 'success');
         }
@@ -2903,18 +2894,21 @@ async function handleBarcodeScan(e, loadAndRenderDetailsCallback) {
     await loadAndRenderDetailsCallback(productMaster.yjCode); 
         // ▲▲▲【修正ここまで】▲▲▲
 
-    } catch (err) {
+ 
+   } catch (err) {
 window.showNotification(`エラー: ${err.message}`, 
 'error');
     } finally {
         window.hideLoading();
         
         // ▼▼▼【ここから修正】再描画後も動作するように、IDで入力欄を再取得して操作する ▼▼▼
-        const inputToClear 
+       
+ const inputToClear 
 = document.getElementById('ia-barcode-input'); // 
 IDで再取得
         if (inputToClear) {
             inputToClear.value 
+
 = '';
             inputToClear.focus();
         }
@@ -2923,74 +2917,27 @@ IDで再取得
     }
 }
 
+// ▼▼▼【修正】onSelectProductClick を修正 (モーダル内検索に移行) ▼▼▼
 async function onSelectProductClick(loadAndRenderDetailsCallback) {
-    const apiUrl = 
-'/api/products/search_filtered';
-    const kanaInput = document.getElementById('ia_search-kana');
-const genericInput = document.getElementById('ia_search-generic');
-    const shelfInput = document.getElementById('ia_search-shelf');
-    const selectedUsageRadio = document.querySelector('input[name="ia_usage_class"]:checked');
-    
-    const kanaName = kanaInput ? hiraganaToKatakana(kanaInput.value.trim()) : '';
-    const 
-genericName = genericInput ? genericInput.value.trim() : 
-'';
-    const shelfNumber = shelfInput ? shelfInput.value.trim() : '';
-    const usageClass = selectedUsageRadio ? selectedUsageRadio.value : '';
-    if (!usageClass) {
- 
-       
-window.showNotification('内外注区分を選択してください。', 'warning');
-        return;
-    }
-
-    const params = new URLSearchParams();
-    params.append('kanaName', kanaName);
-    params.append('genericName', genericName);
-    params.append('shelfNumber', shelfNumber);
-    params.append('dosageForm', 
-usageClass);
-
-    window.showLoading('品目リストを検索中...');
-    let products = [];
-    try {
- 
-       const fullUrl = `${apiUrl}?${params.toString()}`;
-        const res = await fetch(fullUrl);
-        if (!res.ok) 
-{
-         
-   throw new Error(`品目リストの取得に失敗しました: ${res.status}`);
-        }
-        products = 
-await res.json();
-    } catch (err) {
-     
-   window.hideLoading();
-        window.showNotification(err.message, 'error');
-        return;
-    } finally {
-       
- window.hideLoading();
-    }
+    // 検索フォームから値を取得するロジックは削除し、モーダルに任せる。
+    window.showLoading('品目検索モーダルを開いています...');
 
     showModal(
-     
-   view, 
+        view, // activeRowElement としてビュー全体を渡す (後で不要なら null に変更可)
         (selectedProduct) => { 
-            // ▼▼▼【ここを修正】logic.js の setCurrentYjCode を使用 ▼▼▼
+            // 選択後のコールバック
             setCurrentYjCode(selectedProduct.yjCode);
-            // ▲▲▲【修正ここまで】▲▲▲
             loadAndRenderDetailsCallback(selectedProduct.yjCode);
         }, 
-    
-    { 
-        
-    initialResults: products, 
-        
-}
+        { 
+            searchMode: 'default', // ProductMasterのみを検索するモード
+            // iaビューは採用済み品目のみを検索するが、採用済みでない品目（JCSHMS）が選択された場合は採用プロセスへ進めるため、allowAdoptedは設定しない（デフォルトの採用フローに乗せる）
+        }
     );
+    
+    window.hideLoading();
 }
+// ▲▲▲【修正ここまで】▲▲▲
 
 // ▼▼▼【削除】setCurrentYjCode を logic.js に移管 ▼▼▼
 /*
@@ -3007,14 +2954,16 @@ document.getElementById('inventory-adjustment-output');
     searchBtn = document.getElementById('ia-search-btn');
     // barcodeInput = document.getElementById('ia-barcode-input'); // グローバル変数へのキャッシュを削除
   
-  const barcodeForm = document.getElementById('ia-barcode-form');
+  
+const barcodeForm = document.getElementById('ia-barcode-form');
     if (barcodeForm) {
         
 barcodeForm.addEventListener('submit', (e) => handleBarcodeScan(e, loadAndRenderDetailsCallback));
     }
     if 
 (searchBtn) {
-        searchBtn.addEventListener('click', () => onSelectProductClick(loadAndRenderDetailsCallback));
+    
+    searchBtn.addEventListener('click', () => onSelectProductClick(loadAndRenderDetailsCallback));
     }
 }
 
@@ -3758,7 +3707,6 @@ export function hideEditModal() {
 import { showModal } from './search_modal.js';
 import { hiraganaToKatakana, fetchProductMasterByBarcode } from './utils.js';
 import { populateEditForm, showEditModal } from './masteredit_form.js';
-
 let 
 searchKanaNameInput, searchGenericNameInput, searchShelfNumberInput, searchBtn;
 let gs1Form, gs1Input;
@@ -3766,70 +3714,32 @@ let gs1Form, gs1Input;
 let adoptJCSHMSBtn, createNewBtn;
 // ▲▲▲【追加ここまで】▲▲▲
 
+// ▼▼▼【修正】openProductSearchModalForMaster を修正 (モーダル内検索に移行) ▼▼▼
 async function openProductSearchModalForMaster() {
-    const apiUrl = '/api/products/search_filtered';
-    const kanaInput = document.getElementById('master_search-kana');
-    const genericInput = document.getElementById('master_search-generic');
-    const 
-shelfInput = document.getElementById('master_search-shelf');
-    const selectedUsageRadio = document.querySelector('input[name="master_usage_class"]:checked');
-    const kanaName = kanaInput ? hiraganaToKatakana(kanaInput.value.trim()) : '';
-    const genericName = genericInput ? genericInput.value.trim() : '';
-    const shelfNumber = shelfInput 
-? shelfInput.value.trim() : '';
-    const usageClass = selectedUsageRadio ? selectedUsageRadio.value : '';
-    if (!usageClass) {
-        window.showNotification('内外注区分を選択してください。', 'warning');
-        return;
-    }
-
-  
-  const params = new URLSearchParams();
-    params.append('kanaName', kanaName);
-    params.append('genericName', genericName);
-    params.append('shelfNumber', shelfNumber);
-    params.append('dosageForm', usageClass);
-
-    window.showLoading('品目リストを検索中...');
-    let products = [];
-    try {
-      
-  const fullUrl = `${apiUrl}?${params.toString()}`;
-        const res = await fetch(fullUrl);
-        if (!res.ok) {
-            throw new 
-Error(`品目リストの取得に失敗しました: ${res.status}`);
-        }
-        products = await res.json();
-    } catch (err) {
-        window.hideLoading();
-        window.showNotification(err.message, 
-'error');
-        return;
-    } finally {
-        window.hideLoading();
-    }
+    // 検索フォームから値を取得するロジックは削除し、モーダルに任せる。
+    window.showLoading('品目検索モーダルを開いています...');
 
     showModal(
         null,
-  
       (selectedProduct) => { 
             populateEditForm(selectedProduct); 
-     
-       showEditModal();
+            showEditModal();
         }, 
         { 
-  
-          initialResults: products, 
+          // master_edit_viewは採用済み品目のみを検索するが、採用済みでない品目（JCSHMS）が選択された場合は採用プロセスへ進めるため、allowAdoptedは設定しない（デフォルトの採用フローに乗せる）
+          searchMode: 'default', 
         }
     );
+    
+    window.hideLoading();
 }
+// ▲▲▲【修正ここまで】▲▲▲
 
-// ▼▼▼【ここに追加】JCSHMS採用モーダル用の関数 ▼▼▼
 async function openAdoptJCSHMSModal() {
     const apiUrl = '/api/products/search_filtered';
     // JCSHMS採用時は、検索モーダル側の絞り込みをデフォルト（内）にする
-    const usageClass = '内';
+ 
+   const usageClass = '内';
     
     const params = new URLSearchParams();
     params.append('kanaName', '');
@@ -3837,7 +3747,8 @@ async function openAdoptJCSHMSModal() {
     params.append('shelfNumber', '');
     params.append('dosageForm', usageClass);
     // searchMode: 'inout' を指定して JCSHMS も検索対象にする
-    params.append('searchMode', 'inout');
+    
+params.append('searchMode', 'inout');
 
     window.showLoading('JCSHMSを含む品目リストを検索中...');
     let products = [];
@@ -3845,10 +3756,12 @@ async function openAdoptJCSHMSModal() {
         const fullUrl = `${apiUrl}?${params.toString()}`;
         const res = await fetch(fullUrl);
         if (!res.ok) {
-            throw new Error(`品目リストの取得に失敗しました: ${res.status}`);
+  
+          throw new Error(`品目リストの取得に失敗しました: ${res.status}`);
         }
         products = await res.json();
-    } catch (err) {
+    } catch (err) 
+{
         window.hideLoading();
         window.showNotification(err.message, 'error');
         return;
@@ -3857,38 +3770,45 @@ async function openAdoptJCSHMSModal() {
     }
 
     showModal(
-        null,
+  
+      null,
         (selectedProduct) => { 
-            // モーダル側で採用処理 (adopt API) が実行された後、
+            
+// モーダル側で採用処理 (adopt API) が実行された後、
             // populateEditForm を呼び出して編集モーダルを開く
-            populateEditForm(selectedProduct); 
+           
+ populateEditForm(selectedProduct); 
             showEditModal();
         }, 
-        { 
+      
+  { 
             initialResults: products,
-            searchMode: 'inout' // モーダル内部の検索にも適用
+            searchMode: 
+'inout' // モーダル内部の検索にも適用
         }
     );
 }
 
-// ▼▼▼【ここに追加】その他新規作成用の関数 ▼▼▼
 function handleCreateNew() {
     // 空のオブジェクト（ただし origin は設定）を渡してフォームを初期化
-    populateEditForm({ 
+   
+ populateEditForm({ 
         origin: 'PROVISIONAL',
         yjCode: '',
-        productCode: '',
+        productCode: 
+'',
         isOrderStopped: 0,
         flagPoison: 0,
         flagDeleterious: 0,
-        flagNarcotic: 0,
+  
+      flagNarcotic: 0,
         flagPsychotropic: 0,
         flagStimulant: 0,
-        flagStimulantRaw: 0
+    
+    flagStimulantRaw: 0
     });
     showEditModal();
 }
-// ▲▲▲【追加ここまで】▲▲▲
 
 
 async function 
@@ -3897,7 +3817,8 @@ handleMasterGs1Scan(event) {
     if (!gs1Input) return;
     
     const barcode = gs1Input.value.trim();
-    if (!barcode) {
+    if (!barcode) 
+{
         window.showNotification('バーコードが入力されていません。', 'warning');
         return;
     }
@@ -3905,7 +3826,8 @@ handleMasterGs1Scan(event) {
  
    window.showLoading('マスターを検索中...');
     try {
-        const master = await fetchProductMasterByBarcode(barcode);
+        const master = await 
+fetchProductMasterByBarcode(barcode);
         
         populateEditForm(master);
         showEditModal();
@@ -3914,59 +3836,49 @@ handleMasterGs1Scan(event) {
     window.showNotification(`エラー: ${err.message}`, 'error');
     } finally {
         window.hideLoading();
-        gs1Input.value = '';
+        gs1Input.value 
+= '';
     }
 }
 
 export function initSearchForm() {
    
- searchKanaNameInput = document.getElementById('master_search-kana');
-    searchGenericNameInput = document.getElementById('master_search-generic');
-    searchShelfNumberInput = document.getElementById('master_search-shelf');
-    
+    // ▼▼▼【削除】モーダル内の検索フォーム要素の取得を削除 ▼▼▼
+    // searchKanaNameInput = document.getElementById('master_search-kana');
+    // searchGenericNameInput = document.getElementById('master_search-generic');
+    // searchShelfNumberInput = document.getElementById('master_search-shelf');
+    // ▲▲▲【削除ここまで】▲▲▲
+
     gs1Form = document.getElementById('master-barcode-form');
     gs1Input = document.getElementById('master-search-gs1-barcode');
 
     if (searchGenericNameInput) searchGenericNameInput.disabled = false;
-
-    searchBtn = document.getElementById('masterSearchBtn');
+searchBtn = document.getElementById('masterSearchBtn');
     
-    // ▼▼▼【ここに追加】新しいボタンのDOM取得 ▼▼▼
     adoptJCSHMSBtn = document.getElementById('masterAdoptJCSHMSBtn');
     createNewBtn = document.getElementById('masterCreateNewBtn');
-    // ▲▲▲【追加ここまで】▲▲▲
 
 
     if (searchBtn) {
  
-       searchBtn.addEventListener('click', openProductSearchModalForMaster);
+      
+ searchBtn.addEventListener('click', openProductSearchModalForMaster);
     }
     
-    // ▼▼▼【ここに追加】新しいボタンのイベントリスナー ▼▼▼
     if (adoptJCSHMSBtn) {
         adoptJCSHMSBtn.addEventListener('click', openAdoptJCSHMSModal);
-    }
+}
     if (createNewBtn) {
         createNewBtn.addEventListener('click', handleCreateNew);
     }
-    // ▲▲▲【追加ここまで】▲▲▲
 
     if (gs1Form) {
-        
+  
+      
 gs1Form.addEventListener('submit', handleMasterGs1Scan);
     } else {
         console.error("Master edit GS1 scan form not found.");
     }
-
-    const handleKeyPress = (event) => {
-        if (event.key === 'Enter') {
-            openProductSearchModalForMaster();
-        }
- 
-   };
-    if (searchKanaNameInput) searchKanaNameInput.addEventListener('keypress', handleKeyPress);
-    if (searchGenericNameInput) searchGenericNameInput.addEventListener('keypress', handleKeyPress);
-    if (searchShelfNumberInput) searchShelfNumberInput.addEventListener('keypress', handleKeyPress);
 }
 
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\js\masteredit_ui.js -----
@@ -5216,20 +5128,17 @@ export function initContinuousScan() {
 }
 
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\js\reorder_events.js -----
-// C:\Users\wasab\OneDrive\デスクトップ\TKR\static\js\reorder_events.js
 import { hiraganaToKatakana, fetchProductMasterByBarcode } from './utils.js';
 import { showModal } from './search_modal.js';
 import { renderOrderCandidates, addOrUpdateOrderItem } from './reorder_ui.js';
 import { openContinuousScanModal } from './reorder_continuous_scan.js';
 
-// DOM要素 (initReorderEventsで初期化)
 let outputContainer, kanaNameInput, dosageFormInput, coefficientInput, shelfNumberInput;
 let createCsvBtn, barcodeInput, barcodeForm, addFromMasterBtn;
 let runBtn, continuousOrderBtn;
+// ★追加
+let reservationBtn, reservationModal, reservationDateTimeInput, cancelReservationBtn, confirmReservationBtn;
 
-/**
- * 単品バーコードスキャン（手動追加）のハンドラ
- */
 async function handleOrderBarcodeScan(e) { 
     e.preventDefault();
     const inputValue = barcodeInput.value.trim();
@@ -5247,26 +5156,19 @@ async function handleOrderBarcodeScan(e) {
     }
 }
 
-/**
- * 「品目検索から追加」ボタンのハンドラ
- */
 function handleAddFromMaster() { 
   showModal(
         document.getElementById('reorder-view'), 
         (selectedProduct) => {
-            // TKRでは採用・未採用の区別なく、選択されたものをそのまま追加
             addOrUpdateOrderItem(selectedProduct);
         },
         {
-            searchMode: 'inout', // JCSHMSからも検索可能にする
-            allowAdopted: true   // ▼▼▼【追加】採用済みでも選択可能にする ▼▼▼
+            searchMode: 'inout',
+            allowAdopted: true
         }
     );
 }
 
-/**
- * 「発注候補を作成」ボタンのハンドラ
- */
 async function handleGenerateCandidates() { 
     window.showLoading('発注候補リストを作成中...');
     const params = new URLSearchParams({
@@ -5291,24 +5193,13 @@ async function handleGenerateCandidates() {
     }
 }
 
-/**
- * 「CSV作成・発注残登録」ボタンのハンドラ
- */
-async function handleCreateCsv(fetchAndRenderReorderCallback) {
-    const rows = outputContainer.querySelectorAll('#orderable-table tbody tr');
-
-    if (rows.length === 0) {
-        window.showNotification('発注する品目がありません。', 'error');
-        return;
-    }
-
+function getOrderItems(rows) {
     const backorderPayload = [];
-    let csvContent = "";
     let hasItemsToOrder = false;
 
     rows.forEach(row => {
         if (row.classList.contains('provisional-order-item')) {
-            return; // 発注不可の行はスキップ
+            return;
         }
         
         const quantityInput = row.querySelector('.order-quantity-input');
@@ -5318,18 +5209,7 @@ async function handleCreateCsv(fetchAndRenderReorderCallback) {
             hasItemsToOrder = true;
             
             const janCode = row.dataset.janCode;
-            const productName = row.cells[0].textContent; 
             const wholesalerCode = row.querySelector('.wholesaler-select').value;
-
-            // TKR CSVフォーマット
-            const csvRow = [
-                janCode, 
-                `"${productName.replace(/"/g, '""')}"`, 
-                quantity, 
-                wholesalerCode
-            ].join(',');
-            csvContent += csvRow + "\r\n";
-
             const orderMultiplier = parseFloat(row.dataset.orderMultiplier) || 0;
             
             backorderPayload.push({
@@ -5338,7 +5218,7 @@ async function handleCreateCsv(fetchAndRenderReorderCallback) {
                 packageForm: row.dataset.packageForm,
                 janPackInnerQty: parseFloat(row.dataset.janPackInnerQty),
                 yjUnitName: row.dataset.yjUnitName,
-                yjQuantity: quantity * orderMultiplier, // YJ単位に換算
+                yjQuantity: quantity * orderMultiplier,
                 productName: row.dataset.productName,
                 yjPackUnitQty: parseFloat(row.dataset.yjPackUnitQty) || 0,
                 janPackUnitQty: parseFloat(row.dataset.janPackUnitQty) || 0,
@@ -5348,14 +5228,40 @@ async function handleCreateCsv(fetchAndRenderReorderCallback) {
         }
     });
 
+    return { backorderPayload, hasItemsToOrder };
+}
+
+async function handleCreateCsv(fetchAndRenderReorderCallback) {
+    const rows = outputContainer.querySelectorAll('#orderable-table tbody tr');
+
+    if (rows.length === 0) {
+        window.showNotification('発注する品目がありません。', 'error');
+        return;
+    }
+
+    const { backorderPayload, hasItemsToOrder } = getOrderItems(rows);
+
     if (!hasItemsToOrder) {
         window.showNotification('発注数が1以上の品目がありません。', 'error');
         return;
     }
 
+    let csvContent = "";
+    rows.forEach(row => {
+        if (row.classList.contains('provisional-order-item')) return;
+        const quantityInput = row.querySelector('.order-quantity-input');
+        const quantity = parseInt(quantityInput.value, 10);
+        if (quantity > 0) {
+            const janCode = row.dataset.janCode;
+            const productName = row.cells[0].textContent; 
+            const wholesalerCode = row.querySelector('.wholesaler-select').value;
+            const csvRow = [janCode, `"${productName.replace(/"/g, '""')}"`, quantity, wholesalerCode].join(',');
+            csvContent += csvRow + "\r\n";
+        }
+    });
+
     window.showLoading('発注残を登録中...');
     try {
-        // 1. 発注残をDBに登録
         const res = await fetch('/api/orders/place', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -5366,14 +5272,12 @@ async function handleCreateCsv(fetchAndRenderReorderCallback) {
         
         window.showNotification(resData.message, 'success');
 
-        // 2. Shift-JIS CSVを生成・ダウンロード
         const sjisArray = Encoding.convert(csvContent, {
             to: 'SJIS',
             from: 'UNICODE',
             type: 'array'
         });
         const sjisUint8Array = new Uint8Array(sjisArray);
-
         const blob = new Blob([sjisUint8Array], { type: 'text/csv; charset=shift_jis' });
         const link = document.createElement("a");
         const url = URL.createObjectURL(blob);
@@ -5387,9 +5291,7 @@ async function handleCreateCsv(fetchAndRenderReorderCallback) {
         link.click();
         document.body.removeChild(link);
 
-        // 成功したらリストをクリア
-        fetchAndRenderReorderCallback(); 
-
+        fetchAndRenderReorderCallback();
     } catch(err) {
         window.showNotification(err.message, 'error');
     } finally {
@@ -5397,20 +5299,55 @@ async function handleCreateCsv(fetchAndRenderReorderCallback) {
     }
 }
 
-/**
- * テーブル内（除外、発注不可など）のクリックイベントハンドラ
- */
+async function handlePlaceReservation(fetchAndRenderReorderCallback) {
+    const dateVal = reservationDateTimeInput.value;
+    if (!dateVal) {
+        window.showNotification('日時を指定してください。', 'warning');
+        return;
+    }
+
+    const rows = outputContainer.querySelectorAll('#orderable-table tbody tr');
+    const { backorderPayload, hasItemsToOrder } = getOrderItems(rows);
+
+    if (!hasItemsToOrder) {
+        window.showNotification('発注数が1以上の品目がありません。', 'error');
+        return;
+    }
+
+    backorderPayload.forEach(item => {
+        item.orderDate = dateVal;
+    });
+
+    window.showLoading('予約発注を登録中...');
+    try {
+        const res = await fetch('/api/orders/place', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(backorderPayload),
+        });
+        const resData = await res.json();
+        if (!res.ok) throw new Error(resData.message || '予約の登録に失敗しました。');
+        
+        window.showNotification(resData.message, 'success');
+        reservationModal.classList.add('hidden');
+        fetchAndRenderReorderCallback();
+    } catch(err) {
+        window.showNotification(err.message, 'error');
+    } finally {
+        window.hideLoading();
+    }
+}
+
 async function handleTableClicks(e, handleGenerateCandidatesCallback) { 
     const target = e.target;
     const row = target.closest('tr');
     if (!row) return;
 
-    // 「発注不可」ボタン (発注可テーブル内)
     if (target.classList.contains('set-unorderable-btn')) {
         const productCode = target.dataset.productCode;
         const productName = row.cells[0].textContent;
         if (!confirm(`「${productName}」を発注不可に設定しますか？\nこの品目は今後、不足品リストに表示されなくなります。`)) {
-             return;
+            return;
         }
         window.showLoading('マスターを更新中...');
         try {
@@ -5424,12 +5361,10 @@ async function handleTableClicks(e, handleGenerateCandidatesCallback) {
             
             window.showNotification(`「${productName}」を発注不可に設定しました。`, 'success');
             
-            // 1. 発注可テーブルから行を削除
             row.remove(); 
             
-            // 2. 発注不可テーブルに行を再構築して追加 (簡易的に、ページリロード)
             window.showNotification('発注不可リストに移動しました。リストを更新します。', 'info');
-            handleGenerateCandidatesCallback(); // 発注候補を再生成して全体を再描画
+            handleGenerateCandidatesCallback();
 
         } catch(err) {
             window.showNotification(err.message, 'error');
@@ -5437,14 +5372,12 @@ async function handleTableClicks(e, handleGenerateCandidatesCallback) {
             window.hideLoading();
         }
     } 
-    // 「発注に変更」ボタン (発注不可テーブル内)
     else if (target.classList.contains('change-to-orderable-btn')) {
         const productCode = row.dataset.janCode;
         if (!productCode) return;
 
         window.showLoading('マスターを更新中...');
         try {
-            // 1. APIでマスターを発注可 (0) に更新
             const res = await fetch('/api/master/set_order_stopped', { 
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -5454,12 +5387,10 @@ async function handleTableClicks(e, handleGenerateCandidatesCallback) {
             if (!res.ok) throw new Error(resData.message || '更新に失敗しました。');
 
             window.showNotification(`「${row.dataset.productName}」を発注可に変更しました。`, 'success');
-            // 2. 発注不可テーブルから行を削除
             row.remove();
 
-            // 3. 発注可テーブルに行を追加 (簡易的に、ページリロード)
             window.showNotification('発注対象リストに移動しました。リストを更新します。', 'info');
-            handleGenerateCandidatesCallback(); // 発注候補を再生成して全体を再描画
+            handleGenerateCandidatesCallback();
 
         } catch(err) {
             window.showNotification(err.message, 'error');
@@ -5467,23 +5398,19 @@ async function handleTableClicks(e, handleGenerateCandidatesCallback) {
             window.hideLoading();
         }
     } 
-    // 「除外」ボタン (発注可テーブル内)
     else if (target.classList.contains('remove-order-item-btn')) {
         const tbody = row.closest('tbody');
         const table = tbody.closest('table');
         row.remove();
         
         if (tbody.children.length === 0 && table.id === 'orderable-table') {
-             const header = outputContainer.querySelector('h3');
+            const header = outputContainer.querySelector('h3');
             if(header) header.textContent = `発注対象品目 (0件)`;
             tbody.innerHTML = '<tr><td colspan="8">発注対象の品目はありません。</td></tr>';
         }
     }
 }
 
-/**
- * 発注ビューの全イベントリスナーを初期化
- */
 export function initReorderEvents(fetchAndRenderReorderCallback) { 
     runBtn = document.getElementById('generate-order-candidates-btn');
     outputContainer = document.getElementById('order-candidates-output');
@@ -5496,6 +5423,13 @@ export function initReorderEvents(fetchAndRenderReorderCallback) {
     shelfNumberInput = document.getElementById('order-shelf-number');
     addFromMasterBtn = document.getElementById('add-order-item-from-master-btn');
     continuousOrderBtn = document.getElementById('continuous-order-btn');
+    
+    // ★追加: 予約関連の要素取得
+    reservationBtn = document.getElementById('reservation-order-btn');
+    reservationModal = document.getElementById('reservation-modal');
+    reservationDateTimeInput = document.getElementById('reservation-datetime');
+    cancelReservationBtn = document.getElementById('cancel-reservation-btn');
+    confirmReservationBtn = document.getElementById('confirm-reservation-btn');
 
     if (addFromMasterBtn) {
         addFromMasterBtn.addEventListener('click', handleAddFromMaster);
@@ -5514,6 +5448,41 @@ export function initReorderEvents(fetchAndRenderReorderCallback) {
     }
     if (outputContainer) {
         outputContainer.addEventListener('click', (e) => handleTableClicks(e, handleGenerateCandidates));
+    }
+
+    // ★追加: 予約ボタンイベント
+    if (reservationBtn) {
+        reservationBtn.addEventListener('click', () => {
+            const rows = outputContainer.querySelectorAll('#orderable-table tbody tr');
+            if (rows.length === 0) {
+                window.showNotification('発注する品目がありません。', 'error');
+                return;
+            }
+            
+            const tomorrow = new Date();
+            tomorrow.setDate(tomorrow.getDate() + 1);
+            tomorrow.setHours(9, 0, 0, 0);
+            
+            const yyyy = tomorrow.getFullYear();
+            const mm = String(tomorrow.getMonth() + 1).padStart(2, '0');
+            const dd = String(tomorrow.getDate()).padStart(2, '0');
+            const hh = String(tomorrow.getHours()).padStart(2, '0');
+            const min = String(tomorrow.getMinutes()).padStart(2, '0');
+            
+            reservationDateTimeInput.value = `${yyyy}-${mm}-${dd}T${hh}:${min}`;
+            
+            reservationModal.classList.remove('hidden');
+        });
+    }
+
+    if (cancelReservationBtn) {
+        cancelReservationBtn.addEventListener('click', () => {
+            reservationModal.classList.add('hidden');
+        });
+    }
+
+    if (confirmReservationBtn) {
+        confirmReservationBtn.addEventListener('click', () => handlePlaceReservation(fetchAndRenderReorderCallback));
     }
 }
 
@@ -6034,7 +6003,8 @@ function renderReturnTable(candidates) {
 // C:\Users\wasab\OneDrive\デスクトップ\TKR\static\js\search_modal.js
 import { hiraganaToKatakana } from './utils.js';
 
-let activeCallback = null;
+let activeCallback = 
+null;
 let activeRowElement = null;
 let modal, closeModalBtn, searchResultsBody;
 let searchBtn;
@@ -6043,7 +6013,8 @@ let modalGs1Form;
 
 function hideModal() {
   if (modal) {
-    modal.classList.add('hidden');
+    
+modal.classList.add('hidden');
     document.body.classList.remove('modal-open');
   }
 }
@@ -6055,7 +6026,8 @@ function handleResultClick(event) {
 
   // コピーモード（参照のみ）の場合
   if (modal && modal.dataset.copyOnly === 'true') {
-    if (typeof activeCallback === 'function') {
+    if (typeof activeCallback 
+=== 'function') {
       activeCallback(product, activeRowElement);
     }
     hideModal();
@@ -6065,38 +6037,46 @@ function handleResultClick(event) {
   // 採用済みの場合
   if (product.isAdopted) {
     // allowAdoptedフラグが立っている（発注画面など）か、通常の選択フローならそのままコールバック
-    if (typeof activeCallback === 'function') {
+ 
+   if (typeof activeCallback === 'function') {
       activeCallback(product, activeRowElement);
     }
     hideModal();
   } else {
     // 未採用の場合、マスタ採用フローへ
-    if (!confirm(`「${product.productName}」をマスターに新規採用します。よろしいですか？`)) {
+ 
+   if (!confirm(`「${product.productName}」をマスターに新規採用します。よろしいですか？`)) {
       return;
     }
     window.showLoading('マスターに採用中...');
     fetch('/api/master/adopt', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+  
+      headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ gs1Code: product.gs1Code, productCode: product.productCode })
     })
-    .then(res => {
+ 
+   .then(res => {
      if (!res.ok) {
             return res.text().then(text => { throw new Error(text || '採用処理に失敗しました') });
         }
         return res.json();
      })
-    .then(adoptedMaster => {
+   
+ .then(adoptedMaster => {
         window.hideLoading();
         window.showNotification(`「${adoptedMaster.productName}」をマスターに採用しました。`, 'success');
         
-        if (typeof activeCallback === 'function') {
+ 
+       if (typeof activeCallback === 'function') {
             activeCallback(adoptedMaster, activeRowElement);
-        }
+    
+    }
         hideModal();
     })
     .catch(err => {
-        window.hideLoading();
+       
+ window.hideLoading();
         window.showNotification(`エラー: ${err.message}`, 'error');
     });
   }
@@ -6104,7 +6084,8 @@ function handleResultClick(event) {
 
 function renderSearchResults(products) {
   if (!products || products.length === 0) {
-    searchResultsBody.innerHTML = '<tr><td colspan="6" class="center">該当する製品が見つかりません。</td></tr>';
+   
+ searchResultsBody.innerHTML = '<tr><td colspan="6" class="center">該当する製品が見つかりません。</td></tr>';
     return;
   }
   let html = '';
@@ -6112,39 +6093,50 @@ function renderSearchResults(products) {
   // ▼▼▼【修正】採用済みボタンを無効化する条件に allowAdopted のチェックを追加 ▼▼▼
   // 「inoutモード」かつ「コピーモードでない」かつ「採用済み許可(allowAdopted)がない」場合のみ無効化
   const isAdoptFlow = modal.dataset.searchMode === 'inout' && 
+
                       modal.dataset.copyOnly !== 'true' &&
-                      modal.dataset.allowAdopted !== 'true';
+    
+                  modal.dataset.allowAdopted !== 'true';
   // ▲▲▲【修正ここまで】▲▲▲
 
   products.forEach(p => {
-    const productData = JSON.stringify(p);
+   
+ const productData = JSON.stringify(p);
     const spec = p.formattedPackageSpec || `${p.packageForm || ''} ${p.specification || ''}`;
     
-    let buttonHtml = '';
+    let buttonHtml = 
+'';
     if (p.isAdopted && isAdoptFlow) {
         buttonHtml = `<button type="button" class="btn" disabled>採用済</button>`;
     } else {
-        buttonHtml = `<button type="button" class="select-product-btn btn" data-product='${productData.replace(/'/g, "&apos;")}'>選択</button>`;
+  
+      buttonHtml = `<button type="button" class="select-product-btn btn" data-product='${productData.replace(/'/g, "&apos;")}'>選択</button>`;
     }
 
     html += `
-      <tr class="${p.isAdopted ? 'adopted-item' : ''}">
+      
+<tr class="${p.isAdopted ? 'adopted-item' : ''}">
         <td class="left">${p.productName || ''}</td>
         <td class="left">${p.makerName || ''}</td>
-         <td class="left">${spec}</td>
+  
+       <td class="left">${spec}</td>
         <td>${p.yjCode || ''}</td>
         <td>${p.productCode || ''}</td>
-         <td>${buttonHtml}</td>
+ 
+        <td>${buttonHtml}</td>
       </tr>
     `;
   });
   searchResultsBody.innerHTML = html;
 }
 
+// ▼▼▼【修正】performSearch をモーダル内部のフォームから値を取得するように修正 ▼▼▼
 async function performSearch() {
+  
     const kanaName = modalKanaInput ? hiraganaToKatakana(modalKanaInput.value.trim()) : '';
     const genericName = modalGenericInput ? modalGenericInput.value.trim() : '';
     const shelfNumber = modalShelfInput ? modalShelfInput.value.trim() : '';
+    // modalUsageClassRadios (コンテナ) から選択されたラジオボタンの値を取得
     const selectedUsageRadio = modalUsageClassRadios ? document.querySelector('input[name="modal_usage_class"]:checked') : null;
     const usageClass = selectedUsageRadio ? selectedUsageRadio.value : '';
     
@@ -6155,53 +6147,60 @@ async function performSearch() {
     params.append('dosageForm', usageClass);
 
     if (modal.dataset.searchMode) {
-        params.append('searchMode', modal.dataset.searchMode);
+ 
+       params.append('searchMode', modal.dataset.searchMode);
     }
+    
+    // ▼▼▼【追加】検索条件チェック (内外注区分が未選択の場合は警告) ▼▼▼
+    if (!usageClass) {
+        window.showNotification('内外注区分を選択してください。', 'warning');
+        return;
+    }
+    // ▲▲▲【追加ここまで】▼▼▼
+
 
     window.showLoading('品目リストを検索中...');
     try {
         const fullUrl = `/api/products/search_filtered?${params.toString()}`;
-        const res = await fetch(fullUrl);
+        const res 
+= await fetch(fullUrl);
         if (!res.ok) {
              throw new Error(`品目リストの取得に失敗しました: ${res.status}`);
         }
-        const products = await res.json();
+       
+ const products = await res.json();
         renderSearchResults(products);
     } catch (err) {
         searchResultsBody.innerHTML = '<tr><td colspan="6" class="center" style="color:red;">検索エラー: ' + err.message + '</td></tr>';
-        window.showNotification(err.message, 'error');
+window.showNotification(err.message, 'error');
     } finally {
          window.hideLoading();
     }
 }
+// ▲▲▲【修正ここまで】▲▲▲
 
+// ▼▼▼【修正】handleGs1Search を修正 (モーダルを閉じる/コールバック呼び出し) ▼▼▼
 async function handleGs1Search(event) {
     event.preventDefault();
     if (!modalGs1Input) return;
     const barcode = modalGs1Input.value.trim();
     if (!barcode) return;
-
+    
     window.showLoading('マスターを検索中...');
     try {
         const res = await fetch(`/api/product/by_barcode/${barcode}`);
         if (!res.ok) {
-             const errText = await res.text();
+            const errText = await res.text();
             throw new Error(errText || '製品の検索に失敗しました。');
         }
         const master = await res.json();
-
-        if (modal && modal.dataset.copyOnly === 'true') {
-            if (typeof activeCallback === 'function') {
-                activeCallback(master, activeRowElement);
-            }
-            hideModal();
-            return;
-        }
-
-         if (typeof activeCallback === 'function') {
+        
+        // 常にコールバックを呼び出し、モーダルを閉じる
+        if (typeof activeCallback === 'function') {
             activeCallback(master, activeRowElement);
         }
-         hideModal();
+        hideModal();
+
     } catch (err) {
         window.showNotification(`エラー: ${err.message}`, 'error');
     } finally {
@@ -6209,6 +6208,7 @@ async function handleGs1Search(event) {
         modalGs1Input.value = '';
     }
 }
+// ▲▲▲【修正ここまで】▼▼▼
 
 
 export function initSearchModal() {
@@ -6218,28 +6218,55 @@ export function initSearchModal() {
   searchResultsBody = searchResultsTable ? searchResultsTable.querySelector('tbody') : null;
   
   searchBtn = document.getElementById('product-search-btn');
-  modalGs1Form = document.getElementById('modal-search-gs1-form');
+modalGs1Form = document.getElementById('modal-search-gs1-form');
   modalGs1Input = document.getElementById('modal-search-gs1');
-  modalUsageClassRadios = document.getElementById('modal-search-usage-class');
   
+  // ▼▼▼【修正】モーダル内部のフォーム要素を取得 ▼▼▼
+  modalUsageClassRadios = document.getElementById('modal-search-usage-class'); // ラジオボタンのコンテナ
   modalKanaInput = document.getElementById('modal-search-kana');
   modalGenericInput = document.getElementById('modal-search-generic');
   modalShelfInput = document.getElementById('modal-search-shelf');
+  // ▲▲▲【修正ここまで】▼▼▼
+
 
   if (!modal || !closeModalBtn || !searchResultsBody || !searchBtn) {
-    console.error("品目検索モーダルの必須要素が見つかりません。");
+   
+ console.error("品目検索モーダルの必須要素が見つかりません。");
     return;
   }
   
   closeModalBtn.addEventListener('click', hideModal);
   searchBtn.addEventListener('click', performSearch);
+  
+  // ▼▼▼【修正】GS1フォームのイベントリスナーを登録 ▼▼▼
   if (modalGs1Form) {
     modalGs1Form.addEventListener('submit', handleGs1Search);
   }
+  // ▲▲▲【修正ここまで】▼▼▼
+  
   searchResultsBody.addEventListener('click', handleResultClick);
+  
+  // ▼▼▼【追加】Enterキーで検索を実行するリスナーをフィルター入力欄に追加 ▼▼▼
+  if (modalKanaInput) {
+    modalKanaInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') performSearch();
+    });
+  }
+  if (modalGenericInput) {
+    modalGenericInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') performSearch();
+    });
+  }
+  if (modalShelfInput) {
+    modalShelfInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') performSearch();
+    });
+  }
+  // ▲▲▲【追加ここまで】▼▼▼
 }
 
-export function showModal(rowElement, callback, options = {}) {
+export function showModal(rowElement, callback, options = 
+{}) {
   if (!modal) {
       console.error("Search modal is not initialized.");
       return;
@@ -6248,16 +6275,18 @@ export function showModal(rowElement, callback, options = {}) {
   activeRowElement = rowElement;
   activeCallback = callback; 
   
-  modal.dataset.searchMode = options.searchMode || '';
+  modal.dataset.searchMode = options.searchMode 
+|| '';
   modal.dataset.copyOnly = options.copyOnly || 'false';
   // ▼▼▼【追加】採用済み選択許可フラグを設定 ▼▼▼
   modal.dataset.allowAdopted = options.allowAdopted ? 'true' : 'false';
-  // ▲▲▲【追加ここまで】▲▲▲
+  // ▲▲▲【追加ここまで】▼▼▼
   
   modal.classList.remove('hidden');
     
   if (options.initialResults) {
-     renderSearchResults(options.initialResults);
+   
+  renderSearchResults(options.initialResults);
   } else {
       searchResultsBody.innerHTML = '<tr><td colspan="6" class="center">検索条件を入力して検索してください。</td></tr>';
   }

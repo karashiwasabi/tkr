@@ -1352,17 +1352,12 @@ package database
 import (
 	"database/sql"
 	"fmt"
-	"tkr/model" // TKRのモデルを参照
+	"tkr/model"
 
 	"github.com/jmoiron/sqlx"
 )
 
-/**
- * @brief 複数の発注残レコードをトランザクション内で登録します（INSERT）。
- * (WASABI: db/backorders.go より移植)
- */
 func InsertBackordersInTx(tx *sqlx.Tx, backorders []model.Backorder) error {
-	// ▼▼▼【ここを修正】jan_code を追加 ▼▼▼
 	const q = `
 		INSERT INTO backorders (
 			order_date, jan_code, yj_code, product_name, package_form, jan_pack_inner_qty, 
@@ -1370,7 +1365,6 @@ func InsertBackordersInTx(tx *sqlx.Tx, backorders []model.Backorder) error {
 			yj_pack_unit_qty, jan_pack_unit_qty, jan_unit_code
 		) 
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-	// ▲▲▲【修正ここまで】▲▲▲
 
 	stmt, err := tx.Prepare(q)
 	if err != nil {
@@ -1379,13 +1373,11 @@ func InsertBackordersInTx(tx *sqlx.Tx, backorders []model.Backorder) error {
 	defer stmt.Close()
 
 	for _, bo := range backorders {
-		// ▼▼▼【ここを修正】bo.JanCode を追加 ▼▼▼
 		_, err := stmt.Exec(
 			bo.OrderDate, bo.JanCode, bo.YjCode, bo.ProductName, bo.PackageForm, bo.JanPackInnerQty,
 			bo.YjUnitName, bo.OrderQuantity, bo.RemainingQuantity, bo.WholesalerCode,
 			bo.YjPackUnitQty, bo.JanPackUnitQty, bo.JanUnitCode,
 		)
-		// ▲▲▲【修正ここまで】▲▲▲
 		if err != nil {
 			return fmt.Errorf("failed to execute backorder insert for yj %s: %w", bo.YjCode, err)
 		}
@@ -1393,17 +1385,15 @@ func InsertBackordersInTx(tx *sqlx.Tx, backorders []model.Backorder) error {
 	return nil
 }
 
-/**
- * @brief 納品データに基づいて発注残を消し込みます（FIFO: 先入れ先出し）。
- * (WASABI: db/backorders.go より移植・TKR用に *sqlx.Tx を使用)
- */
 func ReconcileBackorders(tx *sqlx.Tx, deliveredItems []model.Backorder) error {
 	for _, item := range deliveredItems {
 		deliveryQty := item.YjQuantity
 
+		// 消込処理では予約分(_RSV)を対象外にする（勝手に消されないように保護）
 		rows, err := tx.Query(`
 			SELECT id, remaining_quantity FROM backorders 
 			WHERE yj_code = ? AND package_form = ? AND jan_pack_inner_qty = ? AND yj_unit_name = ?
+			AND wholesaler_code NOT LIKE '%_RSV'
 			ORDER BY order_date, id`,
 			item.YjCode, item.PackageForm, item.JanPackInnerQty, item.YjUnitName,
 		)
@@ -1411,7 +1401,6 @@ func ReconcileBackorders(tx *sqlx.Tx, deliveredItems []model.Backorder) error {
 			return fmt.Errorf("failed to query backorders for reconciliation: %w", err)
 		}
 
-		// デッドロックを避けるため、更新/削除対象のIDを先に収集
 		type updateAction struct {
 			id           int
 			deleteRecord bool
@@ -1431,19 +1420,16 @@ func ReconcileBackorders(tx *sqlx.Tx, deliveredItems []model.Backorder) error {
 			}
 
 			if deliveryQty >= remainingQty {
-				// 納品数で発注残が完全にカバーされる場合
 				actions = append(actions, updateAction{id: id, deleteRecord: true})
 				deliveryQty -= remainingQty
 			} else {
-				// 納品数の一部で発注残を減らす場合
 				newRemaining := remainingQty - deliveryQty
 				actions = append(actions, updateAction{id: id, deleteRecord: false, newRemaining: newRemaining})
 				deliveryQty = 0
 			}
 		}
-		rows.Close() // スキャンループの直後にClose
+		rows.Close()
 
-		// 収集したアクションを実行
 		for _, action := range actions {
 			if action.deleteRecord {
 				if _, err := tx.Exec(`DELETE FROM backorders WHERE id = ?`, action.id); err != nil {
@@ -1459,15 +1445,13 @@ func ReconcileBackorders(tx *sqlx.Tx, deliveredItems []model.Backorder) error {
 	return nil
 }
 
-/**
- * @brief 全ての発注残を、集計で高速に参照できるマップ形式で取得します。
- * (WASABI: db/backorders.go より移植・TKR用に DBTX を使用)
- */
 func GetAllBackordersMap(dbtx DBTX) (map[string]float64, error) {
+	// ★修正: WHERE句を削除しました。これで予約分も集計に含まれます。
 	const q = `
 		SELECT yj_code, package_form, jan_pack_inner_qty, yj_unit_name, SUM(remaining_quantity)
 		FROM backorders
 		GROUP BY yj_code, package_form, jan_pack_inner_qty, yj_unit_name`
+
 	rows, err := dbtx.Query(q)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query all backorders map: %w", err)
@@ -1481,19 +1465,13 @@ func GetAllBackordersMap(dbtx DBTX) (map[string]float64, error) {
 		if err := rows.Scan(&yjCode, &packageForm, &janPackInnerQty, &yjUnitName, &totalRemaining); err != nil {
 			return nil, err
 		}
-		// TKRの package_key 形式 (YjUnitNameをResolveする)
 		key := fmt.Sprintf("%s|%s|%g|%s", yjCode, packageForm, janPackInnerQty, yjUnitName)
 		backordersMap[key] = totalRemaining
 	}
 	return backordersMap, nil
 }
 
-/**
- * @brief 全ての発注残を画面表示用のリスト形式で取得します。
- * (WASABI: db/backorders.go より移植・TKR用に DBTX を使用)
- */
 func GetAllBackordersList(dbtx DBTX) ([]model.Backorder, error) {
-	// ▼▼▼【ここを修正】jan_code を SELECT に追加 ▼▼▼
 	const q = `
 		SELECT
 			id, order_date, jan_code, yj_code, product_name, package_form, jan_pack_inner_qty, 
@@ -1502,7 +1480,6 @@ func GetAllBackordersList(dbtx DBTX) ([]model.Backorder, error) {
 		FROM backorders
 		ORDER BY order_date, wholesaler_code, product_name, id
 	`
-	// ▲▲▲【修正ここまで】▲▲▲
 
 	rows, err := dbtx.Query(q)
 	if err != nil {
@@ -1513,13 +1490,9 @@ func GetAllBackordersList(dbtx DBTX) ([]model.Backorder, error) {
 	var backorders []model.Backorder
 	for rows.Next() {
 		var bo model.Backorder
-		// wholesalerCode は sql.NullString 型
 		var wholesalerCode sql.NullString
-		// ▼▼▼【ここを修正】bo.JanCode 用の変数を追加 ▼▼▼
 		var janCode sql.NullString
-		// ▲▲▲【修正ここまで】▲▲▲
 
-		// ▼▼▼【ここを修正】Scan に &janCode を追加 ▼▼▼
 		if err := rows.Scan(
 			&bo.ID, &bo.OrderDate, &janCode, &bo.YjCode, &bo.ProductName, &bo.PackageForm, &bo.JanPackInnerQty,
 			&bo.YjUnitName, &bo.OrderQuantity, &bo.RemainingQuantity, &wholesalerCode,
@@ -1527,26 +1500,17 @@ func GetAllBackordersList(dbtx DBTX) ([]model.Backorder, error) {
 		); err != nil {
 			return nil, err
 		}
-		// ▲▲▲【修正ここまで】▲▲▲
 
-		// TKRのモデルは sql.NullString を持っていないため、TKRモデルに合わせて変換
 		bo.WholesalerCode = wholesalerCode.String
-		// ▼▼▼【ここを修正】JanCode をモデルにセット ▼▼▼
 		bo.JanCode = janCode.String
-		// ▲▲▲【修正ここまで】▲▲▲
 
 		backorders = append(backorders, bo)
 	}
 	return backorders, nil
 }
 
-/**
- * @brief 指定されたIDの発注残レコードをトランザクション内で削除します。
- * (WASABI: db/backorders.go より移植・TKR用に *sqlx.Tx を使用)
- */
 func DeleteBackorderInTx(tx *sqlx.Tx, id int) error {
 	const q = `DELETE FROM backorders WHERE id = ?`
-
 	res, err := tx.Exec(q, id)
 	if err != nil {
 		return fmt.Errorf("failed to delete backorder for id %d: %w", id, err)
@@ -1561,12 +1525,8 @@ func DeleteBackorderInTx(tx *sqlx.Tx, id int) error {
 	return nil
 }
 
-/**
- * @brief 指定された発注日時(YYYYMMDDHHMMSS)の発注残レコードをすべてトランザクション内で削除します。
- */
 func DeleteBackordersByOrderDateInTx(tx *sqlx.Tx, orderDate string) (int64, error) {
 	const q = `DELETE FROM backorders WHERE order_date = ?`
-
 	res, err := tx.Exec(q, orderDate)
 	if err != nil {
 		return 0, fmt.Errorf("failed to delete backorders for orderDate %s: %w", orderDate, err)
@@ -1579,6 +1539,43 @@ func DeleteBackordersByOrderDateInTx(tx *sqlx.Tx, orderDate string) (int64, erro
 		return 0, fmt.Errorf("no backorder found to delete for orderDate %s", orderDate)
 	}
 	return rowsAffected, nil
+}
+
+// 予約解除判定用の関数
+func GetExpiredReservationsInTx(tx *sqlx.Tx, nowStr string) ([]model.Backorder, error) {
+	const q = `
+		SELECT
+			id, order_date, jan_code, yj_code, product_name, package_form, jan_pack_inner_qty, 
+			yj_unit_name, order_quantity, remaining_quantity, wholesaler_code,
+			yj_pack_unit_qty, jan_pack_unit_qty, jan_unit_code
+		FROM backorders
+		WHERE REPLACE(order_date, 'T', '') <= ? AND wholesaler_code LIKE '%_RSV'
+	`
+	var records []model.Backorder
+	rows, err := tx.Query(q, nowStr)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query expired reservations: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var bo model.Backorder
+		var wholesalerCode sql.NullString
+		var janCode sql.NullString
+
+		if err := rows.Scan(
+			&bo.ID, &bo.OrderDate, &janCode, &bo.YjCode, &bo.ProductName, &bo.PackageForm, &bo.JanPackInnerQty,
+			&bo.YjUnitName, &bo.OrderQuantity, &bo.RemainingQuantity, &wholesalerCode,
+			&bo.YjPackUnitQty, &bo.JanPackUnitQty, &bo.JanUnitCode,
+		); err != nil {
+			return nil, fmt.Errorf("failed to scan expired reservation: %w", err)
+		}
+		bo.WholesalerCode = wholesalerCode.String
+		bo.JanCode = janCode.String
+		records = append(records, bo)
+	}
+
+	return records, nil
 }
 
 
@@ -8433,44 +8430,48 @@ package reorder
 
 import (
 	"encoding/json"
-	"fmt" // TKRはlogを使う
+	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
-	"tkr/aggregation" // TKRのaggregation
+	"tkr/aggregation"
 	"tkr/config"
-	"tkr/database" // TKRのdatabase
-	"tkr/mappers"  // TKRのmappers
+	"tkr/database"
+	"tkr/mappers"
 	"tkr/model"
-	"tkr/units" // ★★★ units をインポート
+	"tkr/units"
 
 	"github.com/jmoiron/sqlx"
 )
 
-// OrderCandidatesResponse は発注候補画面のレスポンスです。
-// (WASABI: orders/handlee.go より)
 type OrderCandidatesResponse struct {
 	Candidates  []OrderCandidateYJGroup `json:"candidates"`
 	Wholesalers []model.Wholesaler      `json:"wholesalers"`
 }
 
-// OrderCandidateYJGroup は発注候補のYJグループです。
-// (WASABI: orders/handlee.go より)
 type OrderCandidateYJGroup struct {
 	model.StockLedgerYJGroup
 	PackageLedgers []OrderCandidatePackageGroup `json:"packageLedgers"`
 }
 
-// OrderCandidatePackageGroup は発注候補の包装グループです。
-// (WASABI: orders/handlee.go より)
 type OrderCandidatePackageGroup struct {
 	model.StockLedgerPackageGroup
 	Masters            []model.ProductMasterView `json:"masters"`
 	ExistingBackorders []model.Backorder         `json:"existingBackorders"`
 }
 
-// GenerateOrderCandidatesHandler は発注候補リストを生成します。
-// (WASABI: orders/handlee.go を TKR 用に修正)
+// 返品推奨リスト用の構造体
+type ReturnCandidate struct {
+	ProductName     string  `json:"productName"`
+	MakerName       string  `json:"makerName"`
+	PackageForm     string  `json:"packageForm"`
+	LastInDate      string  `json:"lastInDate"`
+	EstimatedExpiry string  `json:"estimatedExpiry"`
+	StockQuantity   float64 `json:"stockQuantity"`
+	NhiPrice        float64 `json:"nhiPrice"`
+}
+
 func GenerateOrderCandidatesHandler(conn *sqlx.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		q := r.URL.Query()
@@ -8480,193 +8481,51 @@ func GenerateOrderCandidatesHandler(conn *sqlx.DB) http.HandlerFunc {
 		coefficientStr := q.Get("coefficient")
 		coefficient, err := strconv.ParseFloat(coefficientStr, 64)
 		if err != nil {
-			coefficient = 1.3 // TKRのデフォルト
+			coefficient = 1.5
 		}
+
+		// --- 予約解除ロジック ---
+		func() {
+			tx, err := conn.Beginx()
+			if err != nil {
+				fmt.Printf("WARN: Failed to begin transaction: %v\n", err)
+				return
+			}
+			defer func() {
+				if p := recover(); p != nil {
+					tx.Rollback()
+				}
+			}()
+
+			nowStr := time.Now().Format("20060102150405")
+			expiredReservations, err := database.GetExpiredReservationsInTx(tx, nowStr)
+			if err != nil {
+				fmt.Printf("WARN: Failed to get expired reservations: %v\n", err)
+				tx.Rollback()
+				return
+			}
+
+			if len(expiredReservations) > 0 {
+				for _, res := range expiredReservations {
+					if err := database.DeleteBackorderInTx(tx, res.ID); err != nil {
+						fmt.Printf("WARN: Failed to delete reservation ID %d: %v\n", res.ID, err)
+						tx.Rollback()
+						return
+					}
+				}
+				if err := tx.Commit(); err != nil {
+					fmt.Printf("WARN: Failed to commit reservation cleanup: %v\n", err)
+				} else {
+					fmt.Printf("INFO: Released %d expired reservations.\n", len(expiredReservations))
+				}
+			} else {
+				tx.Rollback()
+			}
+		}()
 
 		cfg, err := config.LoadConfig()
 		if err != nil {
 			http.Error(w, "設定ファイルの読み込みに失敗しました: "+err.Error(), http.StatusInternalServerError)
-			return
-		}
-
-		now := time.Now()
-		// ▼▼▼【ここを修正】TKRの集計ロジックのEndDateを「本日」から「未来」に変更 ▼▼▼
-		endDate := "99991231" //
-		startDate := now.AddDate(0, 0, -cfg.CalculationPeriodDays)
-
-		filters := model.AggregationFilters{
-			StartDate:   startDate.Format("20060102"),
-			EndDate:     endDate, //
-			KanaName:    kanaName,
-			DosageForm:  dosageForm,
-			ShelfNumber: shelfNumber,
-			Coefficient: coefficient,
-		}
-
-		// TKRの集計関数を呼ぶ
-		// ★★★ 注意: TKRの aggregation.GetStockLedger は発注残を考慮するよう修正が必要
-		yjGroups, err := aggregation.GetStockLedger(conn, filters)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-
-		// TKRのDB関数を呼ぶ
-		allBackorders, err := database.GetAllBackordersList(conn)
-		if err != nil {
-			http.Error(w, "Failed to get backorder list for candidates", http.StatusInternalServerError)
-			return
-		}
-
-		// TKRの aggregation.go のキー生成ロジック (units.ResolveName) に合わせる
-		backordersByPackageKey := make(map[string][]model.Backorder)
-		for _, bo := range allBackorders {
-			// units.ResolveName を使って単位名を解決する
-			resolvedKey :=
-				fmt.Sprintf("%s|%s|%g|%s", bo.YjCode, bo.PackageForm, bo.JanPackInnerQty, units.ResolveName(bo.YjUnitName))
-			backordersByPackageKey[resolvedKey] = append(backordersByPackageKey[resolvedKey], bo)
-		}
-
-		var candidates []OrderCandidateYJGroup
-		for _, group := range yjGroups {
-			if group.IsReorderNeeded {
-				newYjGroup := OrderCandidateYJGroup{
-					StockLedgerYJGroup: group,
-					PackageLedgers:     []OrderCandidatePackageGroup{},
-				}
-
-				for _, pkg := range group.PackageLedgers {
-					newPkgGroup := OrderCandidatePackageGroup{
-						StockLedgerPackageGroup: pkg,
-						Masters:                 []model.ProductMasterView{},
-						// TKRの aggregation.go は Resolved なキーを使っているので、
-						// ここでも Resolved なキー (pkg.PackageKey) でマップを引く
-						ExistingBackorders: backordersByPackageKey[pkg.PackageKey],
-					}
-
-					// TKRの mappers を使って View を生成
-					for _, master := range pkg.Masters {
-						masterView := mappers.ToProductMasterView(master)
-						newPkgGroup.Masters = append(newPkgGroup.Masters, masterView)
-					}
-					newYjGroup.PackageLedgers = append(newYjGroup.PackageLedgers, newPkgGroup)
-				}
-				candidates = append(candidates, newYjGroup)
-			}
-		}
-
-		// TKRのDB関数を呼ぶ
-		wholesalers, err := database.GetAllWholesalers(conn)
-		if err != nil {
-			http.Error(w, "Failed to get wholesalers", http.StatusInternalServerError)
-			return
-		}
-
-		response := OrderCandidatesResponse{
-			Candidates:  candidates,
-			Wholesalers: wholesalers,
-		}
-
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(response)
-	}
-}
-
-// PlaceOrderHandler は発注内容を発注残として登録します。
-// (WASABI: orders/handlee.go を TKR 用に修正)
-func PlaceOrderHandler(conn *sqlx.DB) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		var payload []model.Backorder
-		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-			http.Error(w, "Invalid request body", http.StatusBadRequest)
-			return
-		}
-
-		tx, err := conn.Beginx()
-		if err != nil {
-			http.Error(w, "Failed to start transaction", http.StatusInternalServerError)
-			return
-		}
-		defer tx.Rollback()
-
-		// ▼▼▼【ここを修正】日付フォーマットを YYYYMMDDHHMMSS に変更 ▼▼▼
-		today := time.Now().Format("20060102150405") // YYYYMMDDHHMMSS
-		// ▲▲▲【修正ここまで】▲▲▲
-		for i := range payload {
-			if payload[i].OrderDate == "" {
-				payload[i].OrderDate = today
-			}
-			// YjQuantity (フロントから来る発注単位数 * 包装単位量) を
-			// OrderQuantity (発注数量) と RemainingQuantity (残数量) にコピー
-			payload[i].OrderQuantity = payload[i].YjQuantity
-			payload[i].RemainingQuantity = payload[i].YjQuantity
-		}
-
-		// TKRのDB関数を呼ぶ
-		if err := database.InsertBackordersInTx(tx, payload); err != nil {
-			http.Error(w, "Failed to save backorders", http.StatusInternalServerError)
-			return
-		}
-
-		if err := tx.Commit(); err != nil {
-			http.Error(w, "Failed to commit transaction", http.StatusInternalServerError)
-			return
-		}
-
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]string{"message": "発注内容を発注残として登録しました。"})
-	}
-}
-
-
------ C:\Users\wasab\OneDrive\デスクトップ\TKR\reorder\return_handler.go -----
-// C:\Users\wasab\OneDrive\デスクトップ\TKR\reorder\return_handler.go
-package reorder
-
-import (
-	"encoding/json"
-	"math"
-	"net/http"
-	"strconv"
-	"time"
-	"tkr/aggregation"
-	"tkr/config"
-	"tkr/model"
-	"tkr/units"
-
-	"github.com/jmoiron/sqlx"
-)
-
-type ReturnCandidate struct {
-	YjCode           string                  `json:"yjCode"`
-	ProductName      string                  `json:"productName"`
-	PackageKey       string                  `json:"packageKey"`
-	Representative   model.ProductMasterView `json:"representative"`
-	TheoreticalStock float64                 `json:"theoreticalStock"`
-	Threshold        float64                 `json:"threshold"`
-	ExcessQuantity   float64                 `json:"excessQuantity"`
-	MinJanPackQty    float64                 `json:"minJanPackQty"`
-	UnitName         string                  `json:"unitName"`
-	ReturnableBoxes  int                     `json:"returnableBoxes"`
-}
-
-func GenerateReturnCandidatesHandler(conn *sqlx.DB) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		q := r.URL.Query()
-		kanaName := q.Get("kanaName")
-		dosageForm := q.Get("dosageForm")
-		shelfNumber := q.Get("shelfNumber")
-
-		// 返品係数
-		coefficientStr := q.Get("coefficient")
-		coefficient, err := strconv.ParseFloat(coefficientStr, 64)
-		if err != nil {
-			coefficient = 1.5
-		}
-
-		cfg, err := config.LoadConfig()
-		if err != nil {
-			http.Error(w, "設定ファイルの読み込みに失敗: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
 
@@ -8689,95 +8548,211 @@ func GenerateReturnCandidatesHandler(conn *sqlx.DB) http.HandlerFunc {
 			return
 		}
 
-		var candidates []ReturnCandidate
+		allBackorders, err := database.GetAllBackordersList(conn)
+		if err != nil {
+			http.Error(w, "Failed to get backorder list", http.StatusInternalServerError)
+			return
+		}
 
+		backordersByPackageKey := make(map[string][]model.Backorder)
+		for _, bo := range allBackorders {
+			// ★修正: 予約除外のコードを削除。これで予約分も「既存の発注残」として画面に表示され、
+			// 集計(aggregation)側でも在庫としてカウントされるため、二重発注候補が出なくなります。
+			resolvedKey := fmt.Sprintf("%s|%s|%g|%s", bo.YjCode, bo.PackageForm, bo.JanPackInnerQty, units.ResolveName(bo.YjUnitName))
+			backordersByPackageKey[resolvedKey] = append(backordersByPackageKey[resolvedKey], bo)
+		}
+
+		var candidates []OrderCandidateYJGroup
 		for _, group := range yjGroups {
-			for _, pkg := range group.PackageLedgers {
-
-				// 理論在庫
-				currentStock, ok := pkg.EndingBalance.(float64)
-				if !ok {
-					currentStock = 0
+			if group.IsReorderNeeded {
+				newYjGroup := OrderCandidateYJGroup{
+					StockLedgerYJGroup: group,
+					PackageLedgers:     []OrderCandidatePackageGroup{},
 				}
 
-				// 最小の包装単位数量（1箱のバラ数）を探す
-				minPackUnitQty := math.MaxFloat64
-				var repMaster *model.ProductMaster
-
-				for _, m := range pkg.Masters {
-					if repMaster == nil || (repMaster.Origin != "JCSHMS" && m.Origin == "JCSHMS") {
-						repMaster = m
+				for _, pkg := range group.PackageLedgers {
+					newPkgGroup := OrderCandidatePackageGroup{
+						StockLedgerPackageGroup: pkg,
+						Masters:                 []model.ProductMasterView{},
+						ExistingBackorders:      backordersByPackageKey[pkg.PackageKey],
 					}
 
-					var packQty float64
-					// YJ包装単位数量を優先
-					if m.YjPackUnitQty > 0 {
-						packQty = m.YjPackUnitQty
-					} else if m.JanPackUnitQty > 0 {
-						packQty = m.JanPackUnitQty
+					for _, master := range pkg.Masters {
+						masterView := mappers.ToProductMasterView(master)
+						newPkgGroup.Masters = append(newPkgGroup.Masters, masterView)
 					}
-
-					if packQty > 0 {
-						if packQty < minPackUnitQty {
-							minPackUnitQty = packQty
-						}
-					}
+					newYjGroup.PackageLedgers = append(newYjGroup.PackageLedgers, newPkgGroup)
 				}
-
-				if minPackUnitQty == math.MaxFloat64 {
-					minPackUnitQty = 0
-				}
-
-				// 1. 保持すべき在庫 (KeepStock) = (係数×発注点 + 予製)
-				keepStock := pkg.ReorderPoint
-
-				// 2. リストアップ判定用閾値 = KeepStock + 最小包装単位(1箱)
-				// ※「1箱以上余っているか」を判定するため、ここでは +1箱 する
-				thresholdForListing := keepStock + minPackUnitQty
-
-				// 判定: 理論在庫 >= 判定用閾値
-				if currentStock >= thresholdForListing {
-
-					// 3. 返品可能総数 = 理論在庫 - 保持すべき在庫
-					// ※返すときは「KeepStock」を超えた分をすべて対象にする（+1箱を残す必要はない）
-					rawExcess := currentStock - keepStock
-
-					if minPackUnitQty > 0 {
-						// 箱数計算 (切り捨て)
-						returnableBoxes := math.Floor(rawExcess / minPackUnitQty)
-
-						// 返品推奨数 = 箱数 × 入数
-						excessQuantity := returnableBoxes * minPackUnitQty
-
-						if excessQuantity > 0 {
-							var repView model.ProductMasterView
-							if repMaster != nil {
-								repView = model.ProductMasterView{
-									ProductMaster: *repMaster,
-									JanUnitName:   units.ResolveName(repMaster.YjUnitName),
-								}
-							}
-
-							candidates = append(candidates, ReturnCandidate{
-								YjCode:           group.YjCode,
-								ProductName:      group.ProductName,
-								PackageKey:       pkg.PackageKey,
-								Representative:   repView,
-								TheoreticalStock: currentStock,
-								Threshold:        thresholdForListing, // 画面には「リストに載る基準」を表示
-								ExcessQuantity:   excessQuantity,
-								MinJanPackQty:    minPackUnitQty,
-								UnitName:         group.YjUnitName,
-								ReturnableBoxes:  int(returnableBoxes),
-							})
-						}
-					}
-				}
+				candidates = append(candidates, newYjGroup)
 			}
 		}
 
+		wholesalers, err := database.GetAllWholesalers(conn)
+		if err != nil {
+			http.Error(w, "Failed to get wholesalers", http.StatusInternalServerError)
+			return
+		}
+
+		response := OrderCandidatesResponse{
+			Candidates:  candidates,
+			Wholesalers: wholesalers,
+		}
+
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(candidates)
+		json.NewEncoder(w).Encode(response)
+	}
+}
+
+func PlaceOrderHandler(conn *sqlx.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var payload []model.Backorder
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			http.Error(w, "Invalid request body", http.StatusBadRequest)
+			return
+		}
+
+		tx, err := conn.Beginx()
+		if err != nil {
+			http.Error(w, "Failed to start transaction", http.StatusInternalServerError)
+			return
+		}
+		defer tx.Rollback()
+
+		today := time.Now().Format("20060102150405")
+
+		isReservation := false
+		if len(payload) > 0 && payload[0].OrderDate != "" {
+			userDate := strings.ReplaceAll(payload[0].OrderDate, "-", "")
+			userDate = strings.ReplaceAll(userDate, ":", "")
+			userDate = strings.ReplaceAll(userDate, " ", "")
+			userDate = strings.ReplaceAll(userDate, "T", "")
+
+			if len(userDate) == 12 {
+				userDate += "00"
+			}
+
+			if userDate > today {
+				isReservation = true
+			}
+		}
+
+		for i := range payload {
+			if payload[i].OrderDate != "" {
+				normalized := strings.ReplaceAll(payload[i].OrderDate, "-", "")
+				normalized = strings.ReplaceAll(normalized, ":", "")
+				normalized = strings.ReplaceAll(normalized, " ", "")
+				normalized = strings.ReplaceAll(normalized, "T", "")
+
+				if len(normalized) == 12 {
+					normalized += "00"
+				}
+				payload[i].OrderDate = normalized
+			} else {
+				payload[i].OrderDate = today
+			}
+
+			if isReservation {
+				payload[i].WholesalerCode += "_RSV"
+			}
+
+			payload[i].OrderQuantity = payload[i].YjQuantity
+			payload[i].RemainingQuantity = payload[i].YjQuantity
+		}
+
+		if err := database.InsertBackordersInTx(tx, payload); err != nil {
+			http.Error(w, "Failed to save backorders", http.StatusInternalServerError)
+			return
+		}
+
+		if err := tx.Commit(); err != nil {
+			http.Error(w, "Failed to commit transaction", http.StatusInternalServerError)
+			return
+		}
+
+		msg := "発注内容を発注残として登録しました。"
+		if isReservation {
+			msg = "発注を予約しました。指定日時まで保留されます。"
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"message": msg})
+	}
+}
+
+// GenerateReturnCandidatesHandler (期間指定なし版)
+func GenerateReturnCandidatesHandler(db *sqlx.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		cfg, err := config.LoadConfig()
+		if err != nil {
+			http.Error(w, "設定の読み込みに失敗しました", http.StatusInternalServerError)
+			return
+		}
+		days := cfg.CalculationPeriodDays
+		deadline := time.Now().AddDate(0, 0, -days).Format("20060102")
+
+		query := `
+			SELECT 
+				p.product_name,
+				p.maker_name,
+				p.package_form,
+				p.nhi_price,
+				IFNULL(MAX(CASE WHEN t.flag IN (1, 11) THEN t.transaction_date END), '') as last_in_date,
+				IFNULL(MAX(CASE WHEN t.flag IN (3, 12) THEN t.transaction_date END), '') as last_out_date,
+				SUM(CASE 
+					WHEN t.flag IN (1, 11) THEN t.yj_quantity 
+					WHEN t.flag IN (3, 2, 12) THEN -t.yj_quantity 
+					ELSE 0 END
+				) as stock_quantity
+			FROM product_master p
+			LEFT JOIN transaction_records t ON p.product_code = t.jan_code
+			GROUP BY p.product_code
+			HAVING 
+				stock_quantity > 0 
+				AND (last_out_date < ? OR last_out_date = '')
+				AND (last_in_date < ? OR last_in_date = '')
+			ORDER BY last_in_date ASC
+		`
+
+		rows, err := db.Queryx(query, deadline, deadline)
+		if err != nil {
+			http.Error(w, "返品候補の抽出に失敗しました: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		defer rows.Close()
+
+		var results []ReturnCandidate
+		for rows.Next() {
+			var item struct {
+				ProductName   string  `db:"product_name"`
+				MakerName     string  `db:"maker_name"`
+				PackageForm   string  `db:"package_form"`
+				NhiPrice      float64 `db:"nhi_price"`
+				LastInDate    string  `db:"last_in_date"`
+				StockQuantity float64 `db:"stock_quantity"`
+			}
+			if err := rows.StructScan(&item); err != nil {
+				continue
+			}
+
+			expiry := ""
+			if item.LastInDate != "" {
+				t, _ := time.Parse("20060102", item.LastInDate)
+				expiry = t.AddDate(3, 0, 0).Format("2006/01") + " (推定)"
+			}
+
+			results = append(results, ReturnCandidate{
+				ProductName:     item.ProductName,
+				MakerName:       item.MakerName,
+				PackageForm:     item.PackageForm,
+				LastInDate:      item.LastInDate,
+				EstimatedExpiry: expiry,
+				StockQuantity:   item.StockQuantity,
+				NhiPrice:        item.NhiPrice,
+			})
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(results)
 	}
 }
 
