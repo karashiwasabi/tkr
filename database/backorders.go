@@ -1,3 +1,4 @@
+// C:\Users\wasab\OneDrive\デスクトップ\TKR\database\backorders.go
 package database
 
 import (
@@ -40,7 +41,7 @@ func ReconcileBackorders(tx *sqlx.Tx, deliveredItems []model.Backorder) error {
 	for _, item := range deliveredItems {
 		deliveryQty := item.YjQuantity
 
-		// ★変更: 予約分(_RSV付き)は消込対象外とする
+		// 消込処理では予約分(_RSV)を対象外にする（勝手に消されないように保護）
 		rows, err := tx.Query(`
 			SELECT id, remaining_quantity FROM backorders 
 			WHERE yj_code = ? AND package_form = ? AND jan_pack_inner_qty = ? AND yj_unit_name = ?
@@ -97,12 +98,12 @@ func ReconcileBackorders(tx *sqlx.Tx, deliveredItems []model.Backorder) error {
 }
 
 func GetAllBackordersMap(dbtx DBTX) (map[string]float64, error) {
-	// 集計時も予約分は除外
+	// ★修正: WHERE句を削除しました。これで予約分も集計に含まれます。
 	const q = `
 		SELECT yj_code, package_form, jan_pack_inner_qty, yj_unit_name, SUM(remaining_quantity)
 		FROM backorders
-		WHERE wholesaler_code NOT LIKE '%_RSV'
 		GROUP BY yj_code, package_form, jan_pack_inner_qty, yj_unit_name`
+
 	rows, err := dbtx.Query(q)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query all backorders map: %w", err)
@@ -192,7 +193,7 @@ func DeleteBackordersByOrderDateInTx(tx *sqlx.Tx, orderDate string) (int64, erro
 	return rowsAffected, nil
 }
 
-// ★追加: 期限が到来した予約発注(_RSV付き)を取得する関数
+// 予約解除判定用の関数
 func GetExpiredReservationsInTx(tx *sqlx.Tx, nowStr string) ([]model.Backorder, error) {
 	const q = `
 		SELECT

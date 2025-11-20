@@ -52,9 +52,6 @@ func GenerateOrderCandidatesHandler(conn *sqlx.DB) http.HandlerFunc {
 		dosageForm := q.Get("dosageForm")
 		shelfNumber := q.Get("shelfNumber")
 		coefficientStr := q.Get("coefficient")
-
-		// 独自のフィルタパラメータは削除済み
-
 		coefficient, err := strconv.ParseFloat(coefficientStr, 64)
 		if err != nil {
 			coefficient = 1.5
@@ -74,7 +71,6 @@ func GenerateOrderCandidatesHandler(conn *sqlx.DB) http.HandlerFunc {
 			}()
 
 			nowStr := time.Now().Format("20060102150405")
-			// T除去対応済みの関数
 			expiredReservations, err := database.GetExpiredReservationsInTx(tx, nowStr)
 			if err != nil {
 				fmt.Printf("WARN: Failed to get expired reservations: %v\n", err)
@@ -84,7 +80,6 @@ func GenerateOrderCandidatesHandler(conn *sqlx.DB) http.HandlerFunc {
 
 			if len(expiredReservations) > 0 {
 				for _, res := range expiredReservations {
-					// 期限が来たら削除する（＝有効化）
 					if err := database.DeleteBackorderInTx(tx, res.ID); err != nil {
 						fmt.Printf("WARN: Failed to delete reservation ID %d: %v\n", res.ID, err)
 						tx.Rollback()
@@ -134,9 +129,8 @@ func GenerateOrderCandidatesHandler(conn *sqlx.DB) http.HandlerFunc {
 
 		backordersByPackageKey := make(map[string][]model.Backorder)
 		for _, bo := range allBackorders {
-			// ★修正: 予約分(_RSV)を除外するコードを削除しました。
-			// これにより、予約分も「発注残」としてカウントされ、発注候補から消えます。
-
+			// ★修正: 予約除外のコードを削除。これで予約分も「既存の発注残」として画面に表示され、
+			// 集計(aggregation)側でも在庫としてカウントされるため、二重発注候補が出なくなります。
 			resolvedKey := fmt.Sprintf("%s|%s|%g|%s", bo.YjCode, bo.PackageForm, bo.JanPackInnerQty, units.ResolveName(bo.YjUnitName))
 			backordersByPackageKey[resolvedKey] = append(backordersByPackageKey[resolvedKey], bo)
 		}
@@ -201,7 +195,6 @@ func PlaceOrderHandler(conn *sqlx.DB) http.HandlerFunc {
 
 		isReservation := false
 		if len(payload) > 0 && payload[0].OrderDate != "" {
-			// 日付文字列の正規化 (Tなどを除去)
 			userDate := strings.ReplaceAll(payload[0].OrderDate, "-", "")
 			userDate = strings.ReplaceAll(userDate, ":", "")
 			userDate = strings.ReplaceAll(userDate, " ", "")
@@ -259,10 +252,9 @@ func PlaceOrderHandler(conn *sqlx.DB) http.HandlerFunc {
 	}
 }
 
-// GenerateReturnCandidatesHandler (期間指定なし・固定ロジック版)
+// GenerateReturnCandidatesHandler (期間指定なし版)
 func GenerateReturnCandidatesHandler(db *sqlx.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		// 設定から期間を取得
 		cfg, err := config.LoadConfig()
 		if err != nil {
 			http.Error(w, "設定の読み込みに失敗しました", http.StatusInternalServerError)
