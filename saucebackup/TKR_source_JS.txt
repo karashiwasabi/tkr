@@ -1710,22 +1710,30 @@ export function renderDeadStockTable(items) {
     const header = `
      <table id="deadstock-table" class="data-table">
          <thead>
-           <tr>
+             <tr>
               <th class="col-ds-action">操作</th>
-             <th class="col-ds-product">製品情報 (PackageKey)</th>
+              <th class="col-ds-product">製品情報 (PackageKey)</th>
               <th class="col-ds-qty">現在庫 (JAN換算)</th>
-             <th class="col-ds-details">棚卸明細 (JAN / 包装仕様 / 在庫数 / 単位 / 期限 / ロット)</th>
-           </tr>
+              <th class="col-ds-details">棚卸明細 (JAN / 包装仕様 / 在庫数 / 単位 / 期限 / ロット)</th>
+          </tr>
          </thead>
          <tbody>
     `;
     
     const body = items.map(item => {
          let lotHtml = ''; 
+         // ▼▼▼ 追加: 明細合計の計算 ▼▼▼
+         let detailsSumJan = 0;
+         // ▲▲▲ 追加ここまで ▲▲▲
+
          if (item.lotDetails && item.lotDetails.length > 0) {
              lotHtml = '<ul class="lot-details-list">';
              lotHtml += item.lotDetails.map(lot => {
-                 const janQty = (lot.JanQuantity || 0).toFixed(2);
+                 const janQty = (lot.JanQuantity || 0);
+                 // ▼▼▼ 追加: 合計に加算 ▼▼▼
+                 detailsSumJan += janQty;
+                 // ▲▲▲ 追加ここまで ▲▲▲
+                 const janQtyDisplay = janQty.toFixed(2);
                  const janCode = lot.JanCode || '(JANなし)';
                  const pkgSpec = lot.PackageSpec || '(仕様なし)';
                  const lotNum = lot.LotNumber || '(ロットなし)';
@@ -1735,7 +1743,7 @@ export function renderDeadStockTable(items) {
                  const statusClass = getExpiryStatus(lot.ExpiryDate);
                  const expiryDisplay = statusClass ? `<span class="${statusClass}">${expiry}</span>` : expiry;
 
-                 return `<li>${janCode} / ${pkgSpec} / ${janQty} ${unitName} / ${expiryDisplay} / ${lotNum}</li>`;
+                 return `<li>${janCode} / ${pkgSpec} / ${janQtyDisplay} ${unitName} / ${expiryDisplay} / ${lotNum}</li>`;
              }).join('');
              lotHtml += '</ul>';
          } else if (item.currentStockYj > 0 && (!item.lotDetails || item.lotDetails.length === 0)) {
@@ -1746,7 +1754,7 @@ export function renderDeadStockTable(items) {
          }
 
         // ▼▼▼ 修正: 表示と赤字判定ロジック ▼▼▼
-        
+       
         // 1. 表示用在庫数 = 現在の理論在庫 (CurrentStockYj) をJAN換算
         let currentStockJan = 0;
         if (item.janPackInnerQty > 0) {
@@ -1754,26 +1762,29 @@ export function renderDeadStockTable(items) {
         }
         const displayStockQty = currentStockJan.toFixed(2);
 
-        // 2. 比較対象 = 前回の棚卸在庫数 (StockQuantityYj)
-        //    ※これが右側の「棚卸明細」の合計と一致するはずの値
-        const diff = Math.abs(item.currentStockYj - item.stockQuantityYj);
+        // 2. 比較対象の決定 (棚卸明細があればその合計、なければ内部的な棚卸数)
+        //    これにより、当日入荷等で内部的な棚卸数が0になっていても、明細(2個)と現在庫(2個)が合えば一致とみなす
+        let referenceStockJan = 0;
+        if (item.lotDetails && item.lotDetails.length > 0) {
+            referenceStockJan = detailsSumJan;
+        } else {
+            if (item.janPackInnerQty > 0) {
+                referenceStockJan = item.stockQuantityYj / item.janPackInnerQty;
+            }
+        }
+
+        const diff = Math.abs(currentStockJan - referenceStockJan);
 
         let qtyDisplayHtml = displayStockQty;
 
         // 3. 差異があれば赤字にする
-        // (理論在庫 != 前回棚卸数 => 棚卸後に動きがあった)
         if (diff > 0.001) {
-            // 参考情報として「前回棚卸時の数量(JAN換算)」も計算
-            let lastStockJan = 0;
-            if (item.janPackInnerQty > 0) {
-                lastStockJan = item.stockQuantityYj / item.janPackInnerQty;
-            }
-
+            // 参考情報として「比較対象の数量」を表示
             qtyDisplayHtml = `
-                <span class="status-diff" title="現在(理論): ${displayStockQty} / 前回棚卸: ${lastStockJan.toFixed(2)}">
+                <span class="status-diff" title="現在(理論): ${displayStockQty} / 比較対象: ${referenceStockJan.toFixed(2)}">
                     ${displayStockQty}
                 </span>
-                <br><span style="font-size:0.8em; color:#dc3545;">(棚卸時: ${lastStockJan.toFixed(2)})</span>
+                <br><span style="font-size:0.8em; color:#dc3545;">(棚卸時: ${referenceStockJan.toFixed(2)})</span>
             `;
         }
         // ▲▲▲ 修正ここまで ▲▲▲
@@ -1783,14 +1794,14 @@ export function renderDeadStockTable(items) {
         return `
            <tr>
              <td class="center col-ds-action">${buttonHtml}</td>
-              <td class="left col-ds-product">
+             <td class="left col-ds-product">
                   <span class="product-name">${item.productName || '(品名不明)'}</span><br>
                   <span class="package-key-sub">${item.packageKey}</span>
-              </td>
+             </td>
               <td class="right col-ds-qty">${qtyDisplayHtml}</td>
               <td class="left col-ds-details">${lotHtml}</td>
            </tr>
-         `;
+       `;
     }).join('');
 
     const footer = `
@@ -5202,12 +5213,13 @@ export function initContinuousScan() {
 }
 
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\js\reorder_events.js -----
-import { hiraganaToKatakana, fetchProductMasterByBarcode } from './utils.js';
+// C:\Users\wasab\OneDrive\デスクトップ\TKR\static\js\reorder_events.js
+import { fetchProductMasterByBarcode } from './utils.js';
 import { showModal } from './search_modal.js';
 import { renderOrderCandidates, addOrUpdateOrderItem } from './reorder_ui.js';
 import { openContinuousScanModal } from './reorder_continuous_scan.js';
 
-let outputContainer, kanaNameInput, dosageFormInput, coefficientInput, shelfNumberInput;
+let outputContainer, coefficientInput;
 let createCsvBtn, barcodeInput, barcodeForm, addFromMasterBtn;
 let runBtn, continuousOrderBtn;
 // ★追加
@@ -5245,12 +5257,15 @@ function handleAddFromMaster() {
 
 async function handleGenerateCandidates() { 
     window.showLoading('発注候補リストを作成中...');
+    
+    // ▼▼▼ 修正: 不要な検索条件を削除し、空文字を送る ▼▼▼
     const params = new URLSearchParams({
-        kanaName: hiraganaToKatakana(kanaNameInput.value),
-        dosageForm: dosageFormInput.value,
-        shelfNumber: shelfNumberInput.value,
+        kanaName: '',
+        dosageForm: '',
+        shelfNumber: '',
         coefficient: coefficientInput.value,
     });
+    // ▲▲▲ 修正ここまで ▲▲▲
 
     try {
         const res = await fetch(`/api/reorder/candidates?${params.toString()}`);
@@ -5275,7 +5290,7 @@ function getOrderItems(rows) {
         if (row.classList.contains('provisional-order-item')) {
             return;
         }
-        
+       
         const quantityInput = row.querySelector('.order-quantity-input');
         const quantity = parseInt(quantityInput.value, 10);
         
@@ -5325,6 +5340,7 @@ async function handleCreateCsv(fetchAndRenderReorderCallback) {
         if (row.classList.contains('provisional-order-item')) return;
         const quantityInput = row.querySelector('.order-quantity-input');
         const quantity = parseInt(quantityInput.value, 10);
+    
         if (quantity > 0) {
             const janCode = row.dataset.janCode;
             const productName = row.cells[0].textContent; 
@@ -5341,6 +5357,7 @@ async function handleCreateCsv(fetchAndRenderReorderCallback) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(backorderPayload),
         });
+ 
         const resData = await res.json();
         if (!res.ok) throw new Error(resData.message || '発注残の登録に失敗しました。');
         
@@ -5488,17 +5505,15 @@ async function handleTableClicks(e, handleGenerateCandidatesCallback) {
 export function initReorderEvents(fetchAndRenderReorderCallback) { 
     runBtn = document.getElementById('generate-order-candidates-btn');
     outputContainer = document.getElementById('order-candidates-output');
-    kanaNameInput = document.getElementById('order-kanaName');
-    dosageFormInput = document.getElementById('order-dosageForm');
+    // ▼▼▼ 修正: 不要な要素取得を削除 ▼▼▼
     coefficientInput = document.getElementById('order-reorder-coefficient');
     createCsvBtn = document.getElementById('createOrderCsvBtn');
     barcodeInput = document.getElementById('order-barcode-input');
     barcodeForm = document.getElementById('order-barcode-form');
-    shelfNumberInput = document.getElementById('order-shelf-number');
     addFromMasterBtn = document.getElementById('add-order-item-from-master-btn');
     continuousOrderBtn = document.getElementById('continuous-order-btn');
-    
-    // ★追加: 予約関連の要素取得
+    // ▲▲▲ 修正ここまで ▲▲▲
+
     reservationBtn = document.getElementById('reservation-order-btn');
     reservationModal = document.getElementById('reservation-modal');
     reservationDateTimeInput = document.getElementById('reservation-datetime');
@@ -5544,7 +5559,6 @@ export function initReorderEvents(fetchAndRenderReorderCallback) {
             const min = String(tomorrow.getMinutes()).padStart(2, '0');
             
             reservationDateTimeInput.value = `${yyyy}-${mm}-${dd}T${hh}:${min}`;
-            
             reservationModal.classList.remove('hidden');
         });
     }
@@ -5929,65 +5943,55 @@ export function renderOrderCandidates(data, container) {
 
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\js\reorder.js -----
 // C:\Users\wasab\OneDrive\デスクトップ\TKR\static\js\reorder.js
-// (旧 reorder.js を分割し、ハブ機能として再構築)
-
-// 1. 依存モジュールのインポート
 import { initReorderEvents } from './reorder_events.js';
 import { initContinuousScan } from './reorder_continuous_scan.js';
 
-// 2. DOM要素 (リセット用)
-let outputContainer, kanaNameInput, dosageFormInput, coefficientInput, shelfNumberInput;
+// DOM要素 (リセット用)
+let outputContainer, coefficientInput;
 
 /**
  * 発注点リストビューの初期化（メインハブ）
- * (旧 reorder.js より再構築)
  */
 export function initReorderView() {
     // DOM要素の取得 (リセット処理 `fetchAndRenderReorder` で使用)
     outputContainer = document.getElementById('order-candidates-output');
-    kanaNameInput = document.getElementById('order-kanaName');
-    dosageFormInput = document.getElementById('order-dosageForm');
+    // ▼▼▼ 修正: 不要な要素取得を削除 ▼▼▼
     coefficientInput = document.getElementById('order-reorder-coefficient');
-    shelfNumberInput = document.getElementById('order-shelf-number');
+    // ▲▲▲ 修正ここまで ▲▲▲
 
     // 3. 連続スキャンモーダルの初期化
-    initContinuousScan(); // from reorder_continuous_scan.js
+    initContinuousScan();
 
     // 4. 全イベントリスナーの初期化
-    // (CSV作成ボタン等が `fetchAndRenderReorder` を呼び出せるよう、コールバックとして渡す)
-    initReorderEvents(fetchAndRenderReorder); // from reorder_events.js
+    initReorderEvents(fetchAndRenderReorder);
 
     console.log("Reorder View Initialized (Hub).");
 }
 
 /**
  * 発注点リストのデータを取得して描画する (ビュー切り替え時のリセット関数)
- * (旧 reorder.js より)
  */
 export async function fetchAndRenderReorder() {
-    // (DOM要素は initReorderView でキャッシュ済み)
     if (outputContainer) {
         outputContainer.innerHTML = '<p>「発注候補を作成」ボタンを押してください。</p>';
     }
-    if (kanaNameInput) kanaNameInput.value = '';
-    if (dosageFormInput) dosageFormInput.value = '';
-    if (shelfNumberInput) shelfNumberInput.value = '';
+    // ▼▼▼ 修正: 不要な入力欄のリセットを削除 ▼▼▼
     if (coefficientInput) coefficientInput.value = '1.5';
+    // ▲▲▲ 修正ここまで ▲▲▲
 }
 
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\js\return_list.js -----
 // C:\Users\wasab\OneDrive\デスクトップ\TKR\static\js\return_list.js
-import { hiraganaToKatakana } from './utils.js';
+// import { hiraganaToKatakana } from './utils.js'; // 不要になったので削除
 
-let outputContainer, kanaNameInput, dosageFormInput, coefficientInput, shelfNumberInput;
+let outputContainer, coefficientInput;
 let runBtn;
 
 export function initReturnListView() {
     outputContainer = document.getElementById('return-candidates-output');
-    kanaNameInput = document.getElementById('return-kanaName');
-    dosageFormInput = document.getElementById('return-dosageForm');
+    // ▼▼▼ 修正: 不要な要素取得を削除 ▼▼▼
     coefficientInput = document.getElementById('return-coefficient');
-    shelfNumberInput = document.getElementById('return-shelf-number');
+    // ▲▲▲ 修正ここまで ▲▲▲
     runBtn = document.getElementById('generate-return-candidates-btn');
 
     if (runBtn) {
@@ -6000,12 +6004,14 @@ export function initReturnListView() {
 async function handleGenerateReturnCandidates() {
     window.showLoading('返品候補リストを作成中...');
     
+    // ▼▼▼ 修正: 不要な検索条件を削除し、空文字を送る ▼▼▼
     const params = new URLSearchParams({
-        kanaName: hiraganaToKatakana(kanaNameInput.value),
-        dosageForm: dosageFormInput.value,
-        shelfNumber: shelfNumberInput.value,
+        kanaName: '',
+        dosageForm: '',
+        shelfNumber: '',
         coefficient: coefficientInput.value,
     });
+    // ▲▲▲ 修正ここまで ▲▲▲
 
     try {
         const res = await fetch(`/api/returns/candidates?${params.toString()}`);
@@ -6028,7 +6034,6 @@ function renderReturnTable(candidates) {
         return;
     }
 
-    // style属性を削除し、classを使用
     let html = `
         <div class="return-list-condition">
             条件: 理論在庫 > ( 返品係数 × 発注点 + 予製 ) + 最小JAN包装数量<br>
@@ -6053,7 +6058,6 @@ function renderReturnTable(candidates) {
         const master = item.representative;
         const spec = master.formattedPackageSpec || item.packageKey;
         
-        // 箱数の表示（style削除、class使用）
         const boxInfo = item.returnableBoxes ? ` <span class="spec-info">(${item.returnableBoxes}箱)</span>` : '';
 
         html += `

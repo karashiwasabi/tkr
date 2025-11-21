@@ -1,4 +1,3 @@
-// C:\Users\wasab\OneDrive\デスクトップ\TKR\main.go
 package main
 
 import (
@@ -11,6 +10,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 
 	"github.com/jmoiron/sqlx"
 	_ "github.com/mattn/go-sqlite3"
@@ -91,7 +91,6 @@ func main() {
 			log.Fatalf("Failed to parse views/common_input_modal.html: %v", err)
 		}
 
-		// ▼▼▼【ここから追加】config用サブテンプレートの読み込み ▼▼▼
 		appTemplate, err = appTemplate.ParseFS(viewsFS, "_config_paths.html")
 		if err != nil {
 			log.Fatalf("Failed to parse views/_config_paths.html: %v", err)
@@ -108,7 +107,6 @@ func main() {
 		if err != nil {
 			log.Fatalf("Failed to parse views/_config_migration.html: %v", err)
 		}
-		// ▲▲▲【追加ここまで】▲▲▲
 	}
 
 	log.Println("HTML templates loaded and parsed.")
@@ -133,12 +131,10 @@ func main() {
 				return
 			}
 			for _, file := range files {
-				// ▼▼▼【ここを修正】サブテンプレートを除外リストに追加 ▼▼▼
 				if file != "search_form_group.html" && file != "common_search_modal.html" && file != "common_input_modal.html" &&
 					!strings.HasPrefix(file, "_config_") {
 					viewFiles = append(viewFiles, file)
 				}
-				// ▲▲▲【修正ここまで】▲▲▲
 			}
 		}
 
@@ -187,11 +183,15 @@ func main() {
 			viewMap[key] = template.HTML(viewContent.String())
 		}
 
+		currentVersion := time.Now().Format("20060102150405")
+
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		err = appTemplate.ExecuteTemplate(w, "index.html", struct {
-			Views map[string]template.HTML
+			Views      map[string]template.HTML
+			AppVersion string
 		}{
-			Views: viewMap,
+			Views:      viewMap,
+			AppVersion: currentVersion,
 		})
 		if err != nil {
 			log.Printf("Error executing main template: %v", err)
