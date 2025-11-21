@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -317,8 +318,7 @@ func GenerateReturnCandidatesHandler(db *sqlx.DB) http.HandlerFunc {
 					minJanPackQty = master.JanPackUnitQty
 				}
 
-				// ▼▼▼ 修正: 過剰数が「最小JAN包装数量」以上の場合のみリストアップする ▼▼▼
-				// 最小包装が0の場合は、過剰があれば出す
+				// 過剰数が「最小JAN包装数量」以上の場合のみリストアップする
 				if excess > 0 && (minJanPackQty == 0 || excess >= minJanPackQty) {
 					// 返品可能箱数
 					returnableBoxes := 0
@@ -352,11 +352,60 @@ func GenerateReturnCandidatesHandler(db *sqlx.DB) http.HandlerFunc {
 						NhiPrice:         master.NhiPrice,
 					})
 				}
-				// ▲▲▲ 修正ここまで ▲▲▲
 			}
 		}
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(results)
+	}
+}
+
+// ExportFixedLengthDatHandler は発注データから固定長DATファイルを生成してダウンロードさせます。
+func ExportFixedLengthDatHandler(conn *sqlx.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		// 設定から薬局ID (MedicodeUserID) を取得
+		cfg, err := config.LoadConfig()
+		if err != nil {
+			http.Error(w, "設定の読み込みに失敗しました: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		pharmacyID := cfg.MedicodeUserID // これを使用
+		if pharmacyID == "" {
+			http.Error(w, "設定画面で MEDICODE ユーザーID を設定してください。", http.StatusBadRequest)
+			return
+		}
+
+		var payload []DatOrderRequest
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			http.Error(w, "リクエストボディの解析に失敗: "+err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		if len(payload) == 0 {
+			http.Error(w, "発注対象データがありません。", http.StatusBadRequest)
+			return
+		}
+
+		// DAT生成
+		datBytes, err := GenerateFixedLengthDat(pharmacyID, payload)
+		if err != nil {
+			http.Error(w, "DATファイルの生成に失敗: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		// ファイルダウンロードとしてレスポンス
+		fileName := fmt.Sprintf("ORDER_%s.DAT", time.Now().Format("20060102150405"))
+		fileName = url.PathEscape(fileName)
+
+		w.Header().Set("Content-Type", "application/octet-stream")
+		w.Header().Set("Content-Disposition", "attachment; filename*=UTF-8''"+fileName)
+		w.Header().Set("Content-Length", fmt.Sprintf("%d", len(datBytes)))
+
+		w.Write(datBytes)
 	}
 }

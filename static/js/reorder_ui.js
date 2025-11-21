@@ -7,26 +7,21 @@ let outputContainer; // このモジュール内で出力先を保持
  */
 function formatBalance(balance) {
     if (typeof balance === 'number') {
-  
-      return balance;
+        return balance;
     }
     return balance;
 }
 
 /**
  * 検索モーダルやスキャンから品目をリストに追加または更新します。
- * (旧 reorder.js より移管)
  */
-export function addOrUpdateOrderItem(productMaster) 
-{
+export function addOrUpdateOrderItem(productMaster) {
     if (!outputContainer) outputContainer = document.getElementById('order-candidates-output');
-    
     const productCode = productMaster.productCode;
     const yjCode = productMaster.yjCode;
 
     // 既にリストにあるか確認 (発注可テーブル・不可テーブル両方を探す)
-    const existingRow = 
-outputContainer.querySelector(`tr[data-jan-code="${productCode}"]`);
+    const existingRow = outputContainer.querySelector(`tr[data-jan-code="${productCode}"]`);
     
     if (existingRow) {
         // 既に「発注不可」リストにある場合
@@ -50,65 +45,51 @@ outputContainer.querySelector(`tr[data-jan-code="${productCode}"]`);
         else {
             const quantityInput = existingRow.querySelector('.order-quantity-input');
             if (quantityInput) {
-      
-       quantityInput.value = parseInt(quantityInput.value, 10) + 1;
+                quantityInput.value = parseInt(quantityInput.value, 10) + 1;
                 window.showNotification(`「${productMaster.productName}」の数量を1増やしました。`, 'success');
             }
             return;
-}
+        }
     }
 
-     // 卸業者ドロップダウンを生成
+    // 卸業者ドロップダウンを生成
     let wholesalerOptions = '<option value="">--- 選択 ---</option>';
     wholesalerMap.forEach((name, code) => {
-    
-     const isSelected = (code === productMaster.supplierWholesale);
-        wholesalerOptions += `<option value="${code}" ${isSelected ? 
-'selected' : ''}>${name}</option>`;
+        const isSelected = (code === productMaster.supplierWholesale);
+        wholesalerOptions += `<option value="${code}" ${isSelected ? 'selected' : ''}>${name}</option>`;
     });
 
     // TKRのテーブル定義 (table.css) に合わせた操作ボタン
     const actionCellHTML = `
-       
- <td class="center col-action order-actions-cell">
+        <td class="center col-action order-actions-cell">
             <div class="order-action-buttons">
-       
-          <button type="button" class="remove-order-item-btn btn">除外</button>
-           
-      <button type="button" class="set-unorderable-btn btn" data-product-code="${productMaster.productCode}">発注不可</button>
+                <button type="button" class="remove-order-item-btn btn">除外</button>
+                <button type="button" class="set-unorderable-btn btn" data-product-code="${productMaster.productCode}">発注不可</button>
             </div>
-  
-       </td>
+        </td>
     `;
     
     // TKRのテーブル定義 (table.css) に合わせた列構成
     const newRowHTML = `
-  
-       <tr data-jan-code="${productMaster.productCode}" 
+        <tr data-jan-code="${productMaster.productCode}" 
             data-yj-code="${productMaster.yjCode}"
-   
-          data-product-name="${productMaster.productName}"
+            data-product-name="${productMaster.productName}"
+            /* ▼▼▼ 追加: カナ名短縮をデータ属性として保持 ▼▼▼ */
+            data-kana-name-short="${productMaster.kanaNameShort || ''}" 
+            /* ▲▲▲ 追加ここまで ▲▲▲ */
             data-package-form="${productMaster.packageForm}"
-  
-           data-jan-pack-inner-qty="${productMaster.janPackInnerQty}"
+            data-jan-pack-inner-qty="${productMaster.janPackInnerQty}"
             data-yj-unit-name="${productMaster.yjUnitName}"
- 
             data-yj-pack-unit-qty="${productMaster.yjPackUnitQty}"
-            
-data-order-multiplier="${productMaster.yjPackUnitQty}"> 
+            data-order-multiplier="${productMaster.yjPackUnitQty}"> 
             <td class="left col-product" colspan="2">${productMaster.productName}</td>
-        
-    <td class="left col-maker">${productMaster.makerName || ''}</td>
-             <td class="left col-package">${productMaster.formattedPackageSpec}</td>
- 
+            <td class="left col-maker">${productMaster.makerName || ''}</td>
+            <td class="left col-package">${productMaster.formattedPackageSpec}</td>
             <td class="col-wholesaler"><select class="wholesaler-select" style="width: 100%; font-size: 10px;">${wholesalerOptions}</select></td>
-      
-      <td class="col-count">${productMaster.yjPackUnitQty} ${productMaster.yjUnitName}</td>
-             <td class="col-line"><input type="number" 
-value="1" class="order-quantity-input" style="width: 100%; text-align: right;"></td>
-             ${actionCellHTML}
-      
-  </tr>
+            <td class="col-count">${productMaster.yjPackUnitQty} ${productMaster.yjUnitName}</td>
+            <td class="col-line"><input type="number" value="1" class="order-quantity-input" style="width: 100%; text-align: right;"></td>
+            ${actionCellHTML}
+        </tr>
     `;
 
     // 「発注対象品目」テーブルを探す
@@ -172,16 +153,12 @@ value="1" class="order-quantity-input" style="width: 100%; text-align: right;"><
 
 /**
  * 発注候補リスト（自動生成）を描画します。
- * (旧 
-reorder.js より移管)
  */
 export function renderOrderCandidates(data, container) {
-  
-   outputContainer = container; // 出力先をキャッシュ
-    if (!data.candidates || data.candidates.length === 
-0) {
-       
-  container.innerHTML = "<p>発注が必要な品目はありませんでした。</p>";
+    outputContainer = container; // 出力先をキャッシュ
+    
+    if (!data.candidates || data.candidates.length === 0) {
+        container.innerHTML = "<p>発注が必要な品目はありませんでした。</p>";
         return;
     }
 
@@ -192,9 +169,8 @@ export function renderOrderCandidates(data, container) {
         (yjGroup.packageLedgers || []).forEach(pkg => {
             if (pkg.masters && Array.isArray(pkg.masters)) {
                 pkg.masters.forEach(master => {
-                    const pkgShortfall = pkg.reorderPoint - (pkg.endingBalance || 0);
                     
-                    // ▼▼▼【修正】 発注残(effectiveEndingBalance)を考慮した不足数の場合のみリストアップ ▼▼▼
+                    // 発注残(effectiveEndingBalance)を考慮した不足数の場合のみリストアップ
                     const effectiveShortfall = pkg.reorderPoint - pkg.effectiveEndingBalance;
                     
                     if (effectiveShortfall > 0) { // 発注残を考慮しても不足している品目のみを対象
@@ -205,7 +181,6 @@ export function renderOrderCandidates(data, container) {
                             shortfall: effectiveShortfall // 発注残考慮後の不足数を渡す
                         });
                     }
-                    // ▲▲▲【修正ここまで】▲▲▲
                 });
             }
         });
@@ -276,6 +251,9 @@ export function renderOrderCandidates(data, container) {
                 <tr data-jan-code="${master.productCode}" 
                     data-yj-code="${yjGroup.yjCode}"
                     data-product-name="${master.productName}"
+                    /* ▼▼▼ 追加: カナ名短縮をデータ属性として保持 ▼▼▼ */
+                    data-kana-name-short="${master.kanaNameShort || ''}"
+                    /* ▲▲▲ 追加ここまで ▲▲▲ */
                     data-package-form="${master.packageForm}"
                     data-jan-pack-inner-qty="${master.janPackInnerQty}"
                     data-yj-unit-name="${master.yjUnitName}"

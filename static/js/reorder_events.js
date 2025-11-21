@@ -7,7 +7,9 @@ import { openContinuousScanModal } from './reorder_continuous_scan.js';
 let outputContainer, coefficientInput;
 let createCsvBtn, barcodeInput, barcodeForm, addFromMasterBtn;
 let runBtn, continuousOrderBtn;
-// ★追加
+// ▼▼▼ 追加: 変数定義 ▼▼▼
+let createDatBtn;
+// ▲▲▲ 追加ここまで ▲▲▲
 let reservationBtn, reservationModal, reservationDateTimeInput, cancelReservationBtn, confirmReservationBtn;
 
 async function handleOrderBarcodeScan(e) { 
@@ -42,15 +44,13 @@ function handleAddFromMaster() {
 
 async function handleGenerateCandidates() { 
     window.showLoading('発注候補リストを作成中...');
-    
-    // ▼▼▼ 修正: 不要な検索条件を削除し、空文字を送る ▼▼▼
+    // 不要な検索条件を削除し、空文字を送る
     const params = new URLSearchParams({
         kanaName: '',
         dosageForm: '',
         shelfNumber: '',
         coefficient: coefficientInput.value,
     });
-    // ▲▲▲ 修正ここまで ▲▲▲
 
     try {
         const res = await fetch(`/api/reorder/candidates?${params.toString()}`);
@@ -214,6 +214,94 @@ async function handlePlaceReservation(fetchAndRenderReorderCallback) {
     }
 }
 
+// ▼▼▼ 追加: DAT作成ハンドラ ▼▼▼
+async function handleCreateDat() {
+    const rows = outputContainer.querySelectorAll('#orderable-table tbody tr');
+    if (rows.length === 0) {
+        window.showNotification('発注する品目がありません。', 'error');
+        return;
+    }
+
+    const payload = [];
+    rows.forEach(row => {
+        if (row.classList.contains('provisional-order-item')) return;
+        
+        const quantityInput = row.querySelector('.order-quantity-input');
+        const quantity = parseFloat(quantityInput.value) || 0;
+        
+        if (quantity > 0) {
+            const janCode = row.dataset.janCode;
+            const wholesalerCode = row.querySelector('.wholesaler-select').value;
+            const kanaNameShort = row.dataset.kanaNameShort || ''; // UIで追加した属性を取得
+
+            if (!wholesalerCode) {
+                // 卸未選択はスキップ、あるいはエラーにする？とりあえずスキップ
+                return; 
+            }
+
+            payload.push({
+                janCode: janCode,
+                wholesalerCode: wholesalerCode,
+                orderQuantity: quantity,
+                kanaNameShort: kanaNameShort
+            });
+        }
+    });
+
+    if (payload.length === 0) {
+        window.showNotification('発注数1以上の有効な品目がありません。', 'error');
+        return;
+    }
+
+    if(!confirm("固定長DATファイルを作成しますか？\n※MEDICODEユーザーIDが薬局IDとして使用されます。")) {
+        return;
+    }
+
+    window.showLoading('DATファイルを作成中...');
+    try {
+        const res = await fetch('/api/reorder/export_dat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+        });
+
+        if (!res.ok) {
+            const errText = await res.text();
+            throw new Error(errText || 'DAT作成に失敗しました。');
+        }
+
+        // ファイルダウンロード処理
+        const blob = await res.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        
+        // ファイル名を取得 (Content-Dispositionから)
+        const contentDisposition = res.headers.get('Content-Disposition');
+        let fileName = 'order.dat';
+        if (contentDisposition && contentDisposition.indexOf('filename*=') !== -1) {
+            const match = contentDisposition.match(/filename\*=UTF-8''(.+)/);
+            if (match && match[1]) {
+                fileName = decodeURIComponent(match[1]);
+            }
+        }
+        
+        a.download = fileName;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        window.URL.revokeObjectURL(url);
+
+        window.showNotification('DATファイルをダウンロードしました。', 'success');
+
+    } catch (err) {
+        window.showNotification(err.message, 'error');
+    } finally {
+        window.hideLoading();
+    }
+}
+// ▲▲▲ 追加ここまで ▲▲▲
+
 async function handleTableClicks(e, handleGenerateCandidatesCallback) { 
     const target = e.target;
     const row = target.closest('tr');
@@ -236,7 +324,6 @@ async function handleTableClicks(e, handleGenerateCandidatesCallback) {
             if (!res.ok) throw new Error(resData.message || '更新に失敗しました。');
             
             window.showNotification(`「${productName}」を発注不可に設定しました。`, 'success');
-            
             row.remove(); 
             
             window.showNotification('発注不可リストに移動しました。リストを更新します。', 'info');
@@ -278,7 +365,6 @@ async function handleTableClicks(e, handleGenerateCandidatesCallback) {
         const tbody = row.closest('tbody');
         const table = tbody.closest('table');
         row.remove();
-        
         if (tbody.children.length === 0 && table.id === 'orderable-table') {
             const header = outputContainer.querySelector('h3');
             if(header) header.textContent = `発注対象品目 (0件)`;
@@ -290,14 +376,16 @@ async function handleTableClicks(e, handleGenerateCandidatesCallback) {
 export function initReorderEvents(fetchAndRenderReorderCallback) { 
     runBtn = document.getElementById('generate-order-candidates-btn');
     outputContainer = document.getElementById('order-candidates-output');
-    // ▼▼▼ 修正: 不要な要素取得を削除 ▼▼▼
     coefficientInput = document.getElementById('order-reorder-coefficient');
     createCsvBtn = document.getElementById('createOrderCsvBtn');
     barcodeInput = document.getElementById('order-barcode-input');
     barcodeForm = document.getElementById('order-barcode-form');
     addFromMasterBtn = document.getElementById('add-order-item-from-master-btn');
     continuousOrderBtn = document.getElementById('continuous-order-btn');
-    // ▲▲▲ 修正ここまで ▲▲▲
+
+    // ▼▼▼ 追加: ボタン要素取得 ▼▼▼
+    createDatBtn = document.getElementById('createFixedLengthDatBtn');
+    // ▲▲▲ 追加ここまで ▲▲▲
 
     reservationBtn = document.getElementById('reservation-order-btn');
     reservationModal = document.getElementById('reservation-modal');
@@ -324,7 +412,12 @@ export function initReorderEvents(fetchAndRenderReorderCallback) {
         outputContainer.addEventListener('click', (e) => handleTableClicks(e, handleGenerateCandidates));
     }
 
-    // ★追加: 予約ボタンイベント
+    // ▼▼▼ 追加: イベントリスナー登録 ▼▼▼
+    if (createDatBtn) {
+        createDatBtn.addEventListener('click', handleCreateDat);
+    }
+    // ▲▲▲ 追加ここまで ▲▲▲
+
     if (reservationBtn) {
         reservationBtn.addEventListener('click', () => {
             const rows = outputContainer.querySelectorAll('#orderable-table tbody tr');

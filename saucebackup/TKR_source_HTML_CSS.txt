@@ -1860,7 +1860,7 @@ body {
         <fieldset>
             <legend>表示フィルタ</legend>
             <div class="search-form-container">
-                <div class="search-filter-row">
+                <div class="search-row-unified">
                     <div class="form-group">
                         <label for="bo-search-kana">品名・カナ名 (部分一致):</label>
                         <input type="text" id="bo-search-kana" class="search-filter-input" autocomplete="off">
@@ -2596,29 +2596,19 @@ type="date" id="ds-end-date">
         <fieldset>
             <legend>集計条件</legend>
             <div class="search-form-container">
-                <div class="search-filter-row">
+                <div class="search-row-unified">
                     <div class="form-group">
                         <label for="valuation-date">評価基準日:</label>
                         <input type="date" id="valuation-date" class="search-filter-input" style="width: 150px;">
                     </div>
-                    <div class="form-group">
-                        <label for="val-kanaName">品名・カナ名 (部分一致):</label>
-                        <input type="text" id="val-kanaName" class="search-filter-input" autocomplete="off">
-                    </div>
-                    <div class="form-group">
-                        <label for="val-dosageForm">剤型:</label>
-                        <select id="val-dosageForm" class="search-filter-input">
-                            <option value="all">すべて</option>
-                            <option value="内">内</option>
-                            <option value="外">外</option>
-                            <option value="歯">歯</option>
-                            <option value="注">注</option>
-                            <option value="機">機</option>
-                            <option value="他">他</option>
-                        </select>
-                    </div>
-                    <button id="run-valuation-btn" class="btn search-submit-button">在庫評価を実行</button>
+                    
+                    <input type="hidden" id="val-kanaName">
+                    <input type="hidden" id="val-dosageForm" value="all">
+
+                    <button id="run-valuation-btn" class="btn search-submit-button" style="background-color: #198754; color: white;">在庫評価を実行</button>
+                    <button id="valOpenSearchModalBtn" class="btn search-submit-button">品目検索...</button>
                 </div>
+                <div style="margin-top: 5px; font-size: 0.9em; color: #0d6efd;" id="val-search-status"></div>
             </div>
         </fieldset>
     </div>
@@ -2630,8 +2620,7 @@ type="date" id="ds-end-date">
     <div id="valuation-output-container" class="table-container">
         <p>評価基準日を指定して「在庫評価を実行」ボタンを押してください。</p>
     </div>
-
-    </div>
+</div>
 
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\index.html -----
 <!DOCTYPE html>
@@ -2705,7 +2694,7 @@ type="date" id="ds-end-date">
     {{ template "common_input_modal" . }}
     {{ template "shelf_registration_modal" . }}
     <script src="/static/js/lib/encoding.min.js"></script>
-    <script type="module" src="/static/js/app.js?v=2025110703"></script>
+    <script type="module" src="/static/js/app.js?v={{.AppVersion}}"></script>
 </body>
 </html>
 

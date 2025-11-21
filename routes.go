@@ -1,3 +1,4 @@
+// C:\Users\wasab\OneDrive\デスクトップ\TKR\routes.go
 package main
 
 import (
@@ -145,6 +146,7 @@ func SetupRoutes(mux *http.ServeMux, dbConn *sqlx.DB) {
 
 	mux.HandleFunc("/api/reorder/candidates", reorder.GenerateOrderCandidatesHandler(dbConn))
 	mux.HandleFunc("/api/orders/place", reorder.PlaceOrderHandler(dbConn))
+	mux.HandleFunc("/api/reorder/export_dat", reorder.ExportFixedLengthDatHandler(dbConn)) // ★追加
 	mux.HandleFunc("/api/backorders", backorder.GetBackordersHandler(dbConn))
 	mux.HandleFunc("/api/backorders/delete", backorder.DeleteBackorderHandler(dbConn))
 	mux.HandleFunc("/api/backorders/bulk_delete_by_id", backorder.BulkDeleteBackordersByIDHandler(dbConn))
