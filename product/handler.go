@@ -19,6 +19,7 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
+// (inputToMaster 関数は変更なし)
 func inputToMaster(input model.ProductMasterInput) *model.ProductMaster {
 	return &model.ProductMaster{
 		ProductCode:         input.ProductCode,
@@ -72,9 +73,21 @@ func SearchProductsHandler(conn *sqlx.DB) http.HandlerFunc {
 		}
 
 		if searchMode == "inout" {
-			// --- 「JCSHMSから採用」フロー (マスタ編集, 入出庫明細) ---
+			// --- 「JCSHMSから採用」フロー (マスタ編集, 入出庫明細, 発注追加) ---
 
-			// 1. 採用済みの全JANコードマップを取得
+			// 1. ローカルマスタ(product_master)を先に検索してマップ化する
+			//    これにより、JCSHMS側で見つかった品目がローカルにもある場合、ローカルの情報を優先できる（卸情報など）
+			localMasters, err := database.GetFilteredProductMasters(conn, dosageForm, kanaName, genericName, shelfNumber, productName, drugTypes)
+			if err != nil {
+				http.Error(w, "Failed to search product_master: "+err.Error(), http.StatusInternalServerError)
+				return
+			}
+			localMasterMap := make(map[string]model.ProductMaster)
+			for _, m := range localMasters {
+				localMasterMap[m.ProductCode] = m
+			}
+
+			// 2. 採用済みの全JANコードマップを取得 (検索条件にヒットしなくても、採用済みかどうかの判定用)
 			adoptedCodeMap, err := database.GetAllAdoptedProductCodesMap(conn)
 			if err != nil {
 				http.Error(w, "Failed to get adopted product map: "+err.Error(), http.StatusInternalServerError)
@@ -84,7 +97,7 @@ func SearchProductsHandler(conn *sqlx.DB) http.HandlerFunc {
 			mergedResults := []model.ProductMasterView{}
 			seenCodes := make(map[string]bool)
 
-			// 2. JCSHMS から検索 (未採用/採用済 候補)
+			// 3. JCSHMS から検索
 			jcshmsResults, err := database.GetFilteredJcshmsInfo(conn, dosageForm, kanaName, genericName, productName, drugTypes)
 			if err != nil {
 				http.Error(w, "Failed to search jcshms_master: "+err.Error(), http.StatusInternalServerError)
@@ -92,34 +105,40 @@ func SearchProductsHandler(conn *sqlx.DB) http.HandlerFunc {
 			}
 
 			for _, jcshmsInfo := range jcshmsResults {
-				input := mastermanager.JcshmsToProductMasterInput(jcshmsInfo)
-				tempMaster := inputToMaster(input)
-				view := mappers.ToProductMasterView(tempMaster)
+				jan := jcshmsInfo.ProductCode
 
-				// 3. 採用済マップで照会し、赤文字フラグを設定
-				if _, ok := adoptedCodeMap[view.ProductCode]; ok {
+				// ★修正ポイント: ローカルマスタに同じJANがあれば、そちらを優先して使う
+				if localM, exists := localMasterMap[jan]; exists {
+					view := mappers.ToProductMasterView(&localM)
 					view.IsAdopted = true
+					mergedResults = append(mergedResults, view)
 				} else {
-					view.IsAdopted = false
+					// ローカルになければJCSHMSのデータを使う
+					input := mastermanager.JcshmsToProductMasterInput(jcshmsInfo)
+					tempMaster := inputToMaster(input)
+					view := mappers.ToProductMasterView(tempMaster)
+
+					// 採用済マップで照会 (検索条件には引っかからなかったが、実は採用済みの場合など)
+					if _, ok := adoptedCodeMap[view.ProductCode]; ok {
+						view.IsAdopted = true
+						// ※ここで本来ならそのローカルマスタを取得すべきだが、検索条件外ならJCSHMS表示で妥協するか、
+						// 個別に取得するコストを天秤にかける。
+						// 基本的に「検索して追加」の場面なので、検索条件にヒットしたlocalMasterMapで十分カバーできるはず。
+					} else {
+						view.IsAdopted = false
+					}
+					mergedResults = append(mergedResults, view)
 				}
-
-				mergedResults = append(mergedResults, view)
-				seenCodes[view.ProductCode] = true
+				seenCodes[jan] = true
 			}
 
-			// 4. 独自マスタ(PROVISIONAL)から検索
-			adoptedMasters, err := database.GetFilteredProductMasters(conn, dosageForm, kanaName, genericName, shelfNumber, productName, drugTypes)
-			if err != nil {
-				http.Error(w, "Failed to search product_master: "+err.Error(), http.StatusInternalServerError)
-				return
-			}
-
-			for _, master := range adoptedMasters {
+			// 4. ローカルマスタのみに存在する品目（PROVISIONALなど）を追加
+			for _, master := range localMasters {
 				if seenCodes[master.ProductCode] {
-					continue // JCSHMS検索で既に追加済みのものはスキップ
+					continue // 既に追加済みならスキップ
 				}
 				view := mappers.ToProductMasterView(&master)
-				view.IsAdopted = true // product_masterにあるものは常に採用済み
+				view.IsAdopted = true
 				mergedResults = append(mergedResults, view)
 				seenCodes[master.ProductCode] = true
 			}
@@ -133,7 +152,8 @@ func SearchProductsHandler(conn *sqlx.DB) http.HandlerFunc {
 			json.NewEncoder(w).Encode(mergedResults)
 
 		} else {
-			// --- それ以外の通常検索 (棚卸調整, DAT取込, 発注) ---
+			// --- 通常検索 (棚卸調整, DAT取込など) ---
+			// ここは変更なし (ローカルマスタのみ検索)
 
 			localMasters, err := database.GetFilteredProductMasters(conn, dosageForm, kanaName, genericName, shelfNumber, productName, drugTypes)
 			if err != nil {
@@ -144,7 +164,7 @@ func SearchProductsHandler(conn *sqlx.DB) http.HandlerFunc {
 			results := make([]model.ProductMasterView, len(localMasters))
 			for i, master := range localMasters {
 				view := mappers.ToProductMasterView(&master)
-				view.IsAdopted = true // ローカルに存在するので全て採用済み
+				view.IsAdopted = true
 				results[i] = view
 			}
 
@@ -158,7 +178,9 @@ func SearchProductsHandler(conn *sqlx.DB) http.HandlerFunc {
 	}
 }
 
+// ... (GetProductByBarcodeHandler 以降は変更なし)
 func GetProductByBarcodeHandler(conn *sqlx.DB) http.HandlerFunc {
+	// (省略: 変更なし)
 	return func(w http.ResponseWriter, r *http.Request) {
 		rawBarcode := strings.TrimPrefix(r.URL.Path, "/api/product/by_barcode/")
 		if rawBarcode == "" {
@@ -257,6 +279,7 @@ func GetProductByBarcodeHandler(conn *sqlx.DB) http.HandlerFunc {
 }
 
 func AdoptMasterHandler(conn *sqlx.DB) http.HandlerFunc {
+	// (省略: 変更なし)
 	return func(w http.ResponseWriter, r *http.Request) {
 		var payload struct {
 			Gs1Code     string `json:"gs1Code"`
