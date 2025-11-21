@@ -36,13 +36,21 @@ type OrderCandidatePackageGroup struct {
 
 // 返品推奨リスト用の構造体
 type ReturnCandidate struct {
-	ProductName     string  `json:"productName"`
-	MakerName       string  `json:"makerName"`
-	PackageForm     string  `json:"packageForm"`
-	LastInDate      string  `json:"lastInDate"`
-	EstimatedExpiry string  `json:"estimatedExpiry"`
-	StockQuantity   float64 `json:"stockQuantity"`
-	NhiPrice        float64 `json:"nhiPrice"`
+	Representative   model.ProductMasterView `json:"representative"`
+	ProductName      string                  `json:"productName"`
+	MakerName        string                  `json:"makerName"`
+	PackageForm      string                  `json:"packageForm"`
+	PackageKey       string                  `json:"packageKey"`
+	LastInDate       string                  `json:"lastInDate"`
+	EstimatedExpiry  string                  `json:"estimatedExpiry"`
+	StockQuantity    float64                 `json:"stockQuantity"`
+	NhiPrice         float64                 `json:"nhiPrice"`
+	MinJanPackQty    float64                 `json:"minJanPackQty"`
+	Threshold        float64                 `json:"threshold"`
+	ExcessQuantity   float64                 `json:"excessQuantity"`
+	ReturnableBoxes  int                     `json:"returnableBoxes"`
+	UnitName         string                  `json:"unitName"`
+	TheoreticalStock float64                 `json:"theoreticalStock"`
 }
 
 func GenerateOrderCandidatesHandler(conn *sqlx.DB) http.HandlerFunc {
@@ -129,8 +137,6 @@ func GenerateOrderCandidatesHandler(conn *sqlx.DB) http.HandlerFunc {
 
 		backordersByPackageKey := make(map[string][]model.Backorder)
 		for _, bo := range allBackorders {
-			// ★修正: 予約除外のコードを削除。これで予約分も「既存の発注残」として画面に表示され、
-			// 集計(aggregation)側でも在庫としてカウントされるため、二重発注候補が出なくなります。
 			resolvedKey := fmt.Sprintf("%s|%s|%g|%s", bo.YjCode, bo.PackageForm, bo.JanPackInnerQty, units.ResolveName(bo.YjUnitName))
 			backordersByPackageKey[resolvedKey] = append(backordersByPackageKey[resolvedKey], bo)
 		}
@@ -252,76 +258,102 @@ func PlaceOrderHandler(conn *sqlx.DB) http.HandlerFunc {
 	}
 }
 
-// GenerateReturnCandidatesHandler (期間指定なし版)
+// GenerateReturnCandidatesHandler
+// 在庫過多（不動含む）の品目を検出し、返品推奨リストを作成します。
 func GenerateReturnCandidatesHandler(db *sqlx.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		q := r.URL.Query()
+		kanaName := q.Get("kanaName")
+		dosageForm := q.Get("dosageForm")
+		shelfNumber := q.Get("shelfNumber")
+		coefficientStr := q.Get("coefficient")
+		coefficient, err := strconv.ParseFloat(coefficientStr, 64)
+		if err != nil {
+			coefficient = 1.5 // デフォルト
+		}
+
 		cfg, err := config.LoadConfig()
 		if err != nil {
 			http.Error(w, "設定の読み込みに失敗しました", http.StatusInternalServerError)
 			return
 		}
-		days := cfg.CalculationPeriodDays
-		deadline := time.Now().AddDate(0, 0, -days).Format("20060102")
+		now := time.Now()
+		startDate := now.AddDate(0, 0, -cfg.CalculationPeriodDays)
 
-		query := `
-			SELECT 
-				p.product_name,
-				p.maker_name,
-				p.package_form,
-				p.nhi_price,
-				IFNULL(MAX(CASE WHEN t.flag IN (1, 11) THEN t.transaction_date END), '') as last_in_date,
-				IFNULL(MAX(CASE WHEN t.flag IN (3, 12) THEN t.transaction_date END), '') as last_out_date,
-				SUM(CASE 
-					WHEN t.flag IN (1, 11) THEN t.yj_quantity 
-					WHEN t.flag IN (3, 2, 12) THEN -t.yj_quantity 
-					ELSE 0 END
-				) as stock_quantity
-			FROM product_master p
-			LEFT JOIN transaction_records t ON p.product_code = t.jan_code
-			GROUP BY p.product_code
-			HAVING 
-				stock_quantity > 0 
-				AND (last_out_date < ? OR last_out_date = '')
-				AND (last_in_date < ? OR last_in_date = '')
-			ORDER BY last_in_date ASC
-		`
+		// 1. 共通集計関数を呼び出す
+		aggFilters := model.AggregationFilters{
+			StartDate:   startDate.Format("20060102"),
+			EndDate:     "99991231",
+			KanaName:    kanaName,
+			DosageForm:  dosageForm,
+			ShelfNumber: shelfNumber,
+			Coefficient: 1.0,
+		}
 
-		rows, err := db.Queryx(query, deadline, deadline)
+		yjGroups, err := aggregation.GetStockLedger(db, aggFilters)
 		if err != nil {
-			http.Error(w, "返品候補の抽出に失敗しました: "+err.Error(), http.StatusInternalServerError)
+			http.Error(w, "在庫集計に失敗しました: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
-		defer rows.Close()
 
 		var results []ReturnCandidate
-		for rows.Next() {
-			var item struct {
-				ProductName   string  `db:"product_name"`
-				MakerName     string  `db:"maker_name"`
-				PackageForm   string  `db:"package_form"`
-				NhiPrice      float64 `db:"nhi_price"`
-				LastInDate    string  `db:"last_in_date"`
-				StockQuantity float64 `db:"stock_quantity"`
-			}
-			if err := rows.StructScan(&item); err != nil {
-				continue
-			}
 
-			expiry := ""
-			if item.LastInDate != "" {
-				t, _ := time.Parse("20060102", item.LastInDate)
-				expiry = t.AddDate(3, 0, 0).Format("2006/01") + " (推定)"
-			}
+		for _, group := range yjGroups {
+			for _, pkg := range group.PackageLedgers {
+				// 閾値と過剰数の計算
+				threshold := (pkg.BaseReorderPoint * coefficient) + pkg.PrecompoundedTotal
+				excess := pkg.EffectiveEndingBalance - threshold
 
-			results = append(results, ReturnCandidate{
-				ProductName:     item.ProductName,
-				MakerName:       item.MakerName,
-				PackageForm:     item.PackageForm,
-				LastInDate:      item.LastInDate,
-				EstimatedExpiry: expiry,
-				StockQuantity:   item.StockQuantity,
-				NhiPrice:        item.NhiPrice,
-			})
+				var master *model.ProductMaster
+				if len(pkg.Masters) > 0 {
+					master = pkg.Masters[0]
+				} else {
+					continue
+				}
+
+				// 最小包装単位 (JAN包装) の確認
+				minJanPackQty := 0.0
+				if master.JanPackUnitQty > 0 {
+					minJanPackQty = master.JanPackUnitQty
+				}
+
+				// ▼▼▼ 修正: 過剰数が「最小JAN包装数量」以上の場合のみリストアップする ▼▼▼
+				// 最小包装が0の場合は、過剰があれば出す
+				if excess > 0 && (minJanPackQty == 0 || excess >= minJanPackQty) {
+					// 返品可能箱数
+					returnableBoxes := 0
+					if minJanPackQty > 0 {
+						returnableBoxes = int(excess / minJanPackQty)
+					}
+
+					lastIn := ""
+					for _, t := range pkg.Transactions {
+						if t.Flag == 1 || t.Flag == 11 {
+							if t.TransactionDate > lastIn {
+								lastIn = t.TransactionDate
+							}
+						}
+					}
+
+					results = append(results, ReturnCandidate{
+						Representative:   mappers.ToProductMasterView(master),
+						ProductName:      master.ProductName,
+						MakerName:        master.MakerName,
+						PackageForm:      master.PackageForm,
+						PackageKey:       pkg.PackageKey,
+						LastInDate:       lastIn,
+						StockQuantity:    pkg.EndingBalance.(float64), // 現在在庫(生)
+						TheoreticalStock: pkg.EffectiveEndingBalance,  // 発注残・予製込みの理論在庫
+						Threshold:        threshold,
+						ExcessQuantity:   excess,
+						MinJanPackQty:    minJanPackQty,
+						ReturnableBoxes:  returnableBoxes,
+						UnitName:         group.YjUnitName,
+						NhiPrice:         master.NhiPrice,
+					})
+				}
+				// ▲▲▲ 修正ここまで ▲▲▲
+			}
 		}
 
 		w.Header().Set("Content-Type", "application/json")

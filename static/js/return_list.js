@@ -1,15 +1,14 @@
 // C:\Users\wasab\OneDrive\デスクトップ\TKR\static\js\return_list.js
-import { hiraganaToKatakana } from './utils.js';
+// import { hiraganaToKatakana } from './utils.js'; // 不要になったので削除
 
-let outputContainer, kanaNameInput, dosageFormInput, coefficientInput, shelfNumberInput;
+let outputContainer, coefficientInput;
 let runBtn;
 
 export function initReturnListView() {
     outputContainer = document.getElementById('return-candidates-output');
-    kanaNameInput = document.getElementById('return-kanaName');
-    dosageFormInput = document.getElementById('return-dosageForm');
+    // ▼▼▼ 修正: 不要な要素取得を削除 ▼▼▼
     coefficientInput = document.getElementById('return-coefficient');
-    shelfNumberInput = document.getElementById('return-shelf-number');
+    // ▲▲▲ 修正ここまで ▲▲▲
     runBtn = document.getElementById('generate-return-candidates-btn');
 
     if (runBtn) {
@@ -22,12 +21,14 @@ export function initReturnListView() {
 async function handleGenerateReturnCandidates() {
     window.showLoading('返品候補リストを作成中...');
     
+    // ▼▼▼ 修正: 不要な検索条件を削除し、空文字を送る ▼▼▼
     const params = new URLSearchParams({
-        kanaName: hiraganaToKatakana(kanaNameInput.value),
-        dosageForm: dosageFormInput.value,
-        shelfNumber: shelfNumberInput.value,
+        kanaName: '',
+        dosageForm: '',
+        shelfNumber: '',
         coefficient: coefficientInput.value,
     });
+    // ▲▲▲ 修正ここまで ▲▲▲
 
     try {
         const res = await fetch(`/api/returns/candidates?${params.toString()}`);
@@ -50,7 +51,6 @@ function renderReturnTable(candidates) {
         return;
     }
 
-    // style属性を削除し、classを使用
     let html = `
         <div class="return-list-condition">
             条件: 理論在庫 > ( 返品係数 × 発注点 + 予製 ) + 最小JAN包装数量<br>
@@ -75,7 +75,6 @@ function renderReturnTable(candidates) {
         const master = item.representative;
         const spec = master.formattedPackageSpec || item.packageKey;
         
-        // 箱数の表示（style削除、class使用）
         const boxInfo = item.returnableBoxes ? ` <span class="spec-info">(${item.returnableBoxes}箱)</span>` : '';
 
         html += `

@@ -1,9 +1,10 @@
-import { hiraganaToKatakana, fetchProductMasterByBarcode } from './utils.js';
+// C:\Users\wasab\OneDrive\デスクトップ\TKR\static\js\reorder_events.js
+import { fetchProductMasterByBarcode } from './utils.js';
 import { showModal } from './search_modal.js';
 import { renderOrderCandidates, addOrUpdateOrderItem } from './reorder_ui.js';
 import { openContinuousScanModal } from './reorder_continuous_scan.js';
 
-let outputContainer, kanaNameInput, dosageFormInput, coefficientInput, shelfNumberInput;
+let outputContainer, coefficientInput;
 let createCsvBtn, barcodeInput, barcodeForm, addFromMasterBtn;
 let runBtn, continuousOrderBtn;
 // ★追加
@@ -41,12 +42,15 @@ function handleAddFromMaster() {
 
 async function handleGenerateCandidates() { 
     window.showLoading('発注候補リストを作成中...');
+    
+    // ▼▼▼ 修正: 不要な検索条件を削除し、空文字を送る ▼▼▼
     const params = new URLSearchParams({
-        kanaName: hiraganaToKatakana(kanaNameInput.value),
-        dosageForm: dosageFormInput.value,
-        shelfNumber: shelfNumberInput.value,
+        kanaName: '',
+        dosageForm: '',
+        shelfNumber: '',
         coefficient: coefficientInput.value,
     });
+    // ▲▲▲ 修正ここまで ▲▲▲
 
     try {
         const res = await fetch(`/api/reorder/candidates?${params.toString()}`);
@@ -71,7 +75,7 @@ function getOrderItems(rows) {
         if (row.classList.contains('provisional-order-item')) {
             return;
         }
-        
+       
         const quantityInput = row.querySelector('.order-quantity-input');
         const quantity = parseInt(quantityInput.value, 10);
         
@@ -121,6 +125,7 @@ async function handleCreateCsv(fetchAndRenderReorderCallback) {
         if (row.classList.contains('provisional-order-item')) return;
         const quantityInput = row.querySelector('.order-quantity-input');
         const quantity = parseInt(quantityInput.value, 10);
+    
         if (quantity > 0) {
             const janCode = row.dataset.janCode;
             const productName = row.cells[0].textContent; 
@@ -137,6 +142,7 @@ async function handleCreateCsv(fetchAndRenderReorderCallback) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(backorderPayload),
         });
+ 
         const resData = await res.json();
         if (!res.ok) throw new Error(resData.message || '発注残の登録に失敗しました。');
         
@@ -284,17 +290,15 @@ async function handleTableClicks(e, handleGenerateCandidatesCallback) {
 export function initReorderEvents(fetchAndRenderReorderCallback) { 
     runBtn = document.getElementById('generate-order-candidates-btn');
     outputContainer = document.getElementById('order-candidates-output');
-    kanaNameInput = document.getElementById('order-kanaName');
-    dosageFormInput = document.getElementById('order-dosageForm');
+    // ▼▼▼ 修正: 不要な要素取得を削除 ▼▼▼
     coefficientInput = document.getElementById('order-reorder-coefficient');
     createCsvBtn = document.getElementById('createOrderCsvBtn');
     barcodeInput = document.getElementById('order-barcode-input');
     barcodeForm = document.getElementById('order-barcode-form');
-    shelfNumberInput = document.getElementById('order-shelf-number');
     addFromMasterBtn = document.getElementById('add-order-item-from-master-btn');
     continuousOrderBtn = document.getElementById('continuous-order-btn');
-    
-    // ★追加: 予約関連の要素取得
+    // ▲▲▲ 修正ここまで ▲▲▲
+
     reservationBtn = document.getElementById('reservation-order-btn');
     reservationModal = document.getElementById('reservation-modal');
     reservationDateTimeInput = document.getElementById('reservation-datetime');
@@ -340,7 +344,6 @@ export function initReorderEvents(fetchAndRenderReorderCallback) {
             const min = String(tomorrow.getMinutes()).padStart(2, '0');
             
             reservationDateTimeInput.value = `${yyyy}-${mm}-${dd}T${hh}:${min}`;
-            
             reservationModal.classList.remove('hidden');
         });
     }
