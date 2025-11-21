@@ -215,7 +215,7 @@ async function handlePlaceReservation(fetchAndRenderReorderCallback) {
 }
 
 // ▼▼▼ 追加: DAT作成ハンドラ ▼▼▼
-async function handleCreateDat() {
+async function handleCreateDat(fetchAndRenderReorderCallback) {
     const rows = outputContainer.querySelectorAll('#orderable-table tbody tr');
     if (rows.length === 0) {
         window.showNotification('発注する品目がありません。', 'error');
@@ -228,36 +228,39 @@ async function handleCreateDat() {
         
         const quantityInput = row.querySelector('.order-quantity-input');
         const quantity = parseFloat(quantityInput.value) || 0;
+        const wholesalerCode = row.querySelector('.wholesaler-select').value;
         
-        if (quantity > 0) {
+        if (quantity > 0 && wholesalerCode) {
             const janCode = row.dataset.janCode;
-            const wholesalerCode = row.querySelector('.wholesaler-select').value;
-            const kanaNameShort = row.dataset.kanaNameShort || ''; // UIで追加した属性を取得
-
-            if (!wholesalerCode) {
-                // 卸未選択はスキップ、あるいはエラーにする？とりあえずスキップ
-                return; 
-            }
-
+            const orderMultiplier = parseFloat(row.dataset.orderMultiplier) || 0;
+            
             payload.push({
                 janCode: janCode,
+                yjCode: row.dataset.yjCode,
+                packageForm: row.dataset.packageForm,
+                janPackInnerQty: parseFloat(row.dataset.janPackInnerQty),
+                yjUnitName: row.dataset.yjUnitName,
+                yjQuantity: quantity * orderMultiplier,
+                productName: row.dataset.productName,
+                yjPackUnitQty: parseFloat(row.dataset.yjPackUnitQty) || 0,
+                janPackUnitQty: parseFloat(row.dataset.janPackUnitQty) || 0,
+                janUnitCode: parseInt(row.dataset.janUnitCode, 10) || 0,
                 wholesalerCode: wholesalerCode,
-                orderQuantity: quantity,
-                kanaNameShort: kanaNameShort
+                kanaNameShort: row.dataset.kanaNameShort || '' // DAT用
             });
         }
     });
 
     if (payload.length === 0) {
-        window.showNotification('発注数1以上の有効な品目がありません。', 'error');
+        window.showNotification('発注数1以上の有効な品目がありません（または卸未選択）。', 'error');
         return;
     }
 
-    if(!confirm("固定長DATファイルを作成しますか？\n※MEDICODEユーザーIDが薬局IDとして使用されます。")) {
+    if(!confirm("固定長DATファイルを作成し、発注残として登録しますか？\n※MEDICODEユーザーIDが薬局IDとして使用されます。")) {
         return;
     }
 
-    window.showLoading('DATファイルを作成中...');
+    window.showLoading('DATファイルを作成・登録中...');
     try {
         const res = await fetch('/api/reorder/export_dat', {
             method: 'POST',
@@ -276,7 +279,7 @@ async function handleCreateDat() {
         const a = document.createElement('a');
         a.href = url;
         
-        // ファイル名を取得 (Content-Dispositionから)
+        // ファイル名を取得
         const contentDisposition = res.headers.get('Content-Disposition');
         let fileName = 'order.dat';
         if (contentDisposition && contentDisposition.indexOf('filename*=') !== -1) {
@@ -292,7 +295,12 @@ async function handleCreateDat() {
         a.remove();
         window.URL.revokeObjectURL(url);
 
-        window.showNotification('DATファイルをダウンロードしました。', 'success');
+        window.showNotification('DATファイルを作成し、発注残に登録しました。', 'success');
+        
+        // 画面リフレッシュ
+        if (typeof fetchAndRenderReorderCallback === 'function') {
+            fetchAndRenderReorderCallback();
+        }
 
     } catch (err) {
         window.showNotification(err.message, 'error');
@@ -301,77 +309,6 @@ async function handleCreateDat() {
     }
 }
 // ▲▲▲ 追加ここまで ▲▲▲
-
-async function handleTableClicks(e, handleGenerateCandidatesCallback) { 
-    const target = e.target;
-    const row = target.closest('tr');
-    if (!row) return;
-
-    if (target.classList.contains('set-unorderable-btn')) {
-        const productCode = target.dataset.productCode;
-        const productName = row.cells[0].textContent;
-        if (!confirm(`「${productName}」を発注不可に設定しますか？\nこの品目は今後、不足品リストに表示されなくなります。`)) {
-            return;
-        }
-        window.showLoading('マスターを更新中...');
-        try {
-            const res = await fetch('/api/master/set_order_stopped', { 
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ productCode: productCode, status: 1 }),
-            });
-            const resData = await res.json();
-            if (!res.ok) throw new Error(resData.message || '更新に失敗しました。');
-            
-            window.showNotification(`「${productName}」を発注不可に設定しました。`, 'success');
-            row.remove(); 
-            
-            window.showNotification('発注不可リストに移動しました。リストを更新します。', 'info');
-            handleGenerateCandidatesCallback();
-
-        } catch(err) {
-            window.showNotification(err.message, 'error');
-        } finally {
-            window.hideLoading();
-        }
-    } 
-    else if (target.classList.contains('change-to-orderable-btn')) {
-        const productCode = row.dataset.janCode;
-        if (!productCode) return;
-
-        window.showLoading('マスターを更新中...');
-        try {
-            const res = await fetch('/api/master/set_order_stopped', { 
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ productCode: productCode, status: 0 }),
-            });
-            const resData = await res.json();
-            if (!res.ok) throw new Error(resData.message || '更新に失敗しました。');
-
-            window.showNotification(`「${row.dataset.productName}」を発注可に変更しました。`, 'success');
-            row.remove();
-
-            window.showNotification('発注対象リストに移動しました。リストを更新します。', 'info');
-            handleGenerateCandidatesCallback();
-
-        } catch(err) {
-            window.showNotification(err.message, 'error');
-        } finally {
-            window.hideLoading();
-        }
-    } 
-    else if (target.classList.contains('remove-order-item-btn')) {
-        const tbody = row.closest('tbody');
-        const table = tbody.closest('table');
-        row.remove();
-        if (tbody.children.length === 0 && table.id === 'orderable-table') {
-            const header = outputContainer.querySelector('h3');
-            if(header) header.textContent = `発注対象品目 (0件)`;
-            tbody.innerHTML = '<tr><td colspan="8">発注対象の品目はありません。</td></tr>';
-        }
-    }
-}
 
 export function initReorderEvents(fetchAndRenderReorderCallback) { 
     runBtn = document.getElementById('generate-order-candidates-btn');
@@ -414,7 +351,7 @@ export function initReorderEvents(fetchAndRenderReorderCallback) {
 
     // ▼▼▼ 追加: イベントリスナー登録 ▼▼▼
     if (createDatBtn) {
-        createDatBtn.addEventListener('click', handleCreateDat);
+        createDatBtn.addEventListener('click', () => handleCreateDat(fetchAndRenderReorderCallback));
     }
     // ▲▲▲ 追加ここまで ▲▲▲
 

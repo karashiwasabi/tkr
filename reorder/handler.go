@@ -54,6 +54,13 @@ type ReturnCandidate struct {
 	TheoreticalStock float64                 `json:"theoreticalStock"`
 }
 
+// APIリクエスト用の拡張構造体
+// model.Backorder の情報 ＋ DAT生成に必要なカナ名称
+type DatExportRequestItem struct {
+	model.Backorder
+	KanaNameShort string `json:"kanaNameShort"`
+}
+
 func GenerateOrderCandidatesHandler(conn *sqlx.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		q := r.URL.Query()
@@ -360,7 +367,7 @@ func GenerateReturnCandidatesHandler(db *sqlx.DB) http.HandlerFunc {
 	}
 }
 
-// ExportFixedLengthDatHandler は発注データから固定長DATファイルを生成してダウンロードさせます。
+// ExportFixedLengthDatHandler は発注データから固定長DATファイルを生成し、かつ発注残として保存します。
 func ExportFixedLengthDatHandler(conn *sqlx.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
@@ -374,13 +381,14 @@ func ExportFixedLengthDatHandler(conn *sqlx.DB) http.HandlerFunc {
 			http.Error(w, "設定の読み込みに失敗しました: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
-		pharmacyID := cfg.MedicodeUserID // これを使用
+		pharmacyID := cfg.MedicodeUserID
 		if pharmacyID == "" {
 			http.Error(w, "設定画面で MEDICODE ユーザーID を設定してください。", http.StatusBadRequest)
 			return
 		}
 
-		var payload []DatOrderRequest
+		// 拡張した構造体で受け取る
+		var payload []DatExportRequestItem
 		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 			http.Error(w, "リクエストボディの解析に失敗: "+err.Error(), http.StatusBadRequest)
 			return
@@ -391,10 +399,63 @@ func ExportFixedLengthDatHandler(conn *sqlx.DB) http.HandlerFunc {
 			return
 		}
 
+		// DB保存用とDAT生成用のデータを準備
+		var backorders []model.Backorder
+		var datRequests []DatOrderRequest
+
+		today := time.Now().Format("20060102150405")
+
+		for _, item := range payload {
+			// 卸コードがないものはスキップ (DBにも保存しない)
+			if item.WholesalerCode == "" {
+				continue
+			}
+
+			// 1. DB保存用データ (model.Backorder)
+			bo := item.Backorder
+			bo.OrderDate = today
+			bo.OrderQuantity = bo.YjQuantity     // 発注数(YJ)
+			bo.RemainingQuantity = bo.YjQuantity // 残数初期値
+			backorders = append(backorders, bo)
+
+			// 2. DAT生成用データ (DatOrderRequest)
+			// item.JanCode は model.Backorder に追加済みフィールドを使用
+			datReq := DatOrderRequest{
+				JanCode:        item.JanCode,
+				WholesalerCode: item.WholesalerCode,
+				OrderQuantity:  item.YjQuantity,
+				KanaNameShort:  item.KanaNameShort,
+			}
+			datRequests = append(datRequests, datReq)
+		}
+
+		if len(backorders) == 0 {
+			http.Error(w, "有効な発注データがありません（卸未設定など）。", http.StatusBadRequest)
+			return
+		}
+
+		tx, err := conn.Beginx()
+		if err != nil {
+			http.Error(w, "トランザクション開始エラー", http.StatusInternalServerError)
+			return
+		}
+		defer tx.Rollback()
+
+		// ★ DBへの保存 (発注残登録)
+		if err := database.InsertBackordersInTx(tx, backorders); err != nil {
+			http.Error(w, "発注残の登録に失敗しました: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+
 		// DAT生成
-		datBytes, err := GenerateFixedLengthDat(pharmacyID, payload)
+		datBytes, err := GenerateFixedLengthDat(pharmacyID, datRequests)
 		if err != nil {
 			http.Error(w, "DATファイルの生成に失敗: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		if err := tx.Commit(); err != nil {
+			http.Error(w, "コミットエラー", http.StatusInternalServerError)
 			return
 		}
 
