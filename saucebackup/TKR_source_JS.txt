@@ -282,11 +282,11 @@ export async function handleBackorderEvents(e) {
 
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\js\backorder_ui.js -----
 // C:\Users\wasab\OneDrive\デスクトップ\TKR\static\js\backorder_ui.js
-// (新規作成)
 import { hiraganaToKatakana } from './utils.js';
-import { wholesalerMap } from './master_data.js';
+// wholesalerMap のインポートも不要であれば削除可能ですが、
+// 他で使う可能性も考慮して念のため残すか、使わないなら削除します（今回は削除します）
 
-let outputContainer, searchKanaInput, searchWholesalerInput;
+let outputContainer, searchKanaInput;
 let allBackorders = []; // APIから取得した全発注残をキャッシュ
 
 /**
@@ -295,7 +295,7 @@ let allBackorders = []; // APIから取得した全発注残をキャッシュ
 export function cacheDOMElements(elements) {
     outputContainer = elements.outputContainer;
     searchKanaInput = elements.searchKanaInput;
-    searchWholesalerInput = elements.searchWholesalerInput;
+    // 卸コード入力欄のキャッシュを削除
 }
 
 /**
@@ -311,21 +311,18 @@ export function setBackorders(data) {
 export function filterAndRender() {
     if (!outputContainer) return;
 
-    const kanaFilter = hiraganaToKatakana(searchKanaInput.value.trim().toLowerCase());
-    const wholesalerFilter = searchWholesalerInput.value.trim().toLowerCase();
-
+    // カナフィルターのみ取得
+    const kanaFilter = searchKanaInput && searchKanaInput.value ? hiraganaToKatakana(searchKanaInput.value.trim().toLowerCase()) : '';
+    
     const filteredData = allBackorders.filter(bo => {
         const nameMatch = !kanaFilter || 
                          (bo.productName && bo.productName.toLowerCase().includes(kanaFilter)) ||
                          (bo.yjCode && bo.yjCode.toLowerCase().includes(kanaFilter)) ||
                          (bo.janCode && bo.janCode.toLowerCase().includes(kanaFilter));
         
-        const wholesalerMatch = !wholesalerFilter ||
-                         (bo.wholesalerCode && bo.wholesalerCode.toLowerCase().includes(wholesalerFilter));
-
-        return nameMatch && wholesalerMatch;
+        // 卸コードによる絞り込みを削除
+        return nameMatch;
     });
-
     renderBackorders(filteredData);
 }
 
@@ -348,6 +345,7 @@ export function renderBackorders(data) {
         groups.get(key).push(bo);
     });
 
+    // テーブルヘッダーから「卸」列を削除
     let html = `
         <div class="backorder-controls">
             <button class="btn" id="bo-bulk-delete-btn">選択した項目を一括削除</button>
@@ -357,14 +355,13 @@ export function renderBackorders(data) {
                  <tr>
                      <th class="col-bo-check"><input type="checkbox" id="bo-select-all-checkbox"></th>
                      <th class="col-bo-jan">JANコード</th>
-                    <th class="col-bo-name">製品名</th>
+                     <th class="col-bo-name">製品名</th>
                      <th class="col-bo-remain">残数量(YJ)</th>
-                     <th class="col-bo-wholesaler">卸</th>
                      <th class="col-bo-action">操作</th>
                 </tr>
              </thead>
     `;
-    
+
     // 2. グループごとにテーブルを描画 (tbody でグループ化)
     groups.forEach((items, orderDateKey) => {
          const totalItems = items.length;
@@ -372,10 +369,10 @@ export function renderBackorders(data) {
         html += `
             <tbody class="backorder-group">
                  <tr class="group-header">
-                    <td colspan="3">
-                         <strong>${orderDateKey}</strong> (${totalItems}品目)
+                    <td colspan="4">
+                          <strong>${orderDateKey}</strong> (${totalItems}品目)
                      </td>
-                     <td colspan="3" class="right">
+                     <td class="right">
                          <button class="btn delete-backorder-group-btn" data-order-date="${orderDateKey}">
                              この発注(${totalItems}品目)を一括削除
                          </button>
@@ -383,16 +380,15 @@ export function renderBackorders(data) {
                 </tr>
         `;
 
-        // グループ内の品目
+        // グループ内の品目（「卸」列を削除）
         items.forEach(bo => {
-            const wholesalerName = wholesalerMap.get(bo.wholesalerCode) || bo.wholesalerCode || '---';
+            // 卸名の取得処理も削除
             html += `
                  <tr data-id="${bo.id}" data-yj-code="${bo.yjCode}" data-jan-code="${bo.janCode}">
                      <td class="center col-bo-check"><input type="checkbox" class="bo-select-checkbox"></td>
                      <td class="col-bo-jan">${bo.janCode || '(JANなし)'}</td>
-                    <td class="left col-bo-name">${bo.productName}</td>
-                    <td class="right col-bo-remain">${bo.remainingQuantity.toFixed(2)}</td>
-                     <td class="left col-bo-wholesaler">${wholesalerName}</td>
+                     <td class="left col-bo-name">${bo.productName}</td>
+                     <td class="right col-bo-remain">${bo.remainingQuantity.toFixed(2)}</td>
                      <td class="center col-bo-action">
                          <button class="btn delete-backorder-btn">削除</button>
                          <button class="btn adjust-inventory-btn" data-yj-code="${bo.yjCode}">棚卸調整</button>
@@ -410,21 +406,17 @@ export function renderBackorders(data) {
 
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\js\backorder.js -----
 // C:\Users\wasab\OneDrive\デスクトップ\TKR\static\js\backorder.js
-// ▼▼▼【ここから修正】UI/Events モジュールをインポート ▼▼▼
 import { cacheDOMElements as cacheUI, filterAndRender } from './backorder_ui.js';
 import { cacheDOMElements as cacheEvents, loadAndRenderBackorders, handleBackorderEvents } from './backorder_events.js';
-// ▲▲▲【修正ここまで】▲▲▲
-
 
 export function initBackorderView() {
-    // ▼▼▼【ここから修正】DOM要素をすべて取得し、各モジュールに渡す ▼▼▼
     const view = document.getElementById('backorder-view');
     if (!view) return;
     
     const elements = {
         outputContainer: document.getElementById('backorder-output-container'),
-        searchKanaInput: document.getElementById('bo-search-kana'),
-        searchWholesalerInput: document.getElementById('bo-search-wholesaler')
+        searchKanaInput: document.getElementById('bo-search-kana')
+        // searchWholesalerInput は削除しました
     };
     
     // イベント専用のDOM
@@ -439,14 +431,19 @@ export function initBackorderView() {
     view.addEventListener('show', loadAndRenderBackorders);
     elements.outputContainer.addEventListener('click', handleBackorderEvents);
     
-    searchBtn.addEventListener('click', filterAndRender);
-    elements.searchKanaInput.addEventListener('keypress', (e) => {
-         if (e.key === 'Enter') filterAndRender();
-    });
-    elements.searchWholesalerInput.addEventListener('keypress', (e) => {
-        if (e.key === 'Enter') filterAndRender();
-    });
-    // ▲▲▲【修正ここまで】▲▲▲
+    if (searchBtn) {
+        searchBtn.addEventListener('click', filterAndRender);
+    }
+    
+    // Enterキーでの検索
+    if (elements.searchKanaInput) {
+        elements.searchKanaInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') filterAndRender();
+        });
+    }
+    // 卸コードのイベントリスナーも削除しました
+
+    console.log("Backorder View Initialized (Hub).");
 }
 
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\static\js\common_modal.js -----
@@ -5222,7 +5219,7 @@ import { openContinuousScanModal } from './reorder_continuous_scan.js';
 let outputContainer, coefficientInput;
 let createCsvBtn, barcodeInput, barcodeForm, addFromMasterBtn;
 let runBtn, continuousOrderBtn;
-// ★追加
+let createDatBtn;
 let reservationBtn, reservationModal, reservationDateTimeInput, cancelReservationBtn, confirmReservationBtn;
 
 async function handleOrderBarcodeScan(e) { 
@@ -5257,15 +5254,12 @@ function handleAddFromMaster() {
 
 async function handleGenerateCandidates() { 
     window.showLoading('発注候補リストを作成中...');
-    
-    // ▼▼▼ 修正: 不要な検索条件を削除し、空文字を送る ▼▼▼
     const params = new URLSearchParams({
         kanaName: '',
         dosageForm: '',
         shelfNumber: '',
         coefficient: coefficientInput.value,
     });
-    // ▲▲▲ 修正ここまで ▲▲▲
 
     try {
         const res = await fetch(`/api/reorder/candidates?${params.toString()}`);
@@ -5282,8 +5276,9 @@ async function handleGenerateCandidates() {
     }
 }
 
+// ▼▼▼ 修正: 箱数とカナ名を含む拡張オブジェクトを返す ▼▼▼
 function getOrderItems(rows) {
-    const backorderPayload = [];
+    const payload = []; // 変数名を統一
     let hasItemsToOrder = false;
 
     rows.forEach(row => {
@@ -5301,24 +5296,28 @@ function getOrderItems(rows) {
             const wholesalerCode = row.querySelector('.wholesaler-select').value;
             const orderMultiplier = parseFloat(row.dataset.orderMultiplier) || 0;
             
-            backorderPayload.push({
+            payload.push({
                 janCode: janCode,
                 yjCode: row.dataset.yjCode,
                 packageForm: row.dataset.packageForm,
                 janPackInnerQty: parseFloat(row.dataset.janPackInnerQty),
                 yjUnitName: row.dataset.yjUnitName,
-                yjQuantity: quantity * orderMultiplier,
+                yjQuantity: quantity * orderMultiplier, // DB保存用 (バラ数)
                 productName: row.dataset.productName,
                 yjPackUnitQty: parseFloat(row.dataset.yjPackUnitQty) || 0,
                 janPackUnitQty: parseFloat(row.dataset.janPackUnitQty) || 0,
                 janUnitCode: parseInt(row.dataset.janUnitCode, 10) || 0,
                 wholesalerCode: wholesalerCode,
+                // ★追加フィールド
+                boxQuantity: quantity, // DAT用 (箱数)
+                kanaNameShort: row.dataset.kanaNameShort || '' // DAT用
             });
         }
     });
 
-    return { backorderPayload, hasItemsToOrder };
+    return { payload, hasItemsToOrder };
 }
+// ▲▲▲ 修正ここまで ▲▲▲
 
 async function handleCreateCsv(fetchAndRenderReorderCallback) {
     const rows = outputContainer.querySelectorAll('#orderable-table tbody tr');
@@ -5328,13 +5327,15 @@ async function handleCreateCsv(fetchAndRenderReorderCallback) {
         return;
     }
 
-    const { backorderPayload, hasItemsToOrder } = getOrderItems(rows);
+    // ▼▼▼ 修正: getOrderItems を利用 ▼▼▼
+    const { payload, hasItemsToOrder } = getOrderItems(rows);
 
     if (!hasItemsToOrder) {
         window.showNotification('発注数が1以上の品目がありません。', 'error');
         return;
     }
 
+    // CSV内容は従来通り rows から生成 (商品名にダブルクォート処理などあるため)
     let csvContent = "";
     rows.forEach(row => {
         if (row.classList.contains('provisional-order-item')) return;
@@ -5355,7 +5356,7 @@ async function handleCreateCsv(fetchAndRenderReorderCallback) {
         const res = await fetch('/api/orders/place', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(backorderPayload),
+            body: JSON.stringify(payload), // getOrderItemsで取得した拡張オブジェクトを送信
         });
  
         const resData = await res.json();
@@ -5398,14 +5399,15 @@ async function handlePlaceReservation(fetchAndRenderReorderCallback) {
     }
 
     const rows = outputContainer.querySelectorAll('#orderable-table tbody tr');
-    const { backorderPayload, hasItemsToOrder } = getOrderItems(rows);
+    // ▼▼▼ 修正: getOrderItems を利用 ▼▼▼
+    const { payload, hasItemsToOrder } = getOrderItems(rows);
 
     if (!hasItemsToOrder) {
         window.showNotification('発注数が1以上の品目がありません。', 'error');
         return;
     }
 
-    backorderPayload.forEach(item => {
+    payload.forEach(item => {
         item.orderDate = dateVal;
     });
 
@@ -5414,7 +5416,7 @@ async function handlePlaceReservation(fetchAndRenderReorderCallback) {
         const res = await fetch('/api/orders/place', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(backorderPayload),
+            body: JSON.stringify(payload),
         });
         const resData = await res.json();
         if (!res.ok) throw new Error(resData.message || '予約の登録に失敗しました。');
@@ -5429,6 +5431,77 @@ async function handlePlaceReservation(fetchAndRenderReorderCallback) {
     }
 }
 
+async function handleCreateDat(fetchAndRenderReorderCallback) {
+    const rows = outputContainer.querySelectorAll('#orderable-table tbody tr');
+    if (rows.length === 0) {
+        window.showNotification('発注する品目がありません。', 'error');
+        return;
+    }
+
+    // ▼▼▼ 修正: getOrderItems を利用 (共通化) ▼▼▼
+    const { payload, hasItemsToOrder } = getOrderItems(rows);
+
+    if (!hasItemsToOrder) {
+        window.showNotification('発注数1以上の有効な品目がありません（または卸未選択）。', 'error');
+        return;
+    }
+
+    // DAT用: 卸コード未設定のデータはバックエンドで弾かれるため、事前にフィルタリングしても良いが
+    // ここではそのまま送り、サーバー側のレスポンスで判断する形にする
+
+    if(!confirm("固定長DATファイルを作成し、発注残として登録しますか？\n※MEDICODEユーザーIDが薬局IDとして使用されます。")) {
+        return;
+    }
+
+    window.showLoading('DATファイルを作成・登録中...');
+    try {
+        const res = await fetch('/api/reorder/export_dat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+        });
+
+        if (!res.ok) {
+            const errText = await res.text();
+            throw new Error(errText || 'DAT作成に失敗しました。');
+        }
+
+        // ファイルダウンロード処理
+        const blob = await res.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        
+        // ファイル名を取得
+        const contentDisposition = res.headers.get('Content-Disposition');
+        let fileName = 'order.dat';
+        if (contentDisposition && contentDisposition.indexOf('filename*=') !== -1) {
+            const match = contentDisposition.match(/filename\*=UTF-8''(.+)/);
+            if (match && match[1]) {
+                fileName = decodeURIComponent(match[1]);
+            }
+        }
+        
+        a.download = fileName;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        window.URL.revokeObjectURL(url);
+
+        window.showNotification('DATファイルを作成し、発注残に登録しました。', 'success');
+        
+        if (typeof fetchAndRenderReorderCallback === 'function') {
+            fetchAndRenderReorderCallback();
+        }
+
+    } catch (err) {
+        window.showNotification(err.message, 'error');
+    } finally {
+        window.hideLoading();
+    }
+}
+
+// ▼▼▼ 再掲: handleTableClicks ▼▼▼
 async function handleTableClicks(e, handleGenerateCandidatesCallback) { 
     const target = e.target;
     const row = target.closest('tr');
@@ -5451,7 +5524,6 @@ async function handleTableClicks(e, handleGenerateCandidatesCallback) {
             if (!res.ok) throw new Error(resData.message || '更新に失敗しました。');
             
             window.showNotification(`「${productName}」を発注不可に設定しました。`, 'success');
-            
             row.remove(); 
             
             window.showNotification('発注不可リストに移動しました。リストを更新します。', 'info');
@@ -5493,7 +5565,6 @@ async function handleTableClicks(e, handleGenerateCandidatesCallback) {
         const tbody = row.closest('tbody');
         const table = tbody.closest('table');
         row.remove();
-        
         if (tbody.children.length === 0 && table.id === 'orderable-table') {
             const header = outputContainer.querySelector('h3');
             if(header) header.textContent = `発注対象品目 (0件)`;
@@ -5501,18 +5572,18 @@ async function handleTableClicks(e, handleGenerateCandidatesCallback) {
         }
     }
 }
+// ▲▲▲ 再掲ここまで ▲▲▲
 
 export function initReorderEvents(fetchAndRenderReorderCallback) { 
     runBtn = document.getElementById('generate-order-candidates-btn');
     outputContainer = document.getElementById('order-candidates-output');
-    // ▼▼▼ 修正: 不要な要素取得を削除 ▼▼▼
     coefficientInput = document.getElementById('order-reorder-coefficient');
     createCsvBtn = document.getElementById('createOrderCsvBtn');
     barcodeInput = document.getElementById('order-barcode-input');
     barcodeForm = document.getElementById('order-barcode-form');
     addFromMasterBtn = document.getElementById('add-order-item-from-master-btn');
     continuousOrderBtn = document.getElementById('continuous-order-btn');
-    // ▲▲▲ 修正ここまで ▲▲▲
+    createDatBtn = document.getElementById('createFixedLengthDatBtn');
 
     reservationBtn = document.getElementById('reservation-order-btn');
     reservationModal = document.getElementById('reservation-modal');
@@ -5539,7 +5610,10 @@ export function initReorderEvents(fetchAndRenderReorderCallback) {
         outputContainer.addEventListener('click', (e) => handleTableClicks(e, handleGenerateCandidates));
     }
 
-    // ★追加: 予約ボタンイベント
+    if (createDatBtn) {
+        createDatBtn.addEventListener('click', () => handleCreateDat(fetchAndRenderReorderCallback));
+    }
+
     if (reservationBtn) {
         reservationBtn.addEventListener('click', () => {
             const rows = outputContainer.querySelectorAll('#orderable-table tbody tr');
@@ -5584,26 +5658,21 @@ let outputContainer; // このモジュール内で出力先を保持
  */
 function formatBalance(balance) {
     if (typeof balance === 'number') {
-  
-      return balance;
+        return balance;
     }
     return balance;
 }
 
 /**
  * 検索モーダルやスキャンから品目をリストに追加または更新します。
- * (旧 reorder.js より移管)
  */
-export function addOrUpdateOrderItem(productMaster) 
-{
+export function addOrUpdateOrderItem(productMaster) {
     if (!outputContainer) outputContainer = document.getElementById('order-candidates-output');
-    
     const productCode = productMaster.productCode;
     const yjCode = productMaster.yjCode;
 
     // 既にリストにあるか確認 (発注可テーブル・不可テーブル両方を探す)
-    const existingRow = 
-outputContainer.querySelector(`tr[data-jan-code="${productCode}"]`);
+    const existingRow = outputContainer.querySelector(`tr[data-jan-code="${productCode}"]`);
     
     if (existingRow) {
         // 既に「発注不可」リストにある場合
@@ -5627,65 +5696,51 @@ outputContainer.querySelector(`tr[data-jan-code="${productCode}"]`);
         else {
             const quantityInput = existingRow.querySelector('.order-quantity-input');
             if (quantityInput) {
-      
-       quantityInput.value = parseInt(quantityInput.value, 10) + 1;
+                quantityInput.value = parseInt(quantityInput.value, 10) + 1;
                 window.showNotification(`「${productMaster.productName}」の数量を1増やしました。`, 'success');
             }
             return;
-}
+        }
     }
 
-     // 卸業者ドロップダウンを生成
+    // 卸業者ドロップダウンを生成
     let wholesalerOptions = '<option value="">--- 選択 ---</option>';
     wholesalerMap.forEach((name, code) => {
-    
-     const isSelected = (code === productMaster.supplierWholesale);
-        wholesalerOptions += `<option value="${code}" ${isSelected ? 
-'selected' : ''}>${name}</option>`;
+        const isSelected = (code === productMaster.supplierWholesale);
+        wholesalerOptions += `<option value="${code}" ${isSelected ? 'selected' : ''}>${name}</option>`;
     });
 
     // TKRのテーブル定義 (table.css) に合わせた操作ボタン
     const actionCellHTML = `
-       
- <td class="center col-action order-actions-cell">
+        <td class="center col-action order-actions-cell">
             <div class="order-action-buttons">
-       
-          <button type="button" class="remove-order-item-btn btn">除外</button>
-           
-      <button type="button" class="set-unorderable-btn btn" data-product-code="${productMaster.productCode}">発注不可</button>
+                <button type="button" class="remove-order-item-btn btn">除外</button>
+                <button type="button" class="set-unorderable-btn btn" data-product-code="${productMaster.productCode}">発注不可</button>
             </div>
-  
-       </td>
+        </td>
     `;
     
     // TKRのテーブル定義 (table.css) に合わせた列構成
     const newRowHTML = `
-  
-       <tr data-jan-code="${productMaster.productCode}" 
+        <tr data-jan-code="${productMaster.productCode}" 
             data-yj-code="${productMaster.yjCode}"
-   
-          data-product-name="${productMaster.productName}"
+            data-product-name="${productMaster.productName}"
+            /* ▼▼▼ 追加: カナ名短縮をデータ属性として保持 ▼▼▼ */
+            data-kana-name-short="${productMaster.kanaNameShort || ''}" 
+            /* ▲▲▲ 追加ここまで ▲▲▲ */
             data-package-form="${productMaster.packageForm}"
-  
-           data-jan-pack-inner-qty="${productMaster.janPackInnerQty}"
+            data-jan-pack-inner-qty="${productMaster.janPackInnerQty}"
             data-yj-unit-name="${productMaster.yjUnitName}"
- 
             data-yj-pack-unit-qty="${productMaster.yjPackUnitQty}"
-            
-data-order-multiplier="${productMaster.yjPackUnitQty}"> 
+            data-order-multiplier="${productMaster.yjPackUnitQty}"> 
             <td class="left col-product" colspan="2">${productMaster.productName}</td>
-        
-    <td class="left col-maker">${productMaster.makerName || ''}</td>
-             <td class="left col-package">${productMaster.formattedPackageSpec}</td>
- 
+            <td class="left col-maker">${productMaster.makerName || ''}</td>
+            <td class="left col-package">${productMaster.formattedPackageSpec}</td>
             <td class="col-wholesaler"><select class="wholesaler-select" style="width: 100%; font-size: 10px;">${wholesalerOptions}</select></td>
-      
-      <td class="col-count">${productMaster.yjPackUnitQty} ${productMaster.yjUnitName}</td>
-             <td class="col-line"><input type="number" 
-value="1" class="order-quantity-input" style="width: 100%; text-align: right;"></td>
-             ${actionCellHTML}
-      
-  </tr>
+            <td class="col-count">${productMaster.yjPackUnitQty} ${productMaster.yjUnitName}</td>
+            <td class="col-line"><input type="number" value="1" class="order-quantity-input" style="width: 100%; text-align: right;"></td>
+            ${actionCellHTML}
+        </tr>
     `;
 
     // 「発注対象品目」テーブルを探す
@@ -5749,16 +5804,12 @@ value="1" class="order-quantity-input" style="width: 100%; text-align: right;"><
 
 /**
  * 発注候補リスト（自動生成）を描画します。
- * (旧 
-reorder.js より移管)
  */
 export function renderOrderCandidates(data, container) {
-  
-   outputContainer = container; // 出力先をキャッシュ
-    if (!data.candidates || data.candidates.length === 
-0) {
-       
-  container.innerHTML = "<p>発注が必要な品目はありませんでした。</p>";
+    outputContainer = container; // 出力先をキャッシュ
+    
+    if (!data.candidates || data.candidates.length === 0) {
+        container.innerHTML = "<p>発注が必要な品目はありませんでした。</p>";
         return;
     }
 
@@ -5769,9 +5820,8 @@ export function renderOrderCandidates(data, container) {
         (yjGroup.packageLedgers || []).forEach(pkg => {
             if (pkg.masters && Array.isArray(pkg.masters)) {
                 pkg.masters.forEach(master => {
-                    const pkgShortfall = pkg.reorderPoint - (pkg.endingBalance || 0);
                     
-                    // ▼▼▼【修正】 発注残(effectiveEndingBalance)を考慮した不足数の場合のみリストアップ ▼▼▼
+                    // 発注残(effectiveEndingBalance)を考慮した不足数の場合のみリストアップ
                     const effectiveShortfall = pkg.reorderPoint - pkg.effectiveEndingBalance;
                     
                     if (effectiveShortfall > 0) { // 発注残を考慮しても不足している品目のみを対象
@@ -5782,7 +5832,6 @@ export function renderOrderCandidates(data, container) {
                             shortfall: effectiveShortfall // 発注残考慮後の不足数を渡す
                         });
                     }
-                    // ▲▲▲【修正ここまで】▲▲▲
                 });
             }
         });
@@ -5853,6 +5902,9 @@ export function renderOrderCandidates(data, container) {
                 <tr data-jan-code="${master.productCode}" 
                     data-yj-code="${yjGroup.yjCode}"
                     data-product-name="${master.productName}"
+                    /* ▼▼▼ 追加: カナ名短縮をデータ属性として保持 ▼▼▼ */
+                    data-kana-name-short="${master.kanaNameShort || ''}"
+                    /* ▲▲▲ 追加ここまで ▲▲▲ */
                     data-package-form="${master.packageForm}"
                     data-jan-pack-inner-qty="${master.janPackInnerQty}"
                     data-yj-unit-name="${master.yjUnitName}"

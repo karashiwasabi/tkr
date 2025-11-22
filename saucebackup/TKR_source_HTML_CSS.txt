@@ -1865,10 +1865,6 @@ body {
                         <label for="bo-search-kana">品名・カナ名 (部分一致):</label>
                         <input type="text" id="bo-search-kana" class="search-filter-input" autocomplete="off">
                     </div>
-                    <div class="form-group">
-                        <label for="bo-search-wholesaler">卸コード:</label>
-                        <input type="text" id="bo-search-wholesaler" class="search-filter-input" autocomplete="off" style="width: 150px;">
-                    </div>
                     <button id="bo-search-btn" class="btn search-submit-button">この条件で絞込</button>
                 </div>
             </div>
@@ -2431,6 +2427,8 @@ type="date" id="ds-end-date">
         <div class="buttons-group">
             <button id="add-order-item-from-master-btn" class="btn">品目検索から追加</button>
             <button id="continuous-order-btn" class="btn" style="background-color: #17a2b8; color: white;">連続スキャンで追加</button>
+            
+            <button id="createFixedLengthDatBtn" class="btn" style="background-color: #6610f2; color: white;">固定長発注書作成(DAT)</button>
             <button id="createOrderCsvBtn" class="btn" style="background-color: #28a745; color: white;">CSV作成・発注残登録</button>
             <button id="reservation-order-btn" class="btn" style="background-color: #6f42c1; color: white;">予約発注</button>
         </div>

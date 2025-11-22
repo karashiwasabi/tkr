@@ -54,11 +54,12 @@ type ReturnCandidate struct {
 	TheoreticalStock float64                 `json:"theoreticalStock"`
 }
 
-// APIリクエスト用の拡張構造体
-// model.Backorder の情報 ＋ DAT生成に必要なカナ名称
-type DatExportRequestItem struct {
+// APIリクエスト用の拡張構造体 (CSV/DAT共通)
+// フロントエンドから「箱数」と「バラ数(YJ)」の両方を受け取る
+type OrderRequestItem struct {
 	model.Backorder
-	KanaNameShort string `json:"kanaNameShort"`
+	BoxQuantity   float64 `json:"boxQuantity"`   // DAT用: 箱数
+	KanaNameShort string  `json:"kanaNameShort"` // DAT用: カナ名
 }
 
 func GenerateOrderCandidatesHandler(conn *sqlx.DB) http.HandlerFunc {
@@ -190,12 +191,20 @@ func GenerateOrderCandidatesHandler(conn *sqlx.DB) http.HandlerFunc {
 	}
 }
 
+// PlaceOrderHandler (CSV発注など、通常の発注登録)
 func PlaceOrderHandler(conn *sqlx.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		var payload []model.Backorder
+		// ★修正: OrderRequestItem を使用するように変更
+		var payload []OrderRequestItem
 		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 			http.Error(w, "Invalid request body", http.StatusBadRequest)
 			return
+		}
+
+		// model.Backorder のリストに変換
+		var backorders []model.Backorder
+		for _, item := range payload {
+			backorders = append(backorders, item.Backorder)
 		}
 
 		tx, err := conn.Beginx()
@@ -205,55 +214,34 @@ func PlaceOrderHandler(conn *sqlx.DB) http.HandlerFunc {
 		}
 		defer tx.Rollback()
 
-		today := time.Now().Format("20060102150405")
-
-		isReservation := false
-		if len(payload) > 0 && payload[0].OrderDate != "" {
-			userDate := strings.ReplaceAll(payload[0].OrderDate, "-", "")
-			userDate = strings.ReplaceAll(userDate, ":", "")
-			userDate = strings.ReplaceAll(userDate, " ", "")
-			userDate = strings.ReplaceAll(userDate, "T", "")
-
-			if len(userDate) == 12 {
-				userDate += "00"
-			}
-
-			if userDate > today {
-				isReservation = true
-			}
-		}
-
-		for i := range payload {
-			if payload[i].OrderDate != "" {
-				normalized := strings.ReplaceAll(payload[i].OrderDate, "-", "")
-				normalized = strings.ReplaceAll(normalized, ":", "")
-				normalized = strings.ReplaceAll(normalized, " ", "")
-				normalized = strings.ReplaceAll(normalized, "T", "")
-
-				if len(normalized) == 12 {
-					normalized += "00"
-				}
-				payload[i].OrderDate = normalized
-			} else {
-				payload[i].OrderDate = today
-			}
-
-			if isReservation {
-				payload[i].WholesalerCode += "_RSV"
-			}
-
-			payload[i].OrderQuantity = payload[i].YjQuantity
-			payload[i].RemainingQuantity = payload[i].YjQuantity
-		}
-
-		if err := database.InsertBackordersInTx(tx, payload); err != nil {
-			http.Error(w, "Failed to save backorders", http.StatusInternalServerError)
+		// 共通関数を使って登録
+		if err := RegisterBackorders(tx, backorders); err != nil {
+			http.Error(w, "Failed to register backorders: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
 
 		if err := tx.Commit(); err != nil {
 			http.Error(w, "Failed to commit transaction", http.StatusInternalServerError)
 			return
+		}
+
+		// 予約が含まれているかチェック (メッセージ用)
+		isReservation := false
+		today := time.Now().Format("20060102150405")
+		for _, bo := range backorders {
+			if bo.OrderDate != "" {
+				normalized := strings.ReplaceAll(bo.OrderDate, "-", "")
+				normalized = strings.ReplaceAll(normalized, ":", "")
+				normalized = strings.ReplaceAll(normalized, " ", "")
+				normalized = strings.ReplaceAll(normalized, "T", "")
+				if len(normalized) == 12 {
+					normalized += "00"
+				}
+				if normalized > today {
+					isReservation = true
+					break
+				}
+			}
 		}
 
 		msg := "発注内容を発注残として登録しました。"
@@ -387,8 +375,8 @@ func ExportFixedLengthDatHandler(conn *sqlx.DB) http.HandlerFunc {
 			return
 		}
 
-		// 拡張した構造体で受け取る
-		var payload []DatExportRequestItem
+		// 拡張した構造体で受け取る (BoxQuantityを含む)
+		var payload []OrderRequestItem
 		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 			http.Error(w, "リクエストボディの解析に失敗: "+err.Error(), http.StatusBadRequest)
 			return
@@ -403,27 +391,22 @@ func ExportFixedLengthDatHandler(conn *sqlx.DB) http.HandlerFunc {
 		var backorders []model.Backorder
 		var datRequests []DatOrderRequest
 
-		today := time.Now().Format("20060102150405")
-
 		for _, item := range payload {
 			// 卸コードがないものはスキップ (DBにも保存しない)
 			if item.WholesalerCode == "" {
 				continue
 			}
 
-			// 1. DB保存用データ (model.Backorder)
-			bo := item.Backorder
-			bo.OrderDate = today
-			bo.OrderQuantity = bo.YjQuantity     // 発注数(YJ)
-			bo.RemainingQuantity = bo.YjQuantity // 残数初期値
-			backorders = append(backorders, bo)
+			// 1. DB保存用 (発注残) -> model.Backorder
+			// フロントエンドで計算済みの YJQuantity をそのまま使う
+			backorders = append(backorders, item.Backorder)
 
-			// 2. DAT生成用データ (DatOrderRequest)
-			// item.JanCode は model.Backorder に追加済みフィールドを使用
+			// 2. DAT生成用 -> DatOrderRequest
+			// フロントエンドから送られてきた BoxQuantity (箱数) をそのまま使う
 			datReq := DatOrderRequest{
 				JanCode:        item.JanCode,
 				WholesalerCode: item.WholesalerCode,
-				OrderQuantity:  item.YjQuantity,
+				OrderQuantity:  item.BoxQuantity, // ★箱数をセット
 				KanaNameShort:  item.KanaNameShort,
 			}
 			datRequests = append(datRequests, datReq)
@@ -442,7 +425,7 @@ func ExportFixedLengthDatHandler(conn *sqlx.DB) http.HandlerFunc {
 		defer tx.Rollback()
 
 		// ★ DBへの保存 (発注残登録)
-		if err := database.InsertBackordersInTx(tx, backorders); err != nil {
+		if err := RegisterBackorders(tx, backorders); err != nil {
 			http.Error(w, "発注残の登録に失敗しました: "+err.Error(), http.StatusInternalServerError)
 			return
 		}

@@ -7,9 +7,7 @@ import { openContinuousScanModal } from './reorder_continuous_scan.js';
 let outputContainer, coefficientInput;
 let createCsvBtn, barcodeInput, barcodeForm, addFromMasterBtn;
 let runBtn, continuousOrderBtn;
-// ▼▼▼ 追加: 変数定義 ▼▼▼
 let createDatBtn;
-// ▲▲▲ 追加ここまで ▲▲▲
 let reservationBtn, reservationModal, reservationDateTimeInput, cancelReservationBtn, confirmReservationBtn;
 
 async function handleOrderBarcodeScan(e) { 
@@ -44,7 +42,6 @@ function handleAddFromMaster() {
 
 async function handleGenerateCandidates() { 
     window.showLoading('発注候補リストを作成中...');
-    // 不要な検索条件を削除し、空文字を送る
     const params = new URLSearchParams({
         kanaName: '',
         dosageForm: '',
@@ -67,8 +64,9 @@ async function handleGenerateCandidates() {
     }
 }
 
+// ▼▼▼ 修正: 箱数とカナ名を含む拡張オブジェクトを返す ▼▼▼
 function getOrderItems(rows) {
-    const backorderPayload = [];
+    const payload = []; // 変数名を統一
     let hasItemsToOrder = false;
 
     rows.forEach(row => {
@@ -86,24 +84,28 @@ function getOrderItems(rows) {
             const wholesalerCode = row.querySelector('.wholesaler-select').value;
             const orderMultiplier = parseFloat(row.dataset.orderMultiplier) || 0;
             
-            backorderPayload.push({
+            payload.push({
                 janCode: janCode,
                 yjCode: row.dataset.yjCode,
                 packageForm: row.dataset.packageForm,
                 janPackInnerQty: parseFloat(row.dataset.janPackInnerQty),
                 yjUnitName: row.dataset.yjUnitName,
-                yjQuantity: quantity * orderMultiplier,
+                yjQuantity: quantity * orderMultiplier, // DB保存用 (バラ数)
                 productName: row.dataset.productName,
                 yjPackUnitQty: parseFloat(row.dataset.yjPackUnitQty) || 0,
                 janPackUnitQty: parseFloat(row.dataset.janPackUnitQty) || 0,
                 janUnitCode: parseInt(row.dataset.janUnitCode, 10) || 0,
                 wholesalerCode: wholesalerCode,
+                // ★追加フィールド
+                boxQuantity: quantity, // DAT用 (箱数)
+                kanaNameShort: row.dataset.kanaNameShort || '' // DAT用
             });
         }
     });
 
-    return { backorderPayload, hasItemsToOrder };
+    return { payload, hasItemsToOrder };
 }
+// ▲▲▲ 修正ここまで ▲▲▲
 
 async function handleCreateCsv(fetchAndRenderReorderCallback) {
     const rows = outputContainer.querySelectorAll('#orderable-table tbody tr');
@@ -113,13 +115,15 @@ async function handleCreateCsv(fetchAndRenderReorderCallback) {
         return;
     }
 
-    const { backorderPayload, hasItemsToOrder } = getOrderItems(rows);
+    // ▼▼▼ 修正: getOrderItems を利用 ▼▼▼
+    const { payload, hasItemsToOrder } = getOrderItems(rows);
 
     if (!hasItemsToOrder) {
         window.showNotification('発注数が1以上の品目がありません。', 'error');
         return;
     }
 
+    // CSV内容は従来通り rows から生成 (商品名にダブルクォート処理などあるため)
     let csvContent = "";
     rows.forEach(row => {
         if (row.classList.contains('provisional-order-item')) return;
@@ -140,7 +144,7 @@ async function handleCreateCsv(fetchAndRenderReorderCallback) {
         const res = await fetch('/api/orders/place', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(backorderPayload),
+            body: JSON.stringify(payload), // getOrderItemsで取得した拡張オブジェクトを送信
         });
  
         const resData = await res.json();
@@ -183,14 +187,15 @@ async function handlePlaceReservation(fetchAndRenderReorderCallback) {
     }
 
     const rows = outputContainer.querySelectorAll('#orderable-table tbody tr');
-    const { backorderPayload, hasItemsToOrder } = getOrderItems(rows);
+    // ▼▼▼ 修正: getOrderItems を利用 ▼▼▼
+    const { payload, hasItemsToOrder } = getOrderItems(rows);
 
     if (!hasItemsToOrder) {
         window.showNotification('発注数が1以上の品目がありません。', 'error');
         return;
     }
 
-    backorderPayload.forEach(item => {
+    payload.forEach(item => {
         item.orderDate = dateVal;
     });
 
@@ -199,7 +204,7 @@ async function handlePlaceReservation(fetchAndRenderReorderCallback) {
         const res = await fetch('/api/orders/place', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(backorderPayload),
+            body: JSON.stringify(payload),
         });
         const resData = await res.json();
         if (!res.ok) throw new Error(resData.message || '予約の登録に失敗しました。');
@@ -214,7 +219,6 @@ async function handlePlaceReservation(fetchAndRenderReorderCallback) {
     }
 }
 
-// ▼▼▼ 追加: DAT作成ハンドラ ▼▼▼
 async function handleCreateDat(fetchAndRenderReorderCallback) {
     const rows = outputContainer.querySelectorAll('#orderable-table tbody tr');
     if (rows.length === 0) {
@@ -222,39 +226,16 @@ async function handleCreateDat(fetchAndRenderReorderCallback) {
         return;
     }
 
-    const payload = [];
-    rows.forEach(row => {
-        if (row.classList.contains('provisional-order-item')) return;
-        
-        const quantityInput = row.querySelector('.order-quantity-input');
-        const quantity = parseFloat(quantityInput.value) || 0;
-        const wholesalerCode = row.querySelector('.wholesaler-select').value;
-        
-        if (quantity > 0 && wholesalerCode) {
-            const janCode = row.dataset.janCode;
-            const orderMultiplier = parseFloat(row.dataset.orderMultiplier) || 0;
-            
-            payload.push({
-                janCode: janCode,
-                yjCode: row.dataset.yjCode,
-                packageForm: row.dataset.packageForm,
-                janPackInnerQty: parseFloat(row.dataset.janPackInnerQty),
-                yjUnitName: row.dataset.yjUnitName,
-                yjQuantity: quantity * orderMultiplier,
-                productName: row.dataset.productName,
-                yjPackUnitQty: parseFloat(row.dataset.yjPackUnitQty) || 0,
-                janPackUnitQty: parseFloat(row.dataset.janPackUnitQty) || 0,
-                janUnitCode: parseInt(row.dataset.janUnitCode, 10) || 0,
-                wholesalerCode: wholesalerCode,
-                kanaNameShort: row.dataset.kanaNameShort || '' // DAT用
-            });
-        }
-    });
+    // ▼▼▼ 修正: getOrderItems を利用 (共通化) ▼▼▼
+    const { payload, hasItemsToOrder } = getOrderItems(rows);
 
-    if (payload.length === 0) {
+    if (!hasItemsToOrder) {
         window.showNotification('発注数1以上の有効な品目がありません（または卸未選択）。', 'error');
         return;
     }
+
+    // DAT用: 卸コード未設定のデータはバックエンドで弾かれるため、事前にフィルタリングしても良いが
+    // ここではそのまま送り、サーバー側のレスポンスで判断する形にする
 
     if(!confirm("固定長DATファイルを作成し、発注残として登録しますか？\n※MEDICODEユーザーIDが薬局IDとして使用されます。")) {
         return;
@@ -297,7 +278,6 @@ async function handleCreateDat(fetchAndRenderReorderCallback) {
 
         window.showNotification('DATファイルを作成し、発注残に登録しました。', 'success');
         
-        // 画面リフレッシュ
         if (typeof fetchAndRenderReorderCallback === 'function') {
             fetchAndRenderReorderCallback();
         }
@@ -308,7 +288,79 @@ async function handleCreateDat(fetchAndRenderReorderCallback) {
         window.hideLoading();
     }
 }
-// ▲▲▲ 追加ここまで ▲▲▲
+
+// ▼▼▼ 再掲: handleTableClicks ▼▼▼
+async function handleTableClicks(e, handleGenerateCandidatesCallback) { 
+    const target = e.target;
+    const row = target.closest('tr');
+    if (!row) return;
+
+    if (target.classList.contains('set-unorderable-btn')) {
+        const productCode = target.dataset.productCode;
+        const productName = row.cells[0].textContent;
+        if (!confirm(`「${productName}」を発注不可に設定しますか？\nこの品目は今後、不足品リストに表示されなくなります。`)) {
+            return;
+        }
+        window.showLoading('マスターを更新中...');
+        try {
+            const res = await fetch('/api/master/set_order_stopped', { 
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ productCode: productCode, status: 1 }),
+            });
+            const resData = await res.json();
+            if (!res.ok) throw new Error(resData.message || '更新に失敗しました。');
+            
+            window.showNotification(`「${productName}」を発注不可に設定しました。`, 'success');
+            row.remove(); 
+            
+            window.showNotification('発注不可リストに移動しました。リストを更新します。', 'info');
+            handleGenerateCandidatesCallback();
+
+        } catch(err) {
+            window.showNotification(err.message, 'error');
+        } finally {
+            window.hideLoading();
+        }
+    } 
+    else if (target.classList.contains('change-to-orderable-btn')) {
+        const productCode = row.dataset.janCode;
+        if (!productCode) return;
+
+        window.showLoading('マスターを更新中...');
+        try {
+            const res = await fetch('/api/master/set_order_stopped', { 
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ productCode: productCode, status: 0 }),
+            });
+            const resData = await res.json();
+            if (!res.ok) throw new Error(resData.message || '更新に失敗しました。');
+
+            window.showNotification(`「${row.dataset.productName}」を発注可に変更しました。`, 'success');
+            row.remove();
+
+            window.showNotification('発注対象リストに移動しました。リストを更新します。', 'info');
+            handleGenerateCandidatesCallback();
+
+        } catch(err) {
+            window.showNotification(err.message, 'error');
+        } finally {
+            window.hideLoading();
+        }
+    } 
+    else if (target.classList.contains('remove-order-item-btn')) {
+        const tbody = row.closest('tbody');
+        const table = tbody.closest('table');
+        row.remove();
+        if (tbody.children.length === 0 && table.id === 'orderable-table') {
+            const header = outputContainer.querySelector('h3');
+            if(header) header.textContent = `発注対象品目 (0件)`;
+            tbody.innerHTML = '<tr><td colspan="8">発注対象の品目はありません。</td></tr>';
+        }
+    }
+}
+// ▲▲▲ 再掲ここまで ▲▲▲
 
 export function initReorderEvents(fetchAndRenderReorderCallback) { 
     runBtn = document.getElementById('generate-order-candidates-btn');
@@ -319,10 +371,7 @@ export function initReorderEvents(fetchAndRenderReorderCallback) {
     barcodeForm = document.getElementById('order-barcode-form');
     addFromMasterBtn = document.getElementById('add-order-item-from-master-btn');
     continuousOrderBtn = document.getElementById('continuous-order-btn');
-
-    // ▼▼▼ 追加: ボタン要素取得 ▼▼▼
     createDatBtn = document.getElementById('createFixedLengthDatBtn');
-    // ▲▲▲ 追加ここまで ▲▲▲
 
     reservationBtn = document.getElementById('reservation-order-btn');
     reservationModal = document.getElementById('reservation-modal');
@@ -349,11 +398,9 @@ export function initReorderEvents(fetchAndRenderReorderCallback) {
         outputContainer.addEventListener('click', (e) => handleTableClicks(e, handleGenerateCandidates));
     }
 
-    // ▼▼▼ 追加: イベントリスナー登録 ▼▼▼
     if (createDatBtn) {
         createDatBtn.addEventListener('click', () => handleCreateDat(fetchAndRenderReorderCallback));
     }
-    // ▲▲▲ 追加ここまで ▲▲▲
 
     if (reservationBtn) {
         reservationBtn.addEventListener('click', () => {

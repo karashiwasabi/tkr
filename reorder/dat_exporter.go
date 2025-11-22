@@ -11,11 +11,11 @@ import (
 	"golang.org/x/text/transform"
 )
 
-// DatOrderRequest はフロントエンドから送られてくる発注データの構造です
+// DatOrderRequest はDAT生成に必要な最小限のデータ構造です
 type DatOrderRequest struct {
 	JanCode        string  `json:"janCode"`
 	WholesalerCode string  `json:"wholesalerCode"`
-	OrderQuantity  float64 `json:"orderQuantity"`
+	OrderQuantity  float64 `json:"orderQuantity"` // 箱数 (画面入力値)
 	KanaNameShort  string  `json:"kanaNameShort"` // 商品名
 }
 
@@ -104,20 +104,24 @@ func (b *DatBuilder) writeDRecord(item DatOrderRequest) {
 	}
 
 	// 数量変換: 整数5桁 + 小数5桁 (例: 1 -> 0000100000)
+	// ここでは受け取った OrderQuantity (箱数) をそのまま使用する
 	qtyVal := int(item.OrderQuantity * 100000)
 	qtyStr := fmt.Sprintf("%010d", qtyVal)
 
 	// 各フィールドを作成
 	var record []byte
-	record = append(record, []byte("D10")...)                       // 識別 (3)
-	record = append(record, formatField(b.pharmacyID, 10)...)       // 薬局ID (10)
-	record = append(record, formatField(today, 6)...)               // 納入日 (6)
-	record = append(record, bytes.Repeat([]byte(" "), 10)...)       // 予備 (10)
-	record = append(record, formatField(jan, 14)...)                // 商品コード (14)
-	record = append(record, formatField(item.KanaNameShort, 40)...) // 商品名 (40)
-	record = append(record, formatField(qtyStr, 10)...)             // 数量 (10)
+	record = append(record, []byte("D10")...)                 // 識別 (3)
+	record = append(record, formatField(b.pharmacyID, 10)...) // 薬局ID (10)
+	record = append(record, formatField(today, 6)...)         // 納入日 (6)
+	record = append(record, bytes.Repeat([]byte(" "), 10)...) // 予備 (10)
+	record = append(record, formatField(jan, 14)...)          // 商品コード (14)
 
-	// ★ご指摘のスペース (10桁)
+	// KanaNameShort をそのまま使用し、Shift_JISで40バイトに収める
+	record = append(record, formatField(item.KanaNameShort, 40)...)
+
+	record = append(record, formatField(qtyStr, 10)...) // 数量 (10)
+
+	// ★スペース (10桁)
 	record = append(record, bytes.Repeat([]byte(" "), 10)...) // 予備 (10)
 
 	record = append(record, []byte("00000000")...) // 不明 (8)

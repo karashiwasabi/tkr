@@ -8306,6 +8306,7 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
+// (inputToMaster 関数は変更なし)
 func inputToMaster(input model.ProductMasterInput) *model.ProductMaster {
 	return &model.ProductMaster{
 		ProductCode:         input.ProductCode,
@@ -8359,9 +8360,21 @@ func SearchProductsHandler(conn *sqlx.DB) http.HandlerFunc {
 		}
 
 		if searchMode == "inout" {
-			// --- 「JCSHMSから採用」フロー (マスタ編集, 入出庫明細) ---
+			// --- 「JCSHMSから採用」フロー (マスタ編集, 入出庫明細, 発注追加) ---
 
-			// 1. 採用済みの全JANコードマップを取得
+			// 1. ローカルマスタ(product_master)を先に検索してマップ化する
+			//    これにより、JCSHMS側で見つかった品目がローカルにもある場合、ローカルの情報を優先できる（卸情報など）
+			localMasters, err := database.GetFilteredProductMasters(conn, dosageForm, kanaName, genericName, shelfNumber, productName, drugTypes)
+			if err != nil {
+				http.Error(w, "Failed to search product_master: "+err.Error(), http.StatusInternalServerError)
+				return
+			}
+			localMasterMap := make(map[string]model.ProductMaster)
+			for _, m := range localMasters {
+				localMasterMap[m.ProductCode] = m
+			}
+
+			// 2. 採用済みの全JANコードマップを取得 (検索条件にヒットしなくても、採用済みかどうかの判定用)
 			adoptedCodeMap, err := database.GetAllAdoptedProductCodesMap(conn)
 			if err != nil {
 				http.Error(w, "Failed to get adopted product map: "+err.Error(), http.StatusInternalServerError)
@@ -8371,7 +8384,7 @@ func SearchProductsHandler(conn *sqlx.DB) http.HandlerFunc {
 			mergedResults := []model.ProductMasterView{}
 			seenCodes := make(map[string]bool)
 
-			// 2. JCSHMS から検索 (未採用/採用済 候補)
+			// 3. JCSHMS から検索
 			jcshmsResults, err := database.GetFilteredJcshmsInfo(conn, dosageForm, kanaName, genericName, productName, drugTypes)
 			if err != nil {
 				http.Error(w, "Failed to search jcshms_master: "+err.Error(), http.StatusInternalServerError)
@@ -8379,34 +8392,40 @@ func SearchProductsHandler(conn *sqlx.DB) http.HandlerFunc {
 			}
 
 			for _, jcshmsInfo := range jcshmsResults {
-				input := mastermanager.JcshmsToProductMasterInput(jcshmsInfo)
-				tempMaster := inputToMaster(input)
-				view := mappers.ToProductMasterView(tempMaster)
+				jan := jcshmsInfo.ProductCode
 
-				// 3. 採用済マップで照会し、赤文字フラグを設定
-				if _, ok := adoptedCodeMap[view.ProductCode]; ok {
+				// ★修正ポイント: ローカルマスタに同じJANがあれば、そちらを優先して使う
+				if localM, exists := localMasterMap[jan]; exists {
+					view := mappers.ToProductMasterView(&localM)
 					view.IsAdopted = true
+					mergedResults = append(mergedResults, view)
 				} else {
-					view.IsAdopted = false
+					// ローカルになければJCSHMSのデータを使う
+					input := mastermanager.JcshmsToProductMasterInput(jcshmsInfo)
+					tempMaster := inputToMaster(input)
+					view := mappers.ToProductMasterView(tempMaster)
+
+					// 採用済マップで照会 (検索条件には引っかからなかったが、実は採用済みの場合など)
+					if _, ok := adoptedCodeMap[view.ProductCode]; ok {
+						view.IsAdopted = true
+						// ※ここで本来ならそのローカルマスタを取得すべきだが、検索条件外ならJCSHMS表示で妥協するか、
+						// 個別に取得するコストを天秤にかける。
+						// 基本的に「検索して追加」の場面なので、検索条件にヒットしたlocalMasterMapで十分カバーできるはず。
+					} else {
+						view.IsAdopted = false
+					}
+					mergedResults = append(mergedResults, view)
 				}
-
-				mergedResults = append(mergedResults, view)
-				seenCodes[view.ProductCode] = true
+				seenCodes[jan] = true
 			}
 
-			// 4. 独自マスタ(PROVISIONAL)から検索
-			adoptedMasters, err := database.GetFilteredProductMasters(conn, dosageForm, kanaName, genericName, shelfNumber, productName, drugTypes)
-			if err != nil {
-				http.Error(w, "Failed to search product_master: "+err.Error(), http.StatusInternalServerError)
-				return
-			}
-
-			for _, master := range adoptedMasters {
+			// 4. ローカルマスタのみに存在する品目（PROVISIONALなど）を追加
+			for _, master := range localMasters {
 				if seenCodes[master.ProductCode] {
-					continue // JCSHMS検索で既に追加済みのものはスキップ
+					continue // 既に追加済みならスキップ
 				}
 				view := mappers.ToProductMasterView(&master)
-				view.IsAdopted = true // product_masterにあるものは常に採用済み
+				view.IsAdopted = true
 				mergedResults = append(mergedResults, view)
 				seenCodes[master.ProductCode] = true
 			}
@@ -8420,7 +8439,8 @@ func SearchProductsHandler(conn *sqlx.DB) http.HandlerFunc {
 			json.NewEncoder(w).Encode(mergedResults)
 
 		} else {
-			// --- それ以外の通常検索 (棚卸調整, DAT取込, 発注) ---
+			// --- 通常検索 (棚卸調整, DAT取込など) ---
+			// ここは変更なし (ローカルマスタのみ検索)
 
 			localMasters, err := database.GetFilteredProductMasters(conn, dosageForm, kanaName, genericName, shelfNumber, productName, drugTypes)
 			if err != nil {
@@ -8431,7 +8451,7 @@ func SearchProductsHandler(conn *sqlx.DB) http.HandlerFunc {
 			results := make([]model.ProductMasterView, len(localMasters))
 			for i, master := range localMasters {
 				view := mappers.ToProductMasterView(&master)
-				view.IsAdopted = true // ローカルに存在するので全て採用済み
+				view.IsAdopted = true
 				results[i] = view
 			}
 
@@ -8445,7 +8465,9 @@ func SearchProductsHandler(conn *sqlx.DB) http.HandlerFunc {
 	}
 }
 
+// ... (GetProductByBarcodeHandler 以降は変更なし)
 func GetProductByBarcodeHandler(conn *sqlx.DB) http.HandlerFunc {
+	// (省略: 変更なし)
 	return func(w http.ResponseWriter, r *http.Request) {
 		rawBarcode := strings.TrimPrefix(r.URL.Path, "/api/product/by_barcode/")
 		if rawBarcode == "" {
@@ -8544,6 +8566,7 @@ func GetProductByBarcodeHandler(conn *sqlx.DB) http.HandlerFunc {
 }
 
 func AdoptMasterHandler(conn *sqlx.DB) http.HandlerFunc {
+	// (省略: 変更なし)
 	return func(w http.ResponseWriter, r *http.Request) {
 		var payload struct {
 			Gs1Code     string `json:"gs1Code"`
@@ -8744,6 +8767,295 @@ func RenderTransactionTableHTML(transactions []model.TransactionRecord, wholesal
 }
 
 
+----- C:\Users\wasab\OneDrive\デスクトップ\TKR\reorder\backorder_service.go -----
+// C:\Users\wasab\OneDrive\デスクトップ\TKR\reorder\backorder_service.go
+package reorder
+
+import (
+	"fmt"
+	"strings"
+	"time"
+	"tkr/database"
+	"tkr/model"
+
+	"github.com/jmoiron/sqlx"
+)
+
+// RegisterBackorders は発注データのリストを受け取り、共通のルールでDB（発注残）に登録します。
+// DAT発注とCSV発注の両方から利用されます。
+func RegisterBackorders(tx *sqlx.Tx, items []model.Backorder) error {
+	if len(items) == 0 {
+		return nil
+	}
+
+	today := time.Now().Format("20060102150405")
+	var backordersToInsert []model.Backorder
+
+	for _, item := range items {
+		// 日付の正規化と予約判定
+		isReservation := false
+		orderDate := item.OrderDate
+
+		if orderDate != "" {
+			normalized := strings.ReplaceAll(orderDate, "-", "")
+			normalized = strings.ReplaceAll(normalized, ":", "")
+			normalized = strings.ReplaceAll(normalized, " ", "")
+			normalized = strings.ReplaceAll(normalized, "T", "")
+
+			if len(normalized) == 12 {
+				normalized += "00"
+			}
+			orderDate = normalized
+
+			if orderDate > today {
+				isReservation = true
+			}
+		} else {
+			orderDate = today
+		}
+
+		// 予約の場合、卸コードにサフィックスを追加
+		wholesalerCode := item.WholesalerCode
+		if isReservation && !strings.HasSuffix(wholesalerCode, "_RSV") {
+			wholesalerCode += "_RSV"
+		}
+
+		// 登録用データの構築
+		bo := item
+		bo.OrderDate = orderDate
+		bo.WholesalerCode = wholesalerCode
+
+		// 発注数と残数をセット (フロントエンドから送られてきたYJ数量を使用)
+		bo.OrderQuantity = bo.YjQuantity
+		bo.RemainingQuantity = bo.YjQuantity
+
+		backordersToInsert = append(backordersToInsert, bo)
+	}
+
+	if err := database.InsertBackordersInTx(tx, backordersToInsert); err != nil {
+		return fmt.Errorf("failed to insert backorders: %w", err)
+	}
+
+	return nil
+}
+
+
+----- C:\Users\wasab\OneDrive\デスクトップ\TKR\reorder\dat_exporter.go -----
+// C:\Users\wasab\OneDrive\デスクトップ\TKR\reorder\dat_exporter.go
+package reorder
+
+import (
+	"bytes"
+	"fmt"
+	"sort"
+	"time"
+
+	"golang.org/x/text/encoding/japanese"
+	"golang.org/x/text/transform"
+)
+
+// DatOrderRequest はDAT生成に必要な最小限のデータ構造です
+type DatOrderRequest struct {
+	JanCode        string  `json:"janCode"`
+	WholesalerCode string  `json:"wholesalerCode"`
+	OrderQuantity  float64 `json:"orderQuantity"` // 箱数 (画面入力値)
+	KanaNameShort  string  `json:"kanaNameShort"` // 商品名
+}
+
+// DatBuilder は固定長DATデータを作成するための構造体です
+type DatBuilder struct {
+	pharmacyID string // 薬局ID (MedicodeUserID)
+	buffer     *bytes.Buffer
+}
+
+func NewDatBuilder(pharmacyID string) *DatBuilder {
+	return &DatBuilder{
+		pharmacyID: pharmacyID,
+		buffer:     new(bytes.Buffer),
+	}
+}
+
+// convertToSJIS は文字列をShift_JISバイト列に変換します
+func convertToSJIS(s string) ([]byte, error) {
+	encoder := japanese.ShiftJIS.NewEncoder()
+	encoded, _, err := transform.Bytes(encoder, []byte(s))
+	if err != nil {
+		return nil, err
+	}
+	return encoded, nil
+}
+
+// formatField は指定された文字列をShift_JISバイト列に変換し、
+// 指定されたバイト長(byteLen)に整形（右スペース埋め/切り詰め）して返します。
+func formatField(text string, byteLen int) []byte {
+	// 1. そのままShift_JISバイト列へ変換
+	sjisBytes, err := convertToSJIS(text)
+	if err != nil {
+		// 変換エラー時は安全策として空スペースで埋める
+		return bytes.Repeat([]byte(" "), byteLen)
+	}
+
+	// 2. 長さ調整 (バイト数基準)
+	if len(sjisBytes) > byteLen {
+		// 指定長より長い場合は切り詰める
+		return sjisBytes[:byteLen]
+	} else if len(sjisBytes) < byteLen {
+		// 指定長より短い場合は右側をスペース(0x20)で埋める
+		padding := bytes.Repeat([]byte(" "), byteLen-len(sjisBytes))
+		return append(sjisBytes, padding...)
+	}
+
+	// ちょうど良い長さ
+	return sjisBytes
+}
+
+// S行 (ヘッダー) をバッファに書き込みます
+// 構成: S10(3) + 薬局ID(10) + 卸コード(9) + 予備(1) + 伝票番号(4) + 日時(12) + "128128"(6) + 予備(83) = 128
+func (b *DatBuilder) writeSRecord(wholesalerCode string, slipNumber int) {
+	// 現在日時 (YYMMDDHHMMSS)
+	now := time.Now().Format("060102150405")
+
+	// 各フィールドを作成
+	var record []byte
+	record = append(record, []byte("S10")...)                                   // 識別 (3)
+	record = append(record, formatField(b.pharmacyID, 10)...)                   // 薬局ID (10)
+	record = append(record, formatField(wholesalerCode, 9)...)                  // 卸コード (9)
+	record = append(record, []byte(" ")...)                                     // 予備 (1)
+	record = append(record, formatField(fmt.Sprintf("%04d", slipNumber), 4)...) // 伝票番号 (4)
+	record = append(record, formatField(now, 12)...)                            // 日時 (12)
+	record = append(record, []byte("128128")...)                                // ブロック長 (6)
+
+	// ここまでで 3+10+9+1+4+12+6 = 45バイト
+	// 残り 128 - 45 = 83バイトをスペースで埋める
+	paddingLen := 128 - len(record)
+	if paddingLen > 0 {
+		record = append(record, bytes.Repeat([]byte(" "), paddingLen)...)
+	}
+
+	b.buffer.Write(record)
+}
+
+// D行 (明細) をバッファに書き込みます
+// 構成: D10(3) + 薬局ID(10) + 納入日(6) + 予備(10) + 商品コード(14) + 商品名(40) + 数量(10) + 予備(10) + 不明(8) + 予備(17) = 128
+func (b *DatBuilder) writeDRecord(item DatOrderRequest) {
+	today := time.Now().Format("060102")
+
+	// JANコード変換: 13桁なら先頭に '1' を付与して14桁にする
+	jan := item.JanCode
+	if len(jan) == 13 {
+		jan = "1" + jan
+	}
+
+	// 数量変換: 整数5桁 + 小数5桁 (例: 1 -> 0000100000)
+	// ここでは受け取った OrderQuantity (箱数) をそのまま使用する
+	qtyVal := int(item.OrderQuantity * 100000)
+	qtyStr := fmt.Sprintf("%010d", qtyVal)
+
+	// 各フィールドを作成
+	var record []byte
+	record = append(record, []byte("D10")...)                 // 識別 (3)
+	record = append(record, formatField(b.pharmacyID, 10)...) // 薬局ID (10)
+	record = append(record, formatField(today, 6)...)         // 納入日 (6)
+	record = append(record, bytes.Repeat([]byte(" "), 10)...) // 予備 (10)
+	record = append(record, formatField(jan, 14)...)          // 商品コード (14)
+
+	// KanaNameShort をそのまま使用し、Shift_JISで40バイトに収める
+	record = append(record, formatField(item.KanaNameShort, 40)...)
+
+	record = append(record, formatField(qtyStr, 10)...) // 数量 (10)
+
+	// ★スペース (10桁)
+	record = append(record, bytes.Repeat([]byte(" "), 10)...) // 予備 (10)
+
+	record = append(record, []byte("00000000")...) // 不明 (8)
+
+	// ここまでで 3+10+6+10+14+40+10+10+8 = 111バイト
+	// 残り 128 - 111 = 17バイトをスペースで埋める
+	paddingLen := 128 - len(record)
+	if paddingLen > 0 {
+		record = append(record, bytes.Repeat([]byte(" "), paddingLen)...)
+	} else if paddingLen < 0 {
+		// 万が一オーバーしていたら128バイトで切る
+		record = record[:128]
+	}
+
+	b.buffer.Write(record)
+}
+
+// E行 (トレーラー) をバッファに書き込みます
+// 構成: E10(3) + 総行数(6) + 明細数(6) + 予備(113) = 128
+func (b *DatBuilder) writeERecord(totalLines, itemLines int) {
+	// 総行数、明細数を6桁ゼロ埋め
+	totalStr := fmt.Sprintf("%06d", totalLines)
+	itemStr := fmt.Sprintf("%06d", itemLines)
+
+	var record []byte
+	record = append(record, []byte("E10")...)    // 識別 (3)
+	record = append(record, []byte(totalStr)...) // 総行数 (6)
+	record = append(record, []byte(itemStr)...)  // 明細数 (6)
+
+	// ここまでで 3+6+6 = 15バイト
+	// 残り 128 - 15 = 113バイトをスペースで埋める
+	paddingLen := 128 - len(record)
+	if paddingLen > 0 {
+		record = append(record, bytes.Repeat([]byte(" "), paddingLen)...)
+	}
+
+	b.buffer.Write(record)
+}
+
+// GenerateFixedLengthDat は発注リクエストのリストからDATファイル(バイト列)を生成します。
+func GenerateFixedLengthDat(pharmacyID string, requests []DatOrderRequest) ([]byte, error) {
+	if pharmacyID == "" {
+		return nil, fmt.Errorf("薬局ID(MedicodeUserID)が設定されていません")
+	}
+
+	builder := NewDatBuilder(pharmacyID)
+
+	// 卸ごとにグルーピング
+	ordersByWholesaler := make(map[string][]DatOrderRequest)
+	for _, req := range requests {
+		if req.WholesalerCode == "" {
+			continue
+		}
+		ordersByWholesaler[req.WholesalerCode] = append(ordersByWholesaler[req.WholesalerCode], req)
+	}
+
+	// 卸コード順にソートして処理
+	var wholesalers []string
+	for w := range ordersByWholesaler {
+		wholesalers = append(wholesalers, w)
+	}
+	sort.Strings(wholesalers)
+
+	slipCounter := 1 // 伝票番号 (連番)
+
+	for _, wCode := range wholesalers {
+		items := ordersByWholesaler[wCode]
+		if len(items) == 0 {
+			continue
+		}
+
+		// S行
+		builder.writeSRecord(wCode, slipCounter)
+
+		// D行
+		for _, item := range items {
+			builder.writeDRecord(item)
+		}
+
+		// E行
+		// 総行数 = S(1) + D(len) + E(1)
+		totalLines := 1 + len(items) + 1
+		builder.writeERecord(totalLines, len(items))
+
+		slipCounter++
+	}
+
+	return builder.buffer.Bytes(), nil
+}
+
+
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\reorder\handler.go -----
 // C:\Users\wasab\OneDrive\デスクトップ\TKR\reorder\handler.go
 package reorder
@@ -8752,6 +9064,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -8798,6 +9111,14 @@ type ReturnCandidate struct {
 	ReturnableBoxes  int                     `json:"returnableBoxes"`
 	UnitName         string                  `json:"unitName"`
 	TheoreticalStock float64                 `json:"theoreticalStock"`
+}
+
+// APIリクエスト用の拡張構造体 (CSV/DAT共通)
+// フロントエンドから「箱数」と「バラ数(YJ)」の両方を受け取る
+type OrderRequestItem struct {
+	model.Backorder
+	BoxQuantity   float64 `json:"boxQuantity"`   // DAT用: 箱数
+	KanaNameShort string  `json:"kanaNameShort"` // DAT用: カナ名
 }
 
 func GenerateOrderCandidatesHandler(conn *sqlx.DB) http.HandlerFunc {
@@ -8929,12 +9250,20 @@ func GenerateOrderCandidatesHandler(conn *sqlx.DB) http.HandlerFunc {
 	}
 }
 
+// PlaceOrderHandler (CSV発注など、通常の発注登録)
 func PlaceOrderHandler(conn *sqlx.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		var payload []model.Backorder
+		// ★修正: OrderRequestItem を使用するように変更
+		var payload []OrderRequestItem
 		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 			http.Error(w, "Invalid request body", http.StatusBadRequest)
 			return
+		}
+
+		// model.Backorder のリストに変換
+		var backorders []model.Backorder
+		for _, item := range payload {
+			backorders = append(backorders, item.Backorder)
 		}
 
 		tx, err := conn.Beginx()
@@ -8944,55 +9273,34 @@ func PlaceOrderHandler(conn *sqlx.DB) http.HandlerFunc {
 		}
 		defer tx.Rollback()
 
-		today := time.Now().Format("20060102150405")
-
-		isReservation := false
-		if len(payload) > 0 && payload[0].OrderDate != "" {
-			userDate := strings.ReplaceAll(payload[0].OrderDate, "-", "")
-			userDate = strings.ReplaceAll(userDate, ":", "")
-			userDate = strings.ReplaceAll(userDate, " ", "")
-			userDate = strings.ReplaceAll(userDate, "T", "")
-
-			if len(userDate) == 12 {
-				userDate += "00"
-			}
-
-			if userDate > today {
-				isReservation = true
-			}
-		}
-
-		for i := range payload {
-			if payload[i].OrderDate != "" {
-				normalized := strings.ReplaceAll(payload[i].OrderDate, "-", "")
-				normalized = strings.ReplaceAll(normalized, ":", "")
-				normalized = strings.ReplaceAll(normalized, " ", "")
-				normalized = strings.ReplaceAll(normalized, "T", "")
-
-				if len(normalized) == 12 {
-					normalized += "00"
-				}
-				payload[i].OrderDate = normalized
-			} else {
-				payload[i].OrderDate = today
-			}
-
-			if isReservation {
-				payload[i].WholesalerCode += "_RSV"
-			}
-
-			payload[i].OrderQuantity = payload[i].YjQuantity
-			payload[i].RemainingQuantity = payload[i].YjQuantity
-		}
-
-		if err := database.InsertBackordersInTx(tx, payload); err != nil {
-			http.Error(w, "Failed to save backorders", http.StatusInternalServerError)
+		// 共通関数を使って登録
+		if err := RegisterBackorders(tx, backorders); err != nil {
+			http.Error(w, "Failed to register backorders: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
 
 		if err := tx.Commit(); err != nil {
 			http.Error(w, "Failed to commit transaction", http.StatusInternalServerError)
 			return
+		}
+
+		// 予約が含まれているかチェック (メッセージ用)
+		isReservation := false
+		today := time.Now().Format("20060102150405")
+		for _, bo := range backorders {
+			if bo.OrderDate != "" {
+				normalized := strings.ReplaceAll(bo.OrderDate, "-", "")
+				normalized = strings.ReplaceAll(normalized, ":", "")
+				normalized = strings.ReplaceAll(normalized, " ", "")
+				normalized = strings.ReplaceAll(normalized, "T", "")
+				if len(normalized) == 12 {
+					normalized += "00"
+				}
+				if normalized > today {
+					isReservation = true
+					break
+				}
+			}
 		}
 
 		msg := "発注内容を発注残として登録しました。"
@@ -9064,8 +9372,7 @@ func GenerateReturnCandidatesHandler(db *sqlx.DB) http.HandlerFunc {
 					minJanPackQty = master.JanPackUnitQty
 				}
 
-				// ▼▼▼ 修正: 過剰数が「最小JAN包装数量」以上の場合のみリストアップする ▼▼▼
-				// 最小包装が0の場合は、過剰があれば出す
+				// 過剰数が「最小JAN包装数量」以上の場合のみリストアップする
 				if excess > 0 && (minJanPackQty == 0 || excess >= minJanPackQty) {
 					// 返品可能箱数
 					returnableBoxes := 0
@@ -9099,12 +9406,110 @@ func GenerateReturnCandidatesHandler(db *sqlx.DB) http.HandlerFunc {
 						NhiPrice:         master.NhiPrice,
 					})
 				}
-				// ▲▲▲ 修正ここまで ▲▲▲
 			}
 		}
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(results)
+	}
+}
+
+// ExportFixedLengthDatHandler は発注データから固定長DATファイルを生成し、かつ発注残として保存します。
+func ExportFixedLengthDatHandler(conn *sqlx.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		// 設定から薬局ID (MedicodeUserID) を取得
+		cfg, err := config.LoadConfig()
+		if err != nil {
+			http.Error(w, "設定の読み込みに失敗しました: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		pharmacyID := cfg.MedicodeUserID
+		if pharmacyID == "" {
+			http.Error(w, "設定画面で MEDICODE ユーザーID を設定してください。", http.StatusBadRequest)
+			return
+		}
+
+		// 拡張した構造体で受け取る (BoxQuantityを含む)
+		var payload []OrderRequestItem
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			http.Error(w, "リクエストボディの解析に失敗: "+err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		if len(payload) == 0 {
+			http.Error(w, "発注対象データがありません。", http.StatusBadRequest)
+			return
+		}
+
+		// DB保存用とDAT生成用のデータを準備
+		var backorders []model.Backorder
+		var datRequests []DatOrderRequest
+
+		for _, item := range payload {
+			// 卸コードがないものはスキップ (DBにも保存しない)
+			if item.WholesalerCode == "" {
+				continue
+			}
+
+			// 1. DB保存用 (発注残) -> model.Backorder
+			// フロントエンドで計算済みの YJQuantity をそのまま使う
+			backorders = append(backorders, item.Backorder)
+
+			// 2. DAT生成用 -> DatOrderRequest
+			// フロントエンドから送られてきた BoxQuantity (箱数) をそのまま使う
+			datReq := DatOrderRequest{
+				JanCode:        item.JanCode,
+				WholesalerCode: item.WholesalerCode,
+				OrderQuantity:  item.BoxQuantity, // ★箱数をセット
+				KanaNameShort:  item.KanaNameShort,
+			}
+			datRequests = append(datRequests, datReq)
+		}
+
+		if len(backorders) == 0 {
+			http.Error(w, "有効な発注データがありません（卸未設定など）。", http.StatusBadRequest)
+			return
+		}
+
+		tx, err := conn.Beginx()
+		if err != nil {
+			http.Error(w, "トランザクション開始エラー", http.StatusInternalServerError)
+			return
+		}
+		defer tx.Rollback()
+
+		// ★ DBへの保存 (発注残登録)
+		if err := RegisterBackorders(tx, backorders); err != nil {
+			http.Error(w, "発注残の登録に失敗しました: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		// DAT生成
+		datBytes, err := GenerateFixedLengthDat(pharmacyID, datRequests)
+		if err != nil {
+			http.Error(w, "DATファイルの生成に失敗: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		if err := tx.Commit(); err != nil {
+			http.Error(w, "コミットエラー", http.StatusInternalServerError)
+			return
+		}
+
+		// ファイルダウンロードとしてレスポンス
+		fileName := fmt.Sprintf("ORDER_%s.DAT", time.Now().Format("20060102150405"))
+		fileName = url.PathEscape(fileName)
+
+		w.Header().Set("Content-Type", "application/octet-stream")
+		w.Header().Set("Content-Disposition", "attachment; filename*=UTF-8''"+fileName)
+		w.Header().Set("Content-Length", fmt.Sprintf("%d", len(datBytes)))
+
+		w.Write(datBytes)
 	}
 }
 
@@ -10736,6 +11141,7 @@ func openBrowser(url string) {
 
 
 ----- C:\Users\wasab\OneDrive\デスクトップ\TKR\routes.go -----
+// C:\Users\wasab\OneDrive\デスクトップ\TKR\routes.go
 package main
 
 import (
@@ -10883,6 +11289,7 @@ func SetupRoutes(mux *http.ServeMux, dbConn *sqlx.DB) {
 
 	mux.HandleFunc("/api/reorder/candidates", reorder.GenerateOrderCandidatesHandler(dbConn))
 	mux.HandleFunc("/api/orders/place", reorder.PlaceOrderHandler(dbConn))
+	mux.HandleFunc("/api/reorder/export_dat", reorder.ExportFixedLengthDatHandler(dbConn)) // ★追加
 	mux.HandleFunc("/api/backorders", backorder.GetBackordersHandler(dbConn))
 	mux.HandleFunc("/api/backorders/delete", backorder.DeleteBackorderHandler(dbConn))
 	mux.HandleFunc("/api/backorders/bulk_delete_by_id", backorder.BulkDeleteBackordersByIDHandler(dbConn))

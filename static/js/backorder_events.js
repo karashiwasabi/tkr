@@ -1,161 +1,128 @@
 // C:\Users\wasab\OneDrive\デスクトップ\TKR\static\js\backorder_events.js
-// (新規作成)
-import { setBackorders, renderBackorders } from './backorder_ui.js';
+import { showModal } from './search_modal.js';
+import { filterAndRender, renderBackorders, setBackorders } from './backorder_ui.js';
 
-let outputContainer, searchKanaInput, searchWholesalerInput;
+let outputContainer, searchKanaInput;
 
-/**
- * DOM要素をキャッシュする
- */
 export function cacheDOMElements(elements) {
     outputContainer = elements.outputContainer;
     searchKanaInput = elements.searchKanaInput;
-    searchWholesalerInput = elements.searchWholesalerInput;
+    // 卸コード入力欄のキャッシュを削除
 }
 
-/**
- * APIから発注残リストを取得し、キャッシュと描画を行います。
- */
 export async function loadAndRenderBackorders() {
-    outputContainer.innerHTML = '<p>読み込み中...</p>';
+    window.showLoading('発注残データを読み込み中...');
     try {
         const res = await fetch('/api/backorders');
-        if (!res.ok) throw new Error('発注残リストの読み込みに失敗しました。');
+        if (!res.ok) throw new Error('読み込みに失敗しました');
         const data = await res.json();
         
-        setBackorders(data); // UIモジュールの状態を更新
-
-        searchKanaInput.value = '';
-        searchWholesalerInput.value = '';
-
-        renderBackorders(data); // UIモジュールの描画を呼び出し
+        setBackorders(data);
+        renderBackorders(data);
+        
+        // フォームリセット: カナ検索のみクリア
+        if(searchKanaInput) searchKanaInput.value = '';
+        // 卸コードのリセット処理を削除 (これがエラーの原因でした)
+        
     } catch (err) {
-         outputContainer.innerHTML = `<p class="status-error">${err.message}</p>`;
+        if(outputContainer) outputContainer.innerHTML = `<p class="status-error">エラー: ${err.message}</p>`;
+    } finally {
+        window.hideLoading();
     }
 }
 
-/**
- * 発注残ビューのイベントハンドラ
- */
 export async function handleBackorderEvents(e) {
     const target = e.target;
-
-    // 個別削除ボタン
+    
+    // 個別削除
     if (target.classList.contains('delete-backorder-btn')) {
         const row = target.closest('tr');
-        const groupHeader = row.closest('tbody.backorder-group')?.querySelector('tr.group-header');
-        const orderDateStr = groupHeader ? groupHeader.querySelector('.delete-backorder-group-btn').dataset.orderDate : '不明';
-
-        if (!confirm(`「${row.cells[2].textContent}」の発注残（発注: ${orderDateStr}）を削除しますか？`)) {
-            return;
-        }
-        const payload = {
-             id: parseInt(row.dataset.id, 10),
-        };
-        window.showLoading();
+        const id = row.dataset.id;
+        const name = row.querySelector('.col-bo-name').textContent;
+        
+        if (!confirm(`「${name}」の発注残を削除しますか？`)) return;
+        
+        window.showLoading('削除中...');
         try {
-             const res = await fetch('/api/backorders/delete', {
+            const res = await fetch('/api/backorders/delete', {
                 method: 'POST',
-                 headers: { 'Content-Type': 'application/json' },
-                 body: JSON.stringify(payload),
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: parseInt(id, 10) })
             });
-            const resData = await res.json();
-            if (!res.ok) throw new Error(resData.message || '削除に失敗しました。');
-            window.showNotification(resData.message, 'success');
-            loadAndRenderBackorders(); // リストを再読み込み
-        } catch (err) {
-             window.showNotification(err.message, 'error');
+            if (!res.ok) throw new Error('削除に失敗しました');
+            
+            window.showNotification('削除しました', 'success');
+            loadAndRenderBackorders();
+        } catch(err) {
+            window.showNotification(err.message, 'error');
         } finally {
             window.hideLoading();
         }
-     }
+    }
+    
+    // グループ一括削除
+    if (target.classList.contains('delete-backorder-group-btn')) {
+        const date = target.dataset.orderDate;
+        if (!confirm(`発注日: ${date} のデータをすべて削除しますか？`)) return;
+        
+        window.showLoading('一括削除中...');
+        try {
+            const res = await fetch('/api/backorders/bulk_delete_by_date', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ orderDate: date })
+            });
+            if (!res.ok) throw new Error('削除に失敗しました');
+            
+            window.showNotification('一括削除しました', 'success');
+            loadAndRenderBackorders();
+        } catch(err) {
+            window.showNotification(err.message, 'error');
+        } finally {
+            window.hideLoading();
+        }
+    }
+    
+    // 棚卸調整へのリンク (機能が必要であれば)
+    if (target.classList.contains('adjust-inventory-btn')) {
+        // 将来的な実装のため、ボタンの定義のみ残しています
+        // 現時点では動作しません
+        window.showNotification('棚卸調整画面へ移動機能は未実装です', 'info');
+    }
 
+    // チェックボックスによる一括削除
+    if (target.id === 'bo-bulk-delete-btn') {
+        const checkboxes = document.querySelectorAll('.bo-select-checkbox:checked');
+        if (checkboxes.length === 0) {
+            window.showNotification('削除する項目を選択してください', 'warning');
+            return;
+        }
+        
+        if (!confirm(`選択した ${checkboxes.length} 件の発注残を削除しますか？`)) return;
+        
+        const ids = Array.from(checkboxes).map(cb => parseInt(cb.closest('tr').dataset.id, 10));
+        
+        window.showLoading('削除中...');
+        try {
+            const res = await fetch('/api/backorders/bulk_delete_by_id', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ids: ids })
+            });
+            if (!res.ok) throw new Error('削除に失敗しました');
+            
+            window.showNotification('削除しました', 'success');
+            loadAndRenderBackorders();
+        } catch(err) {
+            window.showNotification(err.message, 'error');
+        } finally {
+            window.hideLoading();
+        }
+    }
+    
     // 全選択チェックボックス
     if (target.id === 'bo-select-all-checkbox') {
-        const isChecked = target.checked;
-        document.querySelectorAll('.bo-select-checkbox').forEach(cb => cb.checked = isChecked);
-    }
-
-    // 選択項目の一括削除ボタン
-    if (target.id === 'bo-bulk-delete-btn') {
-        const checkedRows = document.querySelectorAll('.bo-select-checkbox:checked');
-        if (checkedRows.length === 0) {
-            window.showNotification('削除する項目が選択されていません。', 'error');
-            return;
-        }
-         if (!confirm(`${checkedRows.length}件の発注残を削除します。よろしいですか？`)) {
-            return;
-        }
-
-        const payload = Array.from(checkedRows).map(cb => {
-            const row = cb.closest('tr');
-             return {
-                id: parseInt(row.dataset.id, 10),
-             };
-        });
-        window.showLoading();
-        try {
-             const res = await fetch('/api/backorders/bulk_delete_by_id', {
-                method: 'POST',
-                 headers: { 'Content-Type': 'application/json' },
-                 body: JSON.stringify(payload),
-            });
-            const resData = await res.json();
-            if (!res.ok) throw new Error(resData.message || '一括削除に失敗しました。');
-            window.showNotification(resData.message, 'success');
-            loadAndRenderBackorders(); // リストを再読み込み
-        } catch (err) {
-             window.showNotification(err.message, 'error');
-        } finally {
-            window.hideLoading();
-        }
-     }
-
-    // 発注書（グループ）単位での一括削除ボタン
-    if (target.classList.contains('delete-backorder-group-btn')) {
-        const orderDate = target.dataset.orderDate;
-        if (!orderDate) return;
-
-        if (!confirm(`発注 [${orderDate}] の発注残をすべて削除します。よろしいですか？`)) {
-            return;
-        }
-
-        const payload = {
-             orderDate: orderDate,
-        };
-        
-        window.showLoading();
-        try {
-             const res = await fetch('/api/backorders/bulk_delete_by_date', {
-                method: 'POST',
-                 headers: { 'Content-Type': 'application/json' },
-                 body: JSON.stringify(payload),
-            });
-            const resData = await res.json();
-            if (!res.ok) throw new Error(resData.message || 'グループ削除に失敗しました。');
-            
-            window.showNotification(resData.message, 'success');
-            loadAndRenderBackorders(); // リストを再読み込み
-        } catch (err) {
-             window.showNotification(err.message, 'error');
-        } finally {
-            window.hideLoading();
-        }
-    }
-
-     // 棚卸調整ボタン
-    if (target.classList.contains('adjust-inventory-btn')) {
-        const yjCode = target.dataset.yjCode;
-        if (!yjCode) return;
-
-        // 棚卸調整ビューに移動するイベントを発火
-         const event = new CustomEvent('loadInventoryAdjustment', {
-            detail: { yjCode: yjCode },
-            bubbles: true
-        });
-        document.dispatchEvent(event);
-
-        // 棚卸調整タブをアクティブにする
-         document.getElementById('inventoryAdjustmentViewBtn')?.click();
+        const checkboxes = document.querySelectorAll('.bo-select-checkbox');
+        checkboxes.forEach(cb => cb.checked = target.checked);
     }
 }
